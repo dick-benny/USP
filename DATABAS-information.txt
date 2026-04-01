@@ -1,0 +1,20 @@
+DATABAS-information
+SUPABASE - Den databas som vi kopplar nu är för utveckling. Vi kommer senare att lägga till databasen för drift till planning.cappelen.dimyr.com.
+Vi har kört
+Npm install @supabase/supabase-js 
+
+
+Men du behöver lägga till – på lämpligt ställe.
+import { createClient } from '@supabase/supabase-js'
+const supabase = createClient(
+  process.env.SUPABASE_URL, 
+  process.env.SUPABASE_ANON_KEY 
+)
+
+Komplett databasinfo:
+DATABASE_URL=postgresql://postgres:gcjQuLWnj0RZ4Mdg@db.kcsixeaqngdfegomsidh.supabase.co:5432/postgres
+SUPABASE_URL=https://kcsixeaqngdfegomsidh.supabase.co
+SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtjc2l4ZWFxbmdkZmVnb21zaWRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyNTc5NzMsImV4cCI6MjA4OTgzMzk3M30.DXM3-Bp1p4vTalZdWyMZLRT7VR6Shb7XJEjo-hDKYhU
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtjc2l4ZWFxbmdkZmVnb21zaWRoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDI1Nzk3MywiZXhwIjoyMDg5ODMzOTczfQ.rXhv03awn_3ZZYULmOaBUQGpwkDOdOm0MZVWfg0LW3Y
+SUPABASE_JWT_SECRET=your-jwt-secret-from-supabase-dashboard
+
