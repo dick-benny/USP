@@ -23,7 +23,10 @@ function safeResolve(requestPath) {
   const decoded = decodeURIComponent(requestPath);
   const cleanPath = decoded.split('?')[0].split('#')[0];
   const rawPath = cleanPath === '/' ? '/index.html' : cleanPath;
-  const normalized = path.normalize(rawPath).replace(/^\.{1,2}(\/|\\|$)/, '');
+  const normalized = path
+    .normalize(rawPath)
+    .replace(/^\/+/, '')
+    .replace(/^\.{1,2}(\/|\\|$)/, '');
   const resolvedPath = path.join(ROOT_DIR, normalized);
 
   if (!resolvedPath.startsWith(ROOT_DIR)) {
@@ -62,6 +65,6 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`USP server running at http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`USP server running on port ${PORT}`);
 });
