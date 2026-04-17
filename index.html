@@ -9,6 +9,10 @@
 <body>
   <header class="topbar">
     <div class="topbar__inner">
+      <div class="topbar__brand" aria-label="Appnamn">
+        <span class="topbar__eyebrow">USP workspace</span>
+        <strong class="topbar__title">Planning</strong>
+      </div>
       <nav id="tableNav" class="table-nav topbar__nav" aria-label="Vyflikar"></nav>
       <button id="settingsButton" class="topbar__settings" type="button">SETTINGS</button>
     </div>
@@ -20,7 +24,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./JS/spec.js"></script>
-  <script src="./JS/supabase.js"></script>
-  <script src="./JS/app.js"></script>
+  <script type="module" src="./JS/app.js"></script>
 </body>
 </html>

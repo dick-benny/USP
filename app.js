@@ -20,18 +20,10 @@ import { supabase } from './supabase.js';
     width: '10ch',
     mods: { align: 'center', readonly: true },
   };
-  const UI_NOTES_COLUMN = {
-    name: 'Notes',
-    field: '__notes__',
-    type: 'ui_notes',
-    width: '9ch',
-    mods: { align: 'center', readonly: true },
-  };
   const STATUS_ORDER = ['gray', 'yellow', 'green', 'red'];
   const TODO_TABLE = 'TODO';
   const PDF_BUCKET = 'rutiner-pdf';
   const PDF_PREFIX = 'rutiner';
-  const IS_ADMIN = true;
 
   const state = {
     activeTableName: tableEntries[0]?.[0] || null,
@@ -41,25 +33,6 @@ import { supabase } from './supabase.js';
     savingCell: null,
     detailRowId: null,
     newRowDraft: null,
-    archivePanelOpen: false,
-    archiveRowsByTable: {},
-    archiveLoading: false,
-    notesPanelOpen: false,
-    notesRowId: null,
-    notesRowsByKey: {},
-    notesLoading: false,
-    notesDraft: { title: '', body: '' },
-    documentLinksByTable: {},
-    settingsPanelOpen: false,
-    settingsView: 'menu',
-    settingsLoading: false,
-    settingsDraft: {
-      tableName: '',
-      columnField: '',
-      rutinerRowId: '',
-      label: '',
-    },
-    documentLinksList: [],
   };
 
   function getActiveConfig() {
@@ -70,7 +43,6 @@ import { supabase } from './supabase.js';
     return [
       ...tableConfig.columns.filter((column) => column.field !== 'id'),
       UI_OPEN_COLUMN,
-      UI_NOTES_COLUMN,
     ];
   }
 
@@ -199,340 +171,12 @@ import { supabase } from './supabase.js';
     return state.newRowDraft.data || null;
   }
 
-
-  function isNotesColumn(column) {
-    return column?.field === UI_NOTES_COLUMN.field;
-  }
-
-  function normalizeDocumentLinks(rows) {
-    const linksByTable = {};
-    (rows || []).forEach((item) => {
-      const tableName = String(item.table_name || '').trim();
-      const columnField = String(item.column_field || '').trim();
-      if (!tableName || !columnField) return;
-      if (!linksByTable[tableName]) linksByTable[tableName] = {};
-      linksByTable[tableName][columnField] = item;
-    });
-    return linksByTable;
-  }
-
-  async function loadDocumentLinks() {
-    try {
-      const { data, error } = await supabase
-        .from('planning_document_links')
-        .select('*')
-        .order('table_name', { ascending: true });
-
-      if (error) throw error;
-      const rows = Array.isArray(data) ? data : [];
-      state.documentLinksList = rows;
-      state.documentLinksByTable = normalizeDocumentLinks(rows);
-    } catch (err) {
-      console.warn('Could not load document links:', err.message);
-      state.documentLinksList = [];
-      state.documentLinksByTable = {};
-    }
-  }
-
-  function getDocumentLinkForColumn(tableName, column) {
-    return state.documentLinksByTable?.[tableName]?.[column.field] || null;
-  }
-
-  function getRutinerDocumentPathByRowId(rutinerRowId) {
-    const rutinerRows = state.rowsByTable['RUTINER'] || [];
-    const match = rutinerRows.find((row) => String(row.id) === String(rutinerRowId));
-    return match?.document || '';
-  }
-
-  async function openLinkedDocument(tableName, column) {
-    const link = getDocumentLinkForColumn(tableName, column);
-    if (!link) return;
-
-    const documentPath = getRutinerDocumentPathByRowId(link.rutiner_row_id);
-    if (!documentPath) {
-      alert('Det kopplade dokumentet kunde inte hittas i RUTINER.');
-      return;
-    }
-
-    await openPdfDocument(documentPath);
-  }
-
-  function createDocumentBadge(tableName, column) {
-    const link = getDocumentLinkForColumn(tableName, column);
-    if (!link) return null;
-
-    const badge = document.createElement('button');
-    badge.type = 'button';
-    badge.className = 'doc-link-badge';
-    badge.textContent = '';
-    badge.className = 'doc-link-dot';
-    badge.title = String(link.label || 'Öppna kopplat dokument').trim() || 'Öppna kopplat dokument';
-    badge.setAttribute('aria-label', `Öppna kopplat dokument för ${column.name}`);
-    badge.addEventListener('click', async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      await openLinkedDocument(tableName, column);
-    });
-
-    return badge;
-  }
-
-
-  function openSettingsMenu() {
-    state.settingsPanelOpen = true;
-    state.settingsView = 'menu';
-    state.archivePanelOpen = false;
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    state.detailRowId = null;
-    state.newRowDraft = null;
-    render();
-  }
-
-  function openSettingsDocumentLinks() {
-    state.settingsPanelOpen = true;
-    state.settingsView = 'document_links';
-    state.archivePanelOpen = false;
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    state.detailRowId = null;
-    state.newRowDraft = null;
-    render();
-  }
-
-  function getSettingsTableOptions() {
-    return tableEntries
-      .map(([tableName]) => tableName)
-      .filter((tableName) => tableName !== 'RUTINER');
-  }
-
-  function getSettingsColumnOptions(tableName) {
-    const active = tableEntries.find(([name]) => name === tableName);
-    if (!active) return [];
-    const [, tableConfig] = active;
-    return tableConfig.columns
-      .filter((column) => column.field !== 'id')
-      .map((column) => ({
-        field: column.field,
-        name: column.name,
-      }));
-  }
-
-  function getRutinerOptions() {
-    return (state.rowsByTable['RUTINER'] || []).map((row) => ({
-      id: row.id,
-      name: row.rutin || getPdfDisplayName(row.document) || `Dokument ${row.id}`,
-      documentName: getPdfDisplayName(row.document) || 'Utan dokument',
-    }));
-  }
-
-  function closeSettingsPanel() {
-    state.settingsPanelOpen = false;
-    state.settingsView = 'menu';
-    render();
-  }
-
-  async function saveDocumentLinkFromSettings() {
-    const tableName = String(state.settingsDraft.tableName || '').trim();
-    const columnField = String(state.settingsDraft.columnField || '').trim();
-    const rutinerRowId = String(state.settingsDraft.rutinerRowId || '').trim();
-    const label = String(state.settingsDraft.label || '').trim();
-
-    if (!tableName) return alert('Välj tabell.');
-    if (!columnField) return alert('Välj kolumn.');
-    if (!rutinerRowId) return alert('Välj dokument.');
-
-    state.settingsLoading = true;
-    render();
-
-    try {
-      const payload = {
-        table_name: tableName,
-        column_field: columnField,
-        rutiner_row_id: Number(rutinerRowId),
-        label: label || null,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase
-        .from('planning_document_links')
-        .upsert(payload, { onConflict: 'table_name,column_field' });
-
-      if (error) throw error;
-
-      await loadDocumentLinks();
-      state.settingsDraft = {
-        tableName: '',
-        columnField: '',
-        rutinerRowId: '',
-        label: '',
-      };
-    } catch (err) {
-      alert(`Kunde inte spara dokumentkoppling: ${err.message}`);
-    } finally {
-      state.settingsLoading = false;
-      render();
-    }
-  }
-
-  async function deleteDocumentLinkFromSettings(id) {
-    const confirmed = window.confirm('Ta bort denna dokumentkoppling?');
-    if (!confirmed) return;
-
-    state.settingsLoading = true;
-    render();
-
-    try {
-      const { error } = await supabase
-        .from('planning_document_links')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      await loadDocumentLinks();
-    } catch (err) {
-      alert(`Kunde inte ta bort dokumentkoppling: ${err.message}`);
-    } finally {
-      state.settingsLoading = false;
-      render();
-    }
-  }
-
-  function getNotesRowKey(tableName, rowId) {
-    return `${tableName}::${rowId}`;
-  }
-
-  function getRowTitleField(tableName) {
-    if (tableName === 'PRE DEV') return 'utv_ide';
-    if (tableName === 'UTVECKLING') return 'produktide';
-    if (tableName === 'SÄLJINTRO') return 'produkt';
-    if (tableName === 'TODO') return 'beskrivning';
-    if (tableName === 'RUTINER') return 'rutin';
-    return '';
-  }
-
-  function getCurrentNotesRow() {
-    if (!state.activeTableName || !state.notesRowId) return null;
-    return getRowById(state.activeTableName, state.notesRowId);
-  }
-
-  function resetNotesDraft() {
-    state.notesDraft = { title: '', body: '' };
-  }
-
-  async function loadNotesForRow(tableName, rowId) {
-    state.notesLoading = true;
-    render();
-
-    try {
-      const active = tableEntries.find(([name]) => name === tableName);
-      if (!active) return;
-      const [, tableConfig] = active;
-
-      const { data, error } = await supabase
-        .from('planning_notes')
-        .select('*')
-        .eq('source_table', tableConfig.dbTable)
-        .eq('source_row_id', rowId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      state.notesRowsByKey[getNotesRowKey(tableName, rowId)] = Array.isArray(data) ? data : [];
-    } catch (err) {
-      alert(`Kunde inte läsa notes: ${err.message}`);
-      state.notesRowsByKey[getNotesRowKey(tableName, rowId)] = [];
-    } finally {
-      state.notesLoading = false;
-      render();
-    }
-  }
-
-  function openNotesPanel(row) {
-    if (!row?.id) return;
-    state.notesPanelOpen = true;
-    state.notesRowId = row.id;
-    state.detailRowId = null;
-    state.newRowDraft = null;
-    state.archivePanelOpen = false;
-    state.settingsPanelOpen = false;
-    resetNotesDraft();
-    void loadNotesForRow(state.activeTableName, row.id);
-    render();
-  }
-
-  function closeNotesPanel() {
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    resetNotesDraft();
-    render();
-  }
-
-  async function saveNoteForCurrentRow() {
-    const row = getCurrentNotesRow();
-    if (!row) return;
-    const title = String(state.notesDraft.title || '').trim();
-    const body = String(state.notesDraft.body || '').trim();
-
-    if (!title) {
-      alert('Rubrik saknas.');
-      return;
-    }
-    if (!body) {
-      alert('Text saknas.');
-      return;
-    }
-
-    const active = getActiveConfig();
-    if (!active) return;
-    const [tableName, tableConfig] = active;
-
-    state.notesLoading = true;
-    render();
-
-    try {
-      const { error } = await supabase
-        .from('planning_notes')
-        .insert({
-          source_table: tableConfig.dbTable,
-          source_row_id: row.id,
-          title,
-          body,
-        });
-
-      if (error) throw error;
-
-      resetNotesDraft();
-      await loadNotesForRow(tableName, row.id);
-      return;
-    } catch (err) {
-      alert(`Kunde inte spara note: ${err.message}`);
-    } finally {
-      state.notesLoading = false;
-      render();
-    }
-  }
-
-
   function formatDateValue(value) {
     const raw = String(value ?? '').trim();
     if (!raw || raw === '--' || raw === '-- -- --') return '—';
     const date = new Date(raw);
     if (Number.isNaN(date.getTime())) return raw;
     return new Intl.DateTimeFormat('sv-SE').format(date);
-  }
-
-  function formatDateTimeValue(value) {
-    const raw = String(value ?? '').trim();
-    if (!raw) return '—';
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return raw;
-    return new Intl.DateTimeFormat('sv-SE', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date);
   }
 
   function formatWeekValue(value) {
@@ -651,53 +295,6 @@ import { supabase } from './supabase.js';
     }
   }
 
-  async function loadArchiveRows(tableName) {
-    const active = tableEntries.find(([name]) => name === tableName);
-    if (!active) return;
-    const [, tableConfig] = active;
-
-    state.archiveLoading = true;
-    render();
-
-    try {
-      const { data, error } = await supabase
-        .from('planning_archive')
-        .select('*')
-        .eq('source_table', tableConfig.dbTable)
-        .order('archived_at', { ascending: false });
-
-      if (error) {
-        throw error;
-      }
-
-      state.archiveRowsByTable[tableName] = Array.isArray(data) ? data : [];
-    } catch (err) {
-      alert(`Kunde inte läsa arkivet: ${err.message}`);
-      state.archiveRowsByTable[tableName] = [];
-    } finally {
-      state.archiveLoading = false;
-      render();
-    }
-  }
-
-  function openArchivePanel() {
-    if (state.activeTableName === 'RUTINER') {
-      alert('RUTINER har inget arkiv.');
-      return;
-    }
-    state.archivePanelOpen = true;
-    state.detailRowId = null;
-    state.newRowDraft = null;
-    state.settingsPanelOpen = false;
-    void loadArchiveRows(state.activeTableName);
-    render();
-  }
-
-  function closeArchivePanel() {
-    state.archivePanelOpen = false;
-    render();
-  }
-
   function ensureFilters(tableName, tableConfig) {
     if (!state.filtersByTable[tableName]) {
       const filters = {};
@@ -731,9 +328,6 @@ import { supabase } from './supabase.js';
         state.editingCell = null;
         state.savingCell = null;
         state.detailRowId = null;
-        state.archivePanelOpen = false;
-        state.notesPanelOpen = false;
-        state.notesRowId = null;
         render();
       });
 
@@ -752,10 +346,12 @@ import { supabase } from './supabase.js';
 
     newButton.addEventListener('click', () => {
       const draft = {};
+
       tableConfig.columns.forEach((column) => {
         if (column.field === 'id') return;
         draft[column.field] = getDefaultValue(tableName, column);
       });
+
       draft.is_done = false;
 
       state.newRowDraft = {
@@ -764,23 +360,10 @@ import { supabase } from './supabase.js';
       };
       state.detailRowId = null;
       state.editingCell = null;
-      state.archivePanelOpen = false;
-      state.notesPanelOpen = false;
-      state.notesRowId = null;
       render();
     });
 
     wrap.appendChild(newButton);
-
-    if (tableName !== 'RUTINER') {
-      const archiveButton = document.createElement('button');
-      archiveButton.type = 'button';
-      archiveButton.className = 'secondary-button';
-      archiveButton.textContent = 'Arkiv';
-      archiveButton.addEventListener('click', openArchivePanel);
-      wrap.appendChild(archiveButton);
-    }
-
     return wrap;
   }
 
@@ -871,10 +454,6 @@ import { supabase } from './supabase.js';
     if (!row?.id) return;
     state.detailRowId = row.id;
     state.editingCell = null;
-    state.archivePanelOpen = false;
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    state.settingsPanelOpen = false;
     render();
   }
 
@@ -981,11 +560,7 @@ import { supabase } from './supabase.js';
       state.detailRowId = null;
     }
 
-    if (state.archivePanelOpen) {
-      void loadArchiveRows(tableName);
-    } else {
-      render();
-    }
+    render();
   }
 
   async function archiveAndPromotePreDev(tableName, row) {
@@ -1019,11 +594,7 @@ import { supabase } from './supabase.js';
       await loadTableRows('UTVECKLING', utvecklingEntry[1]);
     }
 
-    if (state.archivePanelOpen) {
-      void loadArchiveRows(tableName);
-    } else {
-      render();
-    }
+    render();
   }
 
   async function archiveAndPromoteUtveckling(tableName, row) {
@@ -1057,11 +628,7 @@ import { supabase } from './supabase.js';
       await loadTableRows('SÄLJINTRO', saljintroEntry[1]);
     }
 
-    if (state.archivePanelOpen) {
-      void loadArchiveRows(tableName);
-    } else {
-      render();
-    }
+    render();
   }
 
   async function completeTodoRow(tableName, tableConfig, row) {
@@ -1182,26 +749,6 @@ import { supabase } from './supabase.js';
     return `status-button status-button--${normalizeStatusValue(value)}`;
   }
 
-
-  function createStatusButton(column, value, isDetail = false) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `${getStatusClass(value)}${isDetail ? ' status-button--detail' : ''}`;
-    button.setAttribute('aria-label', `${column.name}: ${getStatusLabel(column)} (${normalizeStatusValue(value)})`);
-
-    const dot = document.createElement('span');
-    dot.className = 'status-button__dot';
-    dot.setAttribute('aria-hidden', 'true');
-
-    const label = document.createElement('span');
-    label.className = 'status-button__label';
-    label.textContent = getStatusLabel(column);
-
-    button.appendChild(dot);
-    button.appendChild(label);
-    return button;
-  }
-
   async function openPdfDocument(value) {
     const objectPath = normalizePdfPath(value);
     if (!objectPath) {
@@ -1313,7 +860,12 @@ import { supabase } from './supabase.js';
     const text = rawValue === undefined || rawValue === null ? '' : String(rawValue);
 
     if (isStatusColumn(column)) {
-      return createStatusButton(column, text, false);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = getStatusClass(text);
+      button.textContent = getStatusLabel(column);
+      button.setAttribute('aria-label', `${column.name}: ${getStatusLabel(column)} (${normalizeStatusValue(text)})`);
+      return button;
     }
 
     if (isPdfColumn(column)) {
@@ -1327,10 +879,9 @@ import { supabase } from './supabase.js';
 
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'rutiner-pdf-link';
+      button.className = 'pdf-link-button';
       button.textContent = displayName;
-      button.title = `Öppna ${displayName}`;
-      button.setAttribute('aria-label', `Öppna PDF: ${displayName}`);
+      button.title = displayName;
       button.addEventListener('click', async (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1373,27 +924,6 @@ import { supabase } from './supabase.js';
     span.textContent = text || '—';
     return span;
   }
-
-
-  function createNotesButton(row) {
-    const wrap = document.createElement('div');
-    wrap.className = 'row-actions';
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'notes-button';
-    button.textContent = '📝';
-    button.title = 'Notes';
-    button.setAttribute('aria-label', 'Öppna notes');
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      openNotesPanel(row);
-    });
-
-    wrap.appendChild(button);
-    return wrap;
-  }
-
 
   function createOpenButton(row) {
     const wrap = document.createElement('div');
@@ -1490,36 +1020,24 @@ import { supabase } from './supabase.js';
   function createPdfDetailField(tableConfig, row, column, options = {}) {
     const isDraft = !!options.isDraft;
     const field = document.createElement('div');
-    field.className = 'detail-field detail-field--pdf';
+    field.className = 'detail-field';
 
     const label = document.createElement('span');
     label.className = 'detail-field__label';
     label.textContent = column.name;
 
     const wrap = document.createElement('div');
-    wrap.className = 'rutiner-pdf-field';
+    wrap.className = 'pdf-field';
 
     const info = document.createElement('div');
-    info.className = 'rutiner-pdf-field__info';
+    info.className = 'pdf-field__info';
 
     const draftFile = isDraft ? getDraftPdfFile(row, column.field) : null;
     const displayName = draftFile ? stripCommonStoragePrefix(draftFile.name) : getPdfDisplayName(row[column.field]);
-
-    const name = document.createElement('div');
-    name.className = displayName ? 'rutiner-pdf-field__name' : 'rutiner-pdf-field__name rutiner-pdf-field__name--empty';
-    name.textContent = displayName || 'Ingen PDF vald';
-
-    const helper = document.createElement('div');
-    helper.className = 'rutiner-pdf-field__helper';
-    helper.textContent = displayName
-      ? 'Du kan öppna, byta eller ta bort dokumentet här.'
-      : 'Ladda upp en PDF för denna rutin.';
-
-    info.appendChild(name);
-    info.appendChild(helper);
+    info.textContent = displayName || 'Ingen PDF vald';
 
     const actions = document.createElement('div');
-    actions.className = 'rutiner-pdf-field__actions';
+    actions.className = 'view-actions';
 
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
@@ -1551,6 +1069,7 @@ import { supabase } from './supabase.js';
     uploadButton.className = 'secondary-button';
     uploadButton.textContent = displayName ? 'Byt PDF' : 'Ladda upp PDF';
     uploadButton.addEventListener('click', () => fileInput.click());
+
     actions.appendChild(uploadButton);
 
     if (displayName) {
@@ -1607,8 +1126,10 @@ import { supabase } from './supabase.js';
     const dropdown = APP_CONFIG.dropdowns?.[column.type];
 
     if (isStatusColumn(column)) {
-      control = createStatusButton(column, row[column.field], true);
-
+      control = document.createElement('button');
+      control.type = 'button';
+      control.className = getStatusClass(row[column.field]);
+      control.textContent = getStatusLabel(column);
       control.addEventListener('click', async () => {
         const current = normalizeStatusValue(row[column.field]);
         const next = STATUS_ORDER[(STATUS_ORDER.indexOf(current) + 1) % STATUS_ORDER.length];
@@ -1745,578 +1266,6 @@ import { supabase } from './supabase.js';
       await deleteRow(tableConfig, row);
     }
   }
-
-  function getArchiveTitleField(tableName) {
-    if (tableName === 'PRE DEV') return 'utv_ide';
-    if (tableName === 'UTVECKLING') return 'produktide';
-    if (tableName === 'SÄLJINTRO') return 'produkt';
-    if (tableName === 'TODO') return 'beskrivning';
-    return '';
-  }
-
-  function getArchiveTransitionText(item) {
-    const targetTable = item.transition_target_table || '';
-    const targetRowId = item.transition_target_row_id;
-    if (!targetTable) return '';
-    return `Skapade ny rad i ${targetTable}${targetRowId ? ` (#${targetRowId})` : ''}`;
-  }
-
-  function createArchivePanel() {
-    const tableName = state.activeTableName;
-    const rows = state.archiveRowsByTable[tableName] || [];
-    const titleField = getArchiveTitleField(tableName);
-
-    const overlay = document.createElement('div');
-    overlay.className = 'overlay-modal';
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) closeArchivePanel();
-    });
-
-    const dialog = document.createElement('aside');
-    dialog.className = 'side-panel overlay-modal__dialog';
-
-    const header = document.createElement('div');
-    header.className = 'side-panel__header';
-
-    const heading = document.createElement('div');
-    heading.innerHTML = `
-      <p class="side-panel__eyebrow">${tableName}</p>
-      <h2 class="side-panel__title">Arkiv</h2>
-      <p class="side-panel__text">Arkiverade rader för aktuell tabell.</p>
-    `;
-
-    const closeButton = document.createElement('button');
-    closeButton.type = 'button';
-    closeButton.className = 'side-panel__close';
-    closeButton.textContent = 'Stäng';
-    closeButton.addEventListener('click', closeArchivePanel);
-
-    header.appendChild(heading);
-    header.appendChild(closeButton);
-
-    const body = document.createElement('div');
-    body.className = 'side-panel__body';
-
-    if (state.archiveLoading) {
-      const loading = document.createElement('p');
-      loading.className = 'empty-state';
-      loading.textContent = 'Laddar arkiv...';
-      body.appendChild(loading);
-    } else if (!rows.length) {
-      const empty = document.createElement('p');
-      empty.className = 'empty-state';
-      empty.textContent = 'Inga arkiverade rader.';
-      body.appendChild(empty);
-    } else {
-      const list = document.createElement('div');
-      list.className = 'detail-grid';
-
-      rows.forEach((item) => {
-        const card = document.createElement('section');
-        card.className = 'detail-card';
-
-        const payload = item.payload_json || {};
-        const title = document.createElement('h3');
-        title.className = 'detail-card__title';
-        title.textContent = payload[titleField] || 'Arkiverad rad';
-
-        const archived = document.createElement('p');
-        archived.className = 'detail-card__text';
-        archived.textContent = `Arkiverad: ${formatDateTimeValue(item.archived_at)}`;
-
-        const reason = document.createElement('p');
-        reason.className = 'detail-card__text';
-        reason.textContent = `Typ: ${item.archive_reason || 'archived'}`;
-
-        card.appendChild(title);
-        card.appendChild(archived);
-        card.appendChild(reason);
-
-        const transitionText = getArchiveTransitionText(item);
-        if (transitionText) {
-          const transition = document.createElement('p');
-          transition.className = 'detail-card__text';
-          transition.textContent = transitionText;
-          card.appendChild(transition);
-        }
-
-        if (tableName === 'TODO' && item.week_key) {
-          const week = document.createElement('p');
-          week.className = 'detail-card__text';
-          week.textContent = `Vecka: ${item.week_key}`;
-          card.appendChild(week);
-        }
-
-        list.appendChild(card);
-      });
-
-      body.appendChild(list);
-    }
-
-    dialog.appendChild(header);
-    dialog.appendChild(body);
-    overlay.appendChild(dialog);
-    return overlay;
-  }
-
-
-
-  function createSettingsPanel() {
-    const overlay = document.createElement('div');
-    overlay.className = 'overlay-modal';
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) closeSettingsPanel();
-    });
-
-    const dialog = document.createElement('aside');
-    dialog.className = 'side-panel overlay-modal__dialog settings-panel';
-
-    const header = document.createElement('div');
-    header.className = 'side-panel__header';
-
-    const heading = document.createElement('div');
-    if (state.settingsView === 'document_links') {
-      heading.innerHTML = `
-        <p class="side-panel__eyebrow">Settings</p>
-        <h2 class="side-panel__title">Match kolumn + dok</h2>
-        <p class="side-panel__text">Koppla kolumner till dokument i RUTINER.</p>
-      `;
-    } else {
-      heading.innerHTML = `
-        <p class="side-panel__eyebrow">Settings</p>
-        <h2 class="side-panel__title">Settings</h2>
-        <p class="side-panel__text">Välj funktion.</p>
-      `;
-    }
-
-    const closeButton = document.createElement('button');
-    closeButton.type = 'button';
-    closeButton.className = 'side-panel__close';
-    closeButton.textContent = 'Stäng';
-    closeButton.addEventListener('click', closeSettingsPanel);
-
-    header.appendChild(heading);
-    header.appendChild(closeButton);
-
-    const body = document.createElement('div');
-    body.className = 'side-panel__body';
-
-    if (state.settingsView === 'menu') {
-      const menu = document.createElement('div');
-      menu.className = 'settings-menu';
-
-      const createCard = ({ title, subtitle, onClick, disabled = false, adminOnly = false }) => {
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.className = `settings-menu__card${disabled ? ' is-disabled' : ''}`;
-        card.disabled = disabled;
-        if (!disabled) card.addEventListener('click', onClick);
-
-        const cardTitle = document.createElement('div');
-        cardTitle.className = 'settings-menu__title';
-        cardTitle.textContent = title;
-
-        const cardMeta = document.createElement('div');
-        cardMeta.className = 'settings-menu__meta';
-        cardMeta.textContent = subtitle;
-
-        card.appendChild(cardTitle);
-        card.appendChild(cardMeta);
-
-        if (adminOnly) {
-          const tag = document.createElement('span');
-          tag.className = 'settings-menu__tag';
-          tag.textContent = 'Admin';
-          card.appendChild(tag);
-        }
-
-        return card;
-      };
-
-      menu.appendChild(createCard({
-        title: 'Match kolumn + dok',
-        subtitle: IS_ADMIN ? 'Öppna dokumentkopplingar' : 'Endast admin',
-        onClick: openSettingsDocumentLinks,
-        disabled: !IS_ADMIN,
-        adminOnly: true,
-      }));
-
-      menu.appendChild(createCard({
-        title: 'Manage Users',
-        subtitle: IS_ADMIN ? 'To be continued' : 'To be continued · Endast admin',
-        onClick: () => alert('Manage Users — To be continued'),
-        disabled: !IS_ADMIN,
-        adminOnly: true,
-      }));
-
-      menu.appendChild(createCard({
-        title: 'Logout',
-        subtitle: 'To be continued',
-        onClick: () => alert('Logout — To be continued'),
-        disabled: false,
-        adminOnly: false,
-      }));
-
-      body.appendChild(menu);
-    } else {
-      const backRow = document.createElement('div');
-      backRow.className = 'settings-back-row';
-
-      const backButton = document.createElement('button');
-      backButton.type = 'button';
-      backButton.className = 'secondary-button';
-      backButton.textContent = '← Tillbaka';
-      backButton.addEventListener('click', openSettingsMenu);
-      backRow.appendChild(backButton);
-      body.appendChild(backRow);
-
-      const formCard = document.createElement('section');
-      formCard.className = 'detail-card settings-form';
-
-      const formTitle = document.createElement('h3');
-      formTitle.className = 'detail-card__title';
-      formTitle.textContent = 'Ny koppling';
-
-      const tableLabel = document.createElement('label');
-      tableLabel.className = 'detail-field';
-      const tableText = document.createElement('span');
-      tableText.className = 'detail-field__label';
-      tableText.textContent = 'Tabell';
-      const tableSelect = document.createElement('select');
-      tableSelect.className = 'detail-field__control';
-      tableSelect.innerHTML = '<option value="">Välj tabell</option>';
-      getSettingsTableOptions().forEach((name) => {
-        const option = document.createElement('option');
-        option.value = name;
-        option.textContent = name;
-        if (state.settingsDraft.tableName === name) option.selected = true;
-        tableSelect.appendChild(option);
-      });
-      tableSelect.addEventListener('change', () => {
-        state.settingsDraft.tableName = tableSelect.value;
-        state.settingsDraft.columnField = '';
-        render();
-      });
-      tableLabel.appendChild(tableText);
-      tableLabel.appendChild(tableSelect);
-
-      const columnLabel = document.createElement('label');
-      columnLabel.className = 'detail-field';
-      const columnText = document.createElement('span');
-      columnText.className = 'detail-field__label';
-      columnText.textContent = 'Kolumn';
-      const columnSelect = document.createElement('select');
-      columnSelect.className = 'detail-field__control';
-      columnSelect.innerHTML = '<option value="">Välj kolumn</option>';
-      getSettingsColumnOptions(state.settingsDraft.tableName).forEach((column) => {
-        const option = document.createElement('option');
-        option.value = column.field;
-        option.textContent = column.name;
-        if (state.settingsDraft.columnField === column.field) option.selected = true;
-        columnSelect.appendChild(option);
-      });
-      columnSelect.addEventListener('change', () => {
-        state.settingsDraft.columnField = columnSelect.value;
-      });
-      columnLabel.appendChild(columnText);
-      columnLabel.appendChild(columnSelect);
-
-      const documentLabel = document.createElement('label');
-      documentLabel.className = 'detail-field';
-      const documentText = document.createElement('span');
-      documentText.className = 'detail-field__label';
-      documentText.textContent = 'Dokument';
-      const documentSelect = document.createElement('select');
-      documentSelect.className = 'detail-field__control';
-      documentSelect.innerHTML = '<option value="">Välj dokument</option>';
-      getRutinerOptions().forEach((item) => {
-        const option = document.createElement('option');
-        option.value = item.id;
-        option.textContent = `${item.name} · ${item.documentName}`;
-        if (String(state.settingsDraft.rutinerRowId) === String(item.id)) option.selected = true;
-        documentSelect.appendChild(option);
-      });
-      documentSelect.addEventListener('change', () => {
-        state.settingsDraft.rutinerRowId = documentSelect.value;
-      });
-      documentLabel.appendChild(documentText);
-      documentLabel.appendChild(documentSelect);
-
-      const labelField = document.createElement('label');
-      labelField.className = 'detail-field';
-      const labelText = document.createElement('span');
-      labelText.className = 'detail-field__label';
-      labelText.textContent = 'Label (valfri)';
-      const labelInput = document.createElement('input');
-      labelInput.className = 'detail-field__control';
-      labelInput.type = 'text';
-      labelInput.placeholder = 'Ex. Guide';
-      labelInput.value = state.settingsDraft.label || '';
-      labelInput.addEventListener('input', () => {
-        state.settingsDraft.label = labelInput.value;
-      });
-      labelField.appendChild(labelText);
-      labelField.appendChild(labelInput);
-
-      const footer = document.createElement('div');
-      footer.className = 'side-panel__footer';
-
-      const saveButton = document.createElement('button');
-      saveButton.type = 'button';
-      saveButton.className = 'primary-button';
-      saveButton.textContent = state.settingsLoading ? 'Sparar...' : 'Spara';
-      saveButton.disabled = state.settingsLoading || !IS_ADMIN;
-      saveButton.addEventListener('click', async () => {
-        await saveDocumentLinkFromSettings();
-      });
-
-      const resetButton = document.createElement('button');
-      resetButton.type = 'button';
-      resetButton.className = 'secondary-button';
-      resetButton.textContent = 'Rensa';
-      resetButton.addEventListener('click', () => {
-        state.settingsDraft = { tableName: '', columnField: '', rutinerRowId: '', label: '' };
-        render();
-      });
-
-      footer.appendChild(saveButton);
-      footer.appendChild(resetButton);
-
-      formCard.appendChild(formTitle);
-      formCard.appendChild(tableLabel);
-      formCard.appendChild(columnLabel);
-      formCard.appendChild(documentLabel);
-      formCard.appendChild(labelField);
-      formCard.appendChild(footer);
-
-      const listCard = document.createElement('section');
-      listCard.className = 'detail-card settings-list';
-
-      const listTitle = document.createElement('h3');
-      listTitle.className = 'detail-card__title';
-      listTitle.textContent = 'Befintliga kopplingar';
-      listCard.appendChild(listTitle);
-
-      if (!state.documentLinksList.length) {
-        const empty = document.createElement('p');
-        empty.className = 'empty-state';
-        empty.textContent = 'Inga kopplingar ännu.';
-        listCard.appendChild(empty);
-      } else {
-        const list = document.createElement('div');
-        list.className = 'settings-list__rows';
-
-        state.documentLinksList.forEach((item) => {
-          const row = document.createElement('div');
-          row.className = 'settings-list__row';
-
-          const info = document.createElement('div');
-          info.className = 'settings-list__info';
-
-          const title = document.createElement('div');
-          title.className = 'settings-list__title';
-          title.textContent = `${item.table_name} · ${item.column_field}`;
-
-          const rutiner = (state.rowsByTable['RUTINER'] || []).find((r) => String(r.id) === String(item.rutiner_row_id));
-          const subtitle = document.createElement('div');
-          subtitle.className = 'settings-list__meta';
-          subtitle.textContent = `${item.label || 'Dok'} · ${rutiner?.rutin || 'Dokument'} · ${getPdfDisplayName(rutiner?.document || '') || 'Utan filnamn'}`;
-
-          info.appendChild(title);
-          info.appendChild(subtitle);
-
-          const actions = document.createElement('div');
-          actions.className = 'settings-list__actions';
-
-          const deleteButton = document.createElement('button');
-          deleteButton.type = 'button';
-          deleteButton.className = 'secondary-button secondary-button--danger';
-          deleteButton.textContent = 'Ta bort';
-          deleteButton.disabled = !IS_ADMIN;
-          deleteButton.addEventListener('click', async () => {
-            await deleteDocumentLinkFromSettings(item.id);
-          });
-
-          actions.appendChild(deleteButton);
-          row.appendChild(info);
-          row.appendChild(actions);
-          list.appendChild(row);
-        });
-
-        listCard.appendChild(list);
-      }
-
-      body.appendChild(formCard);
-      body.appendChild(listCard);
-    }
-
-    dialog.appendChild(header);
-    dialog.appendChild(body);
-    overlay.appendChild(dialog);
-    return overlay;
-  }
-
-  function createNotesPanel() {
-    const tableName = state.activeTableName;
-    const row = getCurrentNotesRow();
-    const rowKey = row ? getNotesRowKey(tableName, row.id) : '';
-    const notes = state.notesRowsByKey[rowKey] || [];
-    const titleField = getRowTitleField(tableName);
-    const rowTitle = row ? (row[titleField] || 'Rad') : 'Rad';
-
-    const overlay = document.createElement('div');
-    overlay.className = 'overlay-modal';
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) closeNotesPanel();
-    });
-
-    const dialog = document.createElement('aside');
-    dialog.className = 'side-panel overlay-modal__dialog notes-panel';
-
-    const header = document.createElement('div');
-    header.className = 'side-panel__header';
-
-    const heading = document.createElement('div');
-    heading.innerHTML = `
-      <p class="side-panel__eyebrow">${tableName}</p>
-      <h2 class="side-panel__title">Notes</h2>
-      <p class="side-panel__text">${rowTitle}</p>
-    `;
-
-    const closeButton = document.createElement('button');
-    closeButton.type = 'button';
-    closeButton.className = 'side-panel__close';
-    closeButton.textContent = 'Stäng';
-    closeButton.addEventListener('click', closeNotesPanel);
-
-    header.appendChild(heading);
-    header.appendChild(closeButton);
-
-    const body = document.createElement('div');
-    body.className = 'side-panel__body';
-
-    const formCard = document.createElement('section');
-    formCard.className = 'detail-card notes-form';
-
-    const formTitle = document.createElement('h3');
-    formTitle.className = 'detail-card__title';
-    formTitle.textContent = 'Nytt inlägg';
-
-    const titleLabel = document.createElement('label');
-    titleLabel.className = 'detail-field';
-    const titleSpan = document.createElement('span');
-    titleSpan.className = 'detail-field__label';
-    titleSpan.textContent = 'Rubrik';
-    const titleInput = document.createElement('input');
-    titleInput.className = 'detail-field__control notes-form__title';
-    titleInput.type = 'text';
-    titleInput.value = state.notesDraft.title || '';
-    titleInput.addEventListener('input', () => {
-      state.notesDraft.title = titleInput.value;
-    });
-    titleLabel.appendChild(titleSpan);
-    titleLabel.appendChild(titleInput);
-
-    const bodyLabel = document.createElement('label');
-    bodyLabel.className = 'detail-field';
-    const bodySpan = document.createElement('span');
-    bodySpan.className = 'detail-field__label';
-    bodySpan.textContent = 'Text';
-    const bodyInput = document.createElement('textarea');
-    bodyInput.className = 'detail-field__control notes-form__body';
-    bodyInput.value = state.notesDraft.body || '';
-    bodyInput.addEventListener('input', () => {
-      state.notesDraft.body = bodyInput.value;
-    });
-    bodyLabel.appendChild(bodySpan);
-    bodyLabel.appendChild(bodyInput);
-
-    const formActions = document.createElement('div');
-    formActions.className = 'side-panel__footer';
-
-    const saveButton = document.createElement('button');
-    saveButton.type = 'button';
-    saveButton.className = 'primary-button';
-    saveButton.textContent = state.notesLoading ? 'Sparar...' : 'Spara';
-    saveButton.disabled = state.notesLoading;
-    saveButton.addEventListener('click', async () => {
-      await saveNoteForCurrentRow();
-    });
-
-    const cancelButton = document.createElement('button');
-    cancelButton.type = 'button';
-    cancelButton.className = 'secondary-button';
-    cancelButton.textContent = 'Avbryt';
-    cancelButton.addEventListener('click', () => {
-      resetNotesDraft();
-      render();
-    });
-
-    formActions.appendChild(saveButton);
-    formActions.appendChild(cancelButton);
-
-    formCard.appendChild(formTitle);
-    formCard.appendChild(titleLabel);
-    formCard.appendChild(bodyLabel);
-    formCard.appendChild(formActions);
-
-    const historyCard = document.createElement('section');
-    historyCard.className = 'detail-card notes-history';
-
-    const historyTitle = document.createElement('h3');
-    historyTitle.className = 'detail-card__title';
-    historyTitle.textContent = 'Historik';
-
-    historyCard.appendChild(historyTitle);
-
-    if (state.notesLoading) {
-      const loading = document.createElement('p');
-      loading.className = 'empty-state';
-      loading.textContent = 'Laddar notes...';
-      historyCard.appendChild(loading);
-    } else if (!notes.length) {
-      const empty = document.createElement('p');
-      empty.className = 'empty-state';
-      empty.textContent = 'Inga notes ännu.';
-      historyCard.appendChild(empty);
-    } else {
-      const list = document.createElement('div');
-      list.className = 'notes-history__list';
-
-      notes.forEach((item) => {
-        const card = document.createElement('article');
-        card.className = 'notes-card';
-
-        const title = document.createElement('div');
-        title.className = 'notes-card__title';
-        title.textContent = item.title || 'Utan rubrik';
-
-        const meta = document.createElement('div');
-        meta.className = 'notes-card__meta';
-        meta.textContent = formatDateTimeValue(item.created_at);
-
-        const text = document.createElement('div');
-        text.className = 'notes-card__body';
-        text.textContent = item.body || '';
-
-        card.appendChild(title);
-        card.appendChild(meta);
-        card.appendChild(text);
-        list.appendChild(card);
-      });
-
-      historyCard.appendChild(list);
-    }
-
-    body.appendChild(formCard);
-    body.appendChild(historyCard);
-
-    dialog.appendChild(header);
-    dialog.appendChild(body);
-    overlay.appendChild(dialog);
-    return overlay;
-  }
-
 
   function createDetailPanel(tableName, tableConfig, row, options = {}) {
     const isDraft = !!options.isDraft;
@@ -2465,26 +1414,9 @@ import { supabase } from './supabase.js';
 
     visibleColumns.forEach((column) => {
       const th = document.createElement('th');
+      th.textContent = column.name;
       if (column.width) th.style.width = column.width;
       if (getAlignment(column) === 'center') th.classList.add('is-center');
-      if (isStatusColumn(column)) th.classList.add('status-column');
-
-      const headerInner = document.createElement('div');
-      headerInner.className = 'column-header';
-
-      const label = document.createElement('span');
-      label.className = 'column-header__label';
-      label.textContent = column.name;
-      headerInner.appendChild(label);
-
-      if (!isOpenColumn(column) && !isNotesColumn(column)) {
-        const badge = createDocumentBadge(tableName, column);
-        if (badge) {
-          headerInner.appendChild(badge);
-        }
-      }
-
-      th.appendChild(headerInner);
       headRow.appendChild(th);
     });
 
@@ -2503,16 +1435,9 @@ import { supabase } from './supabase.js';
         const td = document.createElement('td');
 
         if (getAlignment(column) === 'center') td.classList.add('is-center');
-        if (isStatusColumn(column)) td.classList.add('status-cell');
 
         if (isOpenColumn(column)) {
           td.appendChild(createOpenButton(row));
-          tr.appendChild(td);
-          return;
-        }
-
-        if (isNotesColumn(column)) {
-          td.appendChild(createNotesButton(row));
           tr.appendChild(td);
           return;
         }
@@ -2536,18 +1461,9 @@ import { supabase } from './supabase.js';
         } else {
           td.appendChild(createStaticCellContent(row, column));
           if (statusToggle) {
-            const statusButton = td.querySelector('.status-button');
-            const toggleHandler = async (event) => {
-              event.preventDefault();
-              event.stopPropagation();
+            td.addEventListener('click', async () => {
               await toggleStatusCell(tableConfig, row, column);
-            };
-
-            if (statusButton) {
-              statusButton.addEventListener('click', toggleHandler);
-            } else {
-              td.addEventListener('click', toggleHandler);
-            }
+            });
           } else if (editableText || editableDropdown) {
             td.addEventListener('click', () => startEditing(row, column));
           }
@@ -2581,7 +1497,7 @@ import { supabase } from './supabase.js';
   }
 
   settingsButton?.addEventListener('click', () => {
-    openSettingsMenu();
+    alert('Settings — To be continued');
   });
 
   function render() {
@@ -2595,14 +1511,7 @@ import { supabase } from './supabase.js';
 
     const draftRow = getCurrentDraftRow();
     const row = getCurrentDetailRow();
-
-    if (state.settingsPanelOpen) {
-      app.appendChild(createSettingsPanel());
-    } else if (state.archivePanelOpen && tableName !== 'RUTINER') {
-      app.appendChild(createArchivePanel());
-    } else if (state.notesPanelOpen) {
-      app.appendChild(createNotesPanel());
-    } else if (draftRow) {
+    if (draftRow) {
       app.appendChild(createDetailPanel(tableName, tableConfig, draftRow, { isDraft: true }));
     } else if (row) {
       app.appendChild(createDetailPanel(tableName, tableConfig, row));
@@ -2612,7 +1521,6 @@ import { supabase } from './supabase.js';
   await Promise.all(
     tableEntries.map(([tableName, tableConfig]) => loadTableRows(tableName, tableConfig))
   );
-  await loadDocumentLinks();
 
   render();
 })();

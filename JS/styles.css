@@ -1006,46 +1006,45 @@ body {
    ========================================================= */
 
 .column-header {
-  position: relative;
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
   min-width: 0;
-  padding-right: 18px;
 }
 
 .column-header__label {
-  display: block;
   min-width: 0;
 }
 
-.doc-link-dot {
-  position: absolute;
-  top: 4px;
-  right: 2px;
-  width: 10px;
-  height: 10px;
-  padding: 0;
-  border: 0;
+.doc-link-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 3px 8px;
   border-radius: 999px;
-  background: #1a5cff;
+  border: 1px solid rgba(26, 92, 255, 0.28);
+  background: rgba(26, 92, 255, 0.10);
+  color: #1a5cff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  box-shadow: 0 0 0 1px rgba(26, 92, 255, 0.12);
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  white-space: nowrap;
+  transition: 0.18s ease;
 }
 
-.doc-link-dot:hover {
-  transform: scale(1.22);
-  box-shadow: 0 0 0 4px rgba(26, 92, 255, 0.14);
-  background: #003ecc;
+.doc-link-badge:hover {
+  background: rgba(26, 92, 255, 0.16);
+  border-color: rgba(26, 92, 255, 0.42);
 }
 
-.doc-link-dot:focus,
-.doc-link-dot:focus-visible {
+.doc-link-badge:focus,
+.doc-link-badge:focus-visible {
   outline: 2px solid rgba(26, 92, 255, 0.35);
   outline-offset: 2px;
-}
-
-.doc-link-dot:active {
-  transform: scale(1.08);
 }
 
 
@@ -1115,114 +1114,3 @@ body {
     width: 100%;
   }
 }
-
-
-/* =========================================================
-   SETTINGS MENU
-   ========================================================= */
-
-.settings-menu {
-  display: grid;
-  gap: 12px;
-}
-
-.settings-menu__card {
-  position: relative;
-  width: 100%;
-  text-align: left;
-  padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.58);
-  cursor: pointer;
-  transition: 0.18s ease;
-}
-
-.settings-menu__card:hover {
-  transform: translateY(-1px);
-  border-color: var(--line-strong);
-}
-
-.settings-menu__card.is-disabled {
-  cursor: default;
-  opacity: 0.7;
-}
-
-.settings-menu__title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 4px;
-}
-
-.settings-menu__meta {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.4;
-}
-
-.settings-menu__tag {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: inline-flex;
-  min-height: 20px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(26, 92, 255, 0.10);
-  color: #1a5cff;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.settings-back-row {
-  display: flex;
-  justify-content: flex-start;
-}
-
-
-
-/* =========================================================
-   DOCUMENT LINK DOT (final tuned v2)
-   ========================================================= */
-
-.column-header {
-  display: inline-block;
-  min-width: 0;
-}
-
-.column-header__label {
-  position: relative;
-  display: inline-block;
-}
-
-.doc-link-dot {
-  position: absolute;
-  top: -5px;
-  right: -1px;
-  width: 10px;
-  height: 10px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: #1a5cff;
-  cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-}
-
-.doc-link-dot:hover {
-  transform: scale(1.22);
-  box-shadow: 0 0 0 4px rgba(26, 92, 255, 0.16);
-  background: #003ecc;
-}
-
-.doc-link-dot:focus,
-.doc-link-dot:focus-visible {
-  outline: 2px solid rgba(26, 92, 255, 0.35);
-  outline-offset: 2px;
-}
-
-.doc-link-dot:active {
-  transform: scale(1.1);
-}
-
