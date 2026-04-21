@@ -31,7 +31,7 @@ import { supabase } from './supabase.js';
   const TODO_TABLE = 'TODO';
   const PDF_BUCKET = 'rutiner-pdf';
   const PDF_PREFIX = 'rutiner';
-  const IS_ADMIN = true;
+  const isAdmin = () => !!window.CurrentUser?.isAdmin;
 
   const state = {
     activeTableName: tableEntries[0]?.[0] || null,
@@ -47,6 +47,7 @@ import { supabase } from './supabase.js';
     notesPanelOpen: false,
     notesRowId: null,
     notesRowsByKey: {},
+    notesUnreadByRowKey: {},
     notesLoading: false,
     notesDraft: { title: '', body: '' },
     documentLinksByTable: {},
@@ -398,6 +399,116 @@ import { supabase } from './supabase.js';
     }
   }
 
+
+  function getCurrentUserInitials() {
+    return String(window.CurrentUser?.initials || '').trim();
+  }
+
+  function getCurrentUserId() {
+    return String(window.CurrentUser?.id || '').trim();
+  }
+
+  function getUnreadCountForRow(tableName, rowId) {
+    return Number(state.notesUnreadByRowKey[getNotesRowKey(tableName, rowId)] || 0);
+  }
+
+  async function loadUnreadCountsForTable(tableName) {
+    const userId = getCurrentUserId();
+    const active = tableEntries.find(([name]) => name === tableName);
+    if (!userId || !active) return;
+
+    const [, tableConfig] = active;
+    const initials = getCurrentUserInitials();
+
+    try {
+      const { data: notesData, error: notesError } = await supabase
+        .from('planning_notes')
+        .select('id, source_row_id, created_by')
+        .eq('source_table', tableConfig.dbTable);
+
+      if (notesError) throw notesError;
+
+      const notes = Array.isArray(notesData) ? notesData : [];
+      const noteIds = notes.map((item) => item.id).filter(Boolean);
+
+      let readIds = new Set();
+      if (noteIds.length) {
+        const { data: readsData, error: readsError } = await supabase
+          .from('planning_note_reads')
+          .select('note_id')
+          .eq('user_id', userId)
+          .in('note_id', noteIds);
+
+        if (readsError) throw readsError;
+        readIds = new Set((readsData || []).map((item) => item.note_id));
+      }
+
+      const nextMap = { ...state.notesUnreadByRowKey };
+      Object.keys(nextMap)
+        .filter((key) => key.startsWith(`${tableName}::`))
+        .forEach((key) => delete nextMap[key]);
+
+      notes.forEach((note) => {
+        const rowId = note.source_row_id;
+        const isOwn = String(note.created_by || '').trim() === initials;
+        const isRead = readIds.has(note.id);
+        if (isOwn || isRead) return;
+        const key = getNotesRowKey(tableName, rowId);
+        nextMap[key] = Number(nextMap[key] || 0) + 1;
+      });
+
+      state.notesUnreadByRowKey = nextMap;
+      render();
+    } catch (err) {
+      console.warn('Could not load unread notes:', err.message);
+    }
+  }
+
+  async function markNotesAsRead(tableName, notes) {
+    const userId = getCurrentUserId();
+    const initials = getCurrentUserInitials();
+    if (!userId || !Array.isArray(notes) || !notes.length) return;
+
+    const noteIds = notes
+      .filter((item) => String(item.created_by || '').trim() !== initials)
+      .map((item) => item.id)
+      .filter(Boolean);
+
+    if (!noteIds.length) return;
+
+    const payload = noteIds.map((noteId) => ({
+      note_id: noteId,
+      user_id: userId,
+    }));
+
+    const { error } = await supabase
+      .from('planning_note_reads')
+      .upsert(payload, { onConflict: 'note_id,user_id', ignoreDuplicates: true });
+
+    if (error) {
+      console.warn('Could not mark notes as read:', error.message);
+      return;
+    }
+
+    const nextMap = { ...state.notesUnreadByRowKey };
+    Object.keys(nextMap)
+      .filter((key) => key.startsWith(`${tableName}::`))
+      .forEach((key) => {
+        if (key === getNotesRowKey(tableName, state.notesRowId)) {
+          nextMap[key] = 0;
+        }
+      });
+    state.notesUnreadByRowKey = nextMap;
+    render();
+  }
+
+
+  function formatNoteMeta(item) {
+    const dateText = formatDateTimeValue(item?.created_at);
+    const initials = String(item?.created_by || '').trim();
+    return initials ? `${dateText} · ${initials}` : dateText;
+  }
+
   function getNotesRowKey(tableName, rowId) {
     return `${tableName}::${rowId}`;
   }
@@ -437,7 +548,10 @@ import { supabase } from './supabase.js';
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      state.notesRowsByKey[getNotesRowKey(tableName, rowId)] = Array.isArray(data) ? data : [];
+      const notes = Array.isArray(data) ? data : [];
+      state.notesRowsByKey[getNotesRowKey(tableName, rowId)] = notes;
+      await markNotesAsRead(tableName, notes);
+      await loadUnreadCountsForTable(tableName);
     } catch (err) {
       alert(`Kunde inte läsa notes: ${err.message}`);
       state.notesRowsByKey[getNotesRowKey(tableName, rowId)] = [];
@@ -497,12 +611,14 @@ import { supabase } from './supabase.js';
           source_row_id: row.id,
           title,
           body,
+          created_by: getCurrentUserInitials(),
         });
 
       if (error) throw error;
 
       resetNotesDraft();
       await loadNotesForRow(tableName, row.id);
+      await loadUnreadCountsForTable(tableName);
       return;
     } catch (err) {
       alert(`Kunde inte spara note: ${err.message}`);
@@ -632,15 +748,13 @@ import { supabase } from './supabase.js';
 
       if (error) {
         console.warn(`Supabase error for ${tableConfig.dbTable}:`, error.message);
-        state.rowsByTable[tableName] = (SAMPLE_ROWS[tableName] || []).map((row) =>
-          normalizeRow(tableName, tableConfig, row)
-        );
+        state.rowsByTable[tableName] = [];
         return;
       }
 
-      const rows = Array.isArray(data) && data.length
+      const rows = Array.isArray(data)
         ? data.map((row) => normalizeRow(tableName, tableConfig, row))
-        : (SAMPLE_ROWS[tableName] || []).map((row) => normalizeRow(tableName, tableConfig, row));
+        : [];
 
       state.rowsByTable[tableName] = rows;
     } catch (err) {
@@ -734,6 +848,7 @@ import { supabase } from './supabase.js';
         state.archivePanelOpen = false;
         state.notesPanelOpen = false;
         state.notesRowId = null;
+        void loadUnreadCountsForTable(tableName);
         render();
       });
 
@@ -1390,6 +1505,15 @@ import { supabase } from './supabase.js';
       openNotesPanel(row);
     });
 
+    const unreadCount = getUnreadCountForRow(state.activeTableName, row.id);
+    if (unreadCount > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'notes-button__badge';
+      badge.textContent = unreadCount > 9 ? '9+' : String(unreadCount);
+      badge.setAttribute('aria-hidden', 'true');
+      button.appendChild(badge);
+    }
+
     wrap.appendChild(button);
     return wrap;
   }
@@ -1935,24 +2059,27 @@ import { supabase } from './supabase.js';
 
       menu.appendChild(createCard({
         title: 'Match kolumn + dok',
-        subtitle: IS_ADMIN ? 'Öppna dokumentkopplingar' : 'Endast admin',
+        subtitle: isAdmin() ? 'Öppna dokumentkopplingar' : 'Endast admin',
         onClick: openSettingsDocumentLinks,
-        disabled: !IS_ADMIN,
+        disabled: !isAdmin(),
         adminOnly: true,
       }));
 
       menu.appendChild(createCard({
         title: 'Manage Users',
-        subtitle: IS_ADMIN ? 'To be continued' : 'To be continued · Endast admin',
+        subtitle: isAdmin() ? 'To be continued' : 'To be continued · Endast admin',
         onClick: () => alert('Manage Users — To be continued'),
-        disabled: !IS_ADMIN,
+        disabled: !isAdmin(),
         adminOnly: true,
       }));
 
       menu.appendChild(createCard({
         title: 'Logout',
-        subtitle: 'To be continued',
-        onClick: () => alert('Logout — To be continued'),
+        subtitle: 'Logga ut från appen',
+        onClick: async () => {
+          const authModule = await import('./auth.js');
+          await authModule.signOutUser();
+        },
         disabled: false,
         adminOnly: false,
       }));
@@ -2065,7 +2192,7 @@ import { supabase } from './supabase.js';
       saveButton.type = 'button';
       saveButton.className = 'primary-button';
       saveButton.textContent = state.settingsLoading ? 'Sparar...' : 'Spara';
-      saveButton.disabled = state.settingsLoading || !IS_ADMIN;
+      saveButton.disabled = state.settingsLoading || !isAdmin();
       saveButton.addEventListener('click', async () => {
         await saveDocumentLinkFromSettings();
       });
@@ -2132,7 +2259,7 @@ import { supabase } from './supabase.js';
           deleteButton.type = 'button';
           deleteButton.className = 'secondary-button secondary-button--danger';
           deleteButton.textContent = 'Ta bort';
-          deleteButton.disabled = !IS_ADMIN;
+          deleteButton.disabled = !isAdmin();
           deleteButton.addEventListener('click', async () => {
             await deleteDocumentLinkFromSettings(item.id);
           });
@@ -2293,7 +2420,7 @@ import { supabase } from './supabase.js';
 
         const meta = document.createElement('div');
         meta.className = 'notes-card__meta';
-        meta.textContent = formatDateTimeValue(item.created_at);
+        meta.textContent = formatNoteMeta(item);
 
         const text = document.createElement('div');
         text.className = 'notes-card__body';
@@ -2613,6 +2740,9 @@ import { supabase } from './supabase.js';
     tableEntries.map(([tableName, tableConfig]) => loadTableRows(tableName, tableConfig))
   );
   await loadDocumentLinks();
+  if (state.activeTableName) {
+    await loadUnreadCountsForTable(state.activeTableName);
+  }
 
   render();
 })();

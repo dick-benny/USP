@@ -70,14 +70,5 @@ window.PlanningSpec = (function () {
     }
   };
 
-  const SAMPLE_ROWS = {
-    "PRE DEV": [{ utv_ide: "", kategori: "färg", design_po: "gray", sample_test: "gray", utvardering: "gray", is_done: false }],
-    "UTVECKLING": [{ produktide: "", kategori: "matta", syfte: "kund", design_po: "gray", sample_test: "gray", stort_sample: "gray", q_test: "gray", prissattning: "gray", is_done: false }],
-    "SÄLJINTRO": [{ produkt: "", kategori: "matta", koll_q: "--", po_beslut: "gray", media: "gray", b2b_ready: "gray", shopify_ready: "gray", b2b_intro: "--", drop_vecka: "--", is_done: false }],
-    "PROJEKT": [{ projektnamn: "", kategori: "volymprojekt", start_datum: "", aktuell: "", nasta: "", kommande: "", slut_datum: "", is_done: false }],
-    "TODO": [{ kategori: "Allmänt", beskrivning: "", klart_datum: "-- -- -- ", is_done: false }],
-    "RUTINER": [{ rutin: "", document: "---", is_done: false }]
-  };
-
-  return { APP_CONFIG: APP_CONFIG, SAMPLE_ROWS: SAMPLE_ROWS };
+  return { APP_CONFIG: APP_CONFIG };
 })();
