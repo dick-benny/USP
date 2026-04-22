@@ -20,6 +20,11 @@ window.PlanningSpec = (function () {
       dropdown_pre_dev_kategori: { options: ["färg", "kvalitet", "garn"], filterEnabled: true, filterOptions: ["Alla", "färg", "kvalitet", "garn"] },
       dropdown_todo_kategori: { options: ["Allmänt", "Info", "Kontor", "ShopifyB2B", "Shopify B2C", "Sälj/Marknad", "Logistik", "System utv"], filterEnabled: true, filterOptions: ["Alla", "Allmänt", "Info", "Kontor", "ShopifyB2B", "Shopify B2C", "Sälj/Marknad", "Logistik", "System utv"] }
     },
+    rowTodoConfig: {
+      "SÄLJINTRO": {
+        categories: ["Alla", "Koll. Q", "PO beslut", "Media", "B2B-ready", "Shopify-ready", "B2B-intro", "Drop"]
+      }
+    },
     tables: {
       "PRE DEV": { id: "pre_dev", dbTable: "pre_dev", title: "PRE DEV", columns: [
         { name: "Utv idé", field: "utv_ide", type: "text", key: true, width: PRIMARY_TITLE_WIDTH, mods: { align: "left", displayMode: "text", readonly: false } },
@@ -45,8 +50,9 @@ window.PlanningSpec = (function () {
         { name: "PO beslut", field: "po_beslut", type: "status", width: STATUS_WIDTH, statusLabel: "PO Skickad", mods: { align: "center", readonly: false } },
         { name: "Media", field: "media", type: "status", width: STATUS_WIDTH, statusLabel: "FOTO/AI klar", mods: { align: "center", readonly: false } },
         { name: "B2B-ready", field: "b2b_ready", type: "status", width: STATUS_WIDTH, statusLabel: "KLAR", mods: { align: "center", readonly: false } },
+	{ name: "B2B-intro", field: "b2b_intro", type: "veckonummer", width: "10ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "--" },
         { name: "Shopify-ready", field: "shopify_ready", type: "status", width: STATUS_WIDTH, statusLabel: "KLAR", mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "B2B-intro", field: "b2b_intro", type: "veckonummer", width: "10ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "--" },
+       
         { name: "Drop", field: "drop_vecka", type: "veckonummer", width: "10ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "--" }
       ]},
       "PROJEKT": { id: "projekt", dbTable: "projekt", title: "PROJEKT", columns: [
@@ -70,5 +76,14 @@ window.PlanningSpec = (function () {
     }
   };
 
-  return { APP_CONFIG: APP_CONFIG };
+  const SAMPLE_ROWS = {
+    "PRE DEV": [{ utv_ide: "", kategori: "färg", design_po: "gray", sample_test: "gray", utvardering: "gray", is_done: false }],
+    "UTVECKLING": [{ produktide: "", kategori: "matta", syfte: "kund", design_po: "gray", sample_test: "gray", stort_sample: "gray", q_test: "gray", prissattning: "gray", is_done: false }],
+    "SÄLJINTRO": [{ produkt: "", kategori: "matta", koll_q: "--", po_beslut: "gray", media: "gray", b2b_ready: "gray", shopify_ready: "gray", b2b_intro: "--", drop_vecka: "--", is_done: false }],
+    "PROJEKT": [{ projektnamn: "", kategori: "volymprojekt", start_datum: "", aktuell: "", nasta: "", kommande: "", slut_datum: "", is_done: false }],
+    "TODO": [{ kategori: "Allmänt", beskrivning: "", klart_datum: "-- -- -- ", is_done: false }],
+    "RUTINER": [{ rutin: "", document: "---", is_done: false }]
+  };
+
+  return { APP_CONFIG: APP_CONFIG, SAMPLE_ROWS: SAMPLE_ROWS };
 })();

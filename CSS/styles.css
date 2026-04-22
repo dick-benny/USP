@@ -723,270 +723,56 @@ body {
 
 
 /* =========================================================
-   STATUS RESET
-   One shared status component for ALL tables and ALL status columns.
-   This block must stay at the END of the file so it wins over older rules.
+   ROW TODO COMPACT UI
    ========================================================= */
 
-.status-column,
-.status-cell {
-  text-align: center !important;
-}
-
-.status-cell {
-  padding: 10px 8px !important;
-}
-
-.status-button {
-  width: 100% !important;
-  min-height: 38px !important;
-  padding: 8px 10px !important;
-  border-radius: 14px !important;
-  border: 1px solid var(--line-strong) !important;
-  background: var(--white) !important;
-  color: var(--text) !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 8px !important;
-  font-size: 12px !important;
-  font-weight: 700 !important;
-  line-height: 1.1 !important;
-  text-align: center !important;
-  cursor: pointer !important;
-  transition: transform 0.14s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease !important;
-  box-shadow: inset 0 -1px 0 rgba(16, 35, 58, 0.03) !important;
-}
-
-.status-button:hover {
-  transform: translateY(-1px) !important;
-  box-shadow: 0 8px 14px rgba(67, 45, 16, 0.08) !important;
-}
-
-.status-button:active {
-  transform: translateY(0) !important;
-}
-
-.status-button:disabled {
-  cursor: default !important;
-  opacity: 0.8 !important;
-}
-
-.status-button__dot {
-  width: 10px !important;
-  height: 10px !important;
-  border-radius: 999px !important;
-  flex: 0 0 10px !important;
-  background: currentColor !important;
-  opacity: 0.88 !important;
-}
-
-.status-button__label {
-  display: block !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-}
-
-.status-button--detail {
-  min-height: 42px !important;
-}
-
-.status-button--gray {
-  background: var(--status-gray-bg) !important;
-  border-color: var(--status-gray-line) !important;
-  color: var(--status-gray-text) !important;
-}
-
-.status-button--yellow {
-  background: var(--status-yellow-bg) !important;
-  border-color: var(--status-yellow-line) !important;
-  color: var(--status-yellow-text) !important;
-}
-
-.status-button--green {
-  background: var(--status-green-bg) !important;
-  border-color: var(--status-green-line) !important;
-  color: var(--status-green-text) !important;
-}
-
-.status-button--red {
-  background: var(--status-red-bg) !important;
-  border-color: var(--status-red-line) !important;
-  color: var(--status-red-text) !important;
-}
-
-/* =========================================================
-   RUTINER / PDF remains isolated and separate from status.
-   ========================================================= */
-
-.rutiner-pdf-link {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  font: inherit !important;
-  font-size: 14px !important;
-  line-height: 1.35 !important;
-  font-weight: 700 !important;
-  color: #1a5cff !important;
-  text-decoration: underline !important;
-  text-decoration-thickness: 2px !important;
-  text-underline-offset: 2px !important;
-  cursor: pointer !important;
-  display: inline !important;
-  border-radius: 0 !important;
-  appearance: none !important;
-  -webkit-appearance: none !important;
-}
-
-.rutiner-pdf-link:hover {
-  color: #003ecc !important;
-  text-decoration: underline !important;
-  text-decoration-thickness: 2px !important;
-  opacity: 1 !important;
-}
-
-.rutiner-pdf-link:active {
-  color: #003ecc !important;
-  transform: translateY(1px);
-}
-
-.rutiner-pdf-link:focus,
-.rutiner-pdf-link:focus-visible {
-  outline: 2px solid #1a5cff !important;
-  outline-offset: 2px !important;
-}
-
-.rutiner-pdf-link::after {
-  content: " ↗";
-  font-size: 0.85em;
-}
-
-.rutiner-pdf-field {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.62);
-}
-
-.rutiner-pdf-field__info {
-  min-width: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.rutiner-pdf-field__name {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.rutiner-pdf-field__name--empty {
-  color: var(--muted);
-}
-
-.rutiner-pdf-field__helper {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.4;
-}
-
-.rutiner-pdf-field__actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-@media (max-width: 920px) {
-  .status-button__label {
-    white-space: normal !important;
-  }
-
-  .rutiner-pdf-field {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .rutiner-pdf-field__actions {
-    width: 100%;
-  }
-
-  .rutiner-pdf-field__actions .secondary-button {
-    width: 100%;
-  }
-}
-
-
-/* =========================================================
-   NOTES UI
-   ========================================================= */
-
-.notes-button {
-  min-width: 38px;
-  min-height: 38px;
-  padding: 0;
-  border-radius: 999px;
-  border: 1px solid var(--line-strong);
-  background: var(--white);
-  color: var(--text);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  transition: 0.18s ease;
-}
-
-.notes-button:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
-}
-
-.notes-panel .side-panel__body {
-  gap: 16px;
-}
-
-.notes-form__body {
-  min-height: 120px;
-  resize: vertical;
-  padding: 12px 14px;
-  font: inherit;
-}
-
-.notes-history__list {
-  display: grid;
-  gap: 12px;
-}
-
-.notes-card {
+.todo-item {
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.62);
 }
 
-.notes-card__title {
+.todo-item.is-done {
+  opacity: 0.72;
+}
+
+.todo-item__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.todo-item__category {
   font-size: 14px;
   font-weight: 700;
   color: var(--text);
-  margin-bottom: 6px;
 }
 
-.notes-card__meta {
+.todo-item__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.todo-item__meta {
   font-size: 12px;
   color: var(--muted);
-  margin-bottom: 10px;
+  white-space: nowrap;
 }
 
-.notes-card__body {
+.todo-item__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.todo-item__body {
+  margin-top: 8px;
   font-size: 14px;
   color: var(--text);
   line-height: 1.45;
@@ -994,334 +780,22 @@ body {
 }
 
 @media (max-width: 920px) {
-  .notes-button {
-    width: 100%;
-    border-radius: 14px;
-  }
-}
-
-
-/* =========================================================
-   DOCUMENT LINKS IN COLUMN HEADERS
-   ========================================================= */
-
-.column-header {
-  position: relative;
-  display: block;
-  min-width: 0;
-  padding-right: 18px;
-}
-
-.column-header__label {
-  display: block;
-  min-width: 0;
-}
-
-.doc-link-dot {
-  position: absolute;
-  top: 4px;
-  right: 2px;
-  width: 10px;
-  height: 10px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: #1a5cff;
-  cursor: pointer;
-  box-shadow: 0 0 0 1px rgba(26, 92, 255, 0.12);
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-}
-
-.doc-link-dot:hover {
-  transform: scale(1.22);
-  box-shadow: 0 0 0 4px rgba(26, 92, 255, 0.14);
-  background: #003ecc;
-}
-
-.doc-link-dot:focus,
-.doc-link-dot:focus-visible {
-  outline: 2px solid rgba(26, 92, 255, 0.35);
-  outline-offset: 2px;
-}
-
-.doc-link-dot:active {
-  transform: scale(1.08);
-}
-
-
-/* =========================================================
-   SETTINGS UI
-   ========================================================= */
-
-.settings-panel .side-panel__body {
-  gap: 16px;
-}
-
-.settings-list__rows {
-  display: grid;
-  gap: 10px;
-}
-
-.settings-list__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.58);
-}
-
-.settings-list__info {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.settings-list__title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.settings-list__meta {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.4;
-}
-
-.settings-list__actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 920px) {
-  .settings-list__row {
+  .todo-item__top {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .settings-list__actions {
+  .todo-item__right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .todo-item__actions {
     width: 100%;
   }
 
-  .settings-list__actions .secondary-button {
+  .todo-item__actions .primary-button,
+  .todo-item__actions .secondary-button {
     width: 100%;
   }
 }
-
-
-/* =========================================================
-   SETTINGS MENU
-   ========================================================= */
-
-.settings-menu {
-  display: grid;
-  gap: 12px;
-}
-
-.settings-menu__card {
-  position: relative;
-  width: 100%;
-  text-align: left;
-  padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.58);
-  cursor: pointer;
-  transition: 0.18s ease;
-}
-
-.settings-menu__card:hover {
-  transform: translateY(-1px);
-  border-color: var(--line-strong);
-}
-
-.settings-menu__card.is-disabled {
-  cursor: default;
-  opacity: 0.7;
-}
-
-.settings-menu__title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 4px;
-}
-
-.settings-menu__meta {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.4;
-}
-
-.settings-menu__tag {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: inline-flex;
-  min-height: 20px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(26, 92, 255, 0.10);
-  color: #1a5cff;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.settings-back-row {
-  display: flex;
-  justify-content: flex-start;
-}
-
-
-
-/* =========================================================
-   DOCUMENT LINK DOT (final tuned v2)
-   ========================================================= */
-
-.column-header {
-  display: inline-block;
-  min-width: 0;
-}
-
-.column-header__label {
-  position: relative;
-  display: inline-block;
-}
-
-.doc-link-dot {
-  position: absolute;
-  top: -5px;
-  right: -1px;
-  width: 10px;
-  height: 10px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: #1a5cff;
-  cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-}
-
-.doc-link-dot:hover {
-  transform: scale(1.22);
-  box-shadow: 0 0 0 4px rgba(26, 92, 255, 0.16);
-  background: #003ecc;
-}
-
-.doc-link-dot:focus,
-.doc-link-dot:focus-visible {
-  outline: 2px solid rgba(26, 92, 255, 0.35);
-  outline-offset: 2px;
-}
-
-.doc-link-dot:active {
-  transform: scale(1.1);
-}
-
-/* =========================================================
-   AUTH UI
-   ========================================================= */
-
-.auth-shell {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 32px 16px;
-}
-
-.auth-card {
-  width: min(440px, 100%);
-  padding: 28px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 24px;
-  box-shadow: var(--shadow);
-}
-
-.auth-card__brand {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 18px;
-}
-
-.auth-form {
-  display: grid;
-  gap: 14px;
-}
-
-.auth-submit {
-  width: 100%;
-}
-
-.auth-error {
-  min-height: 18px;
-  margin: 0;
-  font-size: 13px;
-  color: var(--danger);
-}
-
-.topbar__user {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.topbar__user-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 42px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: rgba(255,255,255,0.55);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-@media (max-width: 920px) {
-  .topbar__user {
-    width: 100%;
-  }
-
-  .topbar__user-badge,
-  #logoutButton {
-    width: 100%;
-  }
-}
-
-/* =========================================================
-   NOTES UNREAD BADGE
-   ========================================================= */
-
-.notes-button {
-  position: relative;
-}
-
-.notes-button__badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #1a5cff;
-  color: #ffffff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 18px;
-  text-align: center;
-  box-shadow: 0 0 0 2px var(--panel);
-}
-
