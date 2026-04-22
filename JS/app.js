@@ -5,6 +5,7 @@ import { supabase } from './supabase.js?v=5';
   const app = document.getElementById('app');
   const nav = document.getElementById('tableNav');
   const settingsButton = document.getElementById('settingsButton');
+  const userArea = document.querySelector('.topbar__user');
 
   if (!spec || !spec.APP_CONFIG || !spec.APP_CONFIG.tables) {
     app.innerHTML = '<p class="empty-state">Kunde inte läsa spec.js.</p>';
@@ -71,8 +72,14 @@ import { supabase } from './supabase.js?v=5';
       columnField: '',
       rutinerRowId: '',
       label: '',
+      linkTitle: '',
+      linkUrl: '',
+      linkSortOrder: '100',
+      linkIsActive: true,
     },
     documentLinksList: [],
+    linksList: [],
+    linksPanelOpen: false,
   };
 
   function getActiveConfig() {
@@ -88,17 +95,15 @@ import { supabase } from './supabase.js?v=5';
   }
 
   function getVisibleColumns(tableConfig) {
-    const baseColumns = [
+    const columns = [
       ...tableConfig.columns.filter((column) => column.field !== 'id'),
       UI_OPEN_COLUMN,
       UI_NOTES_COLUMN,
     ];
-
     if (hasRowTodo(state.activeTableName)) {
-      baseColumns.push(UI_TODO_COLUMN);
+      columns.push(UI_TODO_COLUMN);
     }
-
-    return baseColumns;
+    return columns;
   }
 
   function getFieldTypeConfig(typeName) {
@@ -310,6 +315,7 @@ import { supabase } from './supabase.js?v=5';
 
 
   function openSettingsMenu() {
+    state.linksPanelOpen = false;
     state.settingsPanelOpen = true;
     state.settingsView = 'menu';
     state.archivePanelOpen = false;
@@ -333,6 +339,43 @@ import { supabase } from './supabase.js?v=5';
     state.detailRowId = null;
     state.newRowDraft = null;
     render();
+  }
+
+  function openSettingsLinks() {
+    state.settingsPanelOpen = true;
+    state.settingsView = 'links';
+    state.archivePanelOpen = false;
+    state.notesPanelOpen = false;
+    state.notesRowId = null;
+    state.rowTodoPanelOpen = false;
+    state.rowTodoRowId = null;
+    state.detailRowId = null;
+    state.newRowDraft = null;
+    render();
+  }
+
+  function openLinksPanel() {
+    state.linksPanelOpen = true;
+    state.settingsPanelOpen = false;
+    state.archivePanelOpen = false;
+    state.notesPanelOpen = false;
+    state.notesRowId = null;
+    state.rowTodoPanelOpen = false;
+    state.rowTodoRowId = null;
+    state.detailRowId = null;
+    state.newRowDraft = null;
+    render();
+  }
+
+  function closeLinksPanel() {
+    state.linksPanelOpen = false;
+    render();
+  }
+
+  function openExternalLink(url) {
+    const value = String(url || '').trim();
+    if (!value) return;
+    window.open(value, '_blank', 'noopener');
   }
 
   function getSettingsTableOptions() {
@@ -433,6 +476,168 @@ import { supabase } from './supabase.js?v=5';
     }
   }
 
+  async function loadLinks() {
+    try {
+      const { data, error } = await supabase
+        .from('planning_links')
+        .select('*')
+        .order('sort_order', { ascending: true })
+        .order('id', { ascending: true });
+
+      if (error) throw error;
+      state.linksList = Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn('Could not load links:', err.message);
+      state.linksList = [];
+    }
+  }
+
+  async function saveLinkFromSettings() {
+    const title = String(state.settingsDraft.linkTitle || '').trim();
+    const url = String(state.settingsDraft.linkUrl || '').trim();
+    const sortOrder = Number.parseInt(String(state.settingsDraft.linkSortOrder || '100').trim(), 10);
+    const isActive = !!state.settingsDraft.linkIsActive;
+
+    if (!title) return alert('Ange länknamn.');
+    if (!url) return alert('Ange länkadress.');
+
+    state.settingsLoading = true;
+    render();
+
+    try {
+      const payload = {
+        title,
+        url,
+        sort_order: Number.isFinite(sortOrder) ? sortOrder : 100,
+        is_active: isActive,
+      };
+
+      const { error } = await supabase
+        .from('planning_links')
+        .insert(payload);
+
+      if (error) throw error;
+
+      await loadLinks();
+      state.settingsDraft.linkTitle = '';
+      state.settingsDraft.linkUrl = '';
+      state.settingsDraft.linkSortOrder = '100';
+      state.settingsDraft.linkIsActive = true;
+    } catch (err) {
+      alert(`Kunde inte spara länk: ${err.message}`);
+    } finally {
+      state.settingsLoading = false;
+      render();
+    }
+  }
+
+  async function deleteLinkFromSettings(id) {
+    const confirmed = window.confirm('Ta bort denna länk?');
+    if (!confirmed) return;
+
+    state.settingsLoading = true;
+    render();
+
+    try {
+      const { error } = await supabase
+        .from('planning_links')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      await loadLinks();
+    } catch (err) {
+      alert(`Kunde inte ta bort länk: ${err.message}`);
+    } finally {
+      state.settingsLoading = false;
+      render();
+    }
+  }
+
+
+  function createLinksPanel() {
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay-modal';
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) closeLinksPanel();
+    });
+
+    const dialog = document.createElement('aside');
+    dialog.className = 'side-panel overlay-modal__dialog settings-panel';
+
+    const header = document.createElement('div');
+    header.className = 'side-panel__header';
+
+    const heading = document.createElement('div');
+    heading.innerHTML = `
+      <p class="side-panel__eyebrow">Länkar</p>
+      <h2 class="side-panel__title">Snabblänkar</h2>
+      <p class="side-panel__text">Öppna aktiva länkar i ny flik.</p>
+    `;
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'side-panel__close';
+    closeButton.textContent = 'Stäng';
+    closeButton.addEventListener('click', closeLinksPanel);
+
+    header.appendChild(heading);
+    header.appendChild(closeButton);
+
+    const body = document.createElement('div');
+    body.className = 'side-panel__body';
+
+    const activeLinks = (state.linksList || []).filter((item) => item.is_active !== false);
+
+    if (!activeLinks.length) {
+      const empty = document.createElement('p');
+      empty.className = 'empty-state';
+      empty.textContent = 'Inga aktiva länkar ännu.';
+      body.appendChild(empty);
+    } else {
+      const listCard = document.createElement('section');
+      listCard.className = 'detail-card settings-list';
+
+      const list = document.createElement('div');
+      list.className = 'settings-list__rows';
+
+      activeLinks.forEach((item) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'settings-list__row settings-list__row--link';
+        row.addEventListener('click', () => openExternalLink(item.url));
+
+        const info = document.createElement('div');
+        info.className = 'settings-list__info';
+
+        const title = document.createElement('div');
+        title.className = 'settings-list__title';
+        title.textContent = item.title || 'Utan namn';
+
+        info.appendChild(title);
+
+        const actions = document.createElement('div');
+        actions.className = 'settings-list__actions';
+
+        const openButton = document.createElement('span');
+        openButton.className = 'secondary-button';
+        openButton.textContent = 'Öppna';
+
+        actions.appendChild(openButton);
+        row.appendChild(info);
+        row.appendChild(actions);
+        list.appendChild(row);
+      });
+
+      listCard.appendChild(list);
+      body.appendChild(listCard);
+    }
+
+    dialog.appendChild(header);
+    dialog.appendChild(body);
+    overlay.appendChild(dialog);
+    return overlay;
+  }
 
   function getCurrentUserInitials() {
     return String(window.CurrentUser?.initials || '').trim();
@@ -597,6 +802,7 @@ import { supabase } from './supabase.js?v=5';
 
   function openNotesPanel(row) {
     if (!row?.id) return;
+    state.linksPanelOpen = false;
     state.notesPanelOpen = true;
     state.notesRowId = row.id;
     state.detailRowId = null;
@@ -662,6 +868,7 @@ import { supabase } from './supabase.js?v=5';
     }
   }
 
+
   function getRowTodoKey(tableName, rowId) {
     return `${tableName}::${rowId}`;
   }
@@ -709,6 +916,7 @@ import { supabase } from './supabase.js?v=5';
 
   function openRowTodoPanel(row) {
     if (!row?.id || !hasRowTodo(state.activeTableName)) return;
+    state.linksPanelOpen = false;
     state.rowTodoPanelOpen = true;
     state.rowTodoRowId = row.id;
     state.detailRowId = null;
@@ -762,7 +970,6 @@ import { supabase } from './supabase.js?v=5';
 
       if (error) throw error;
 
-      resetRowTodoDraft(tableName);
       await loadRowTodosForRow(tableName, row.id);
     } catch (err) {
       alert(`Kunde inte spara ToDo: ${err.message}`);
@@ -862,19 +1069,47 @@ import { supabase } from './supabase.js?v=5';
     header.className = 'side-panel__header';
 
     const heading = document.createElement('div');
+    heading.className = 'todo-modal__heading';
     heading.innerHTML = `
       <p class="side-panel__eyebrow">${tableName}</p>
       <h2 class="side-panel__title">ToDo</h2>
       <p class="side-panel__text">${rowTitle}</p>
     `;
 
+    const headerActions = document.createElement('div');
+    headerActions.className = 'side-panel__header-actions';
+
+    const cancelButtonTop = document.createElement('button');
+    cancelButtonTop.type = 'button';
+    cancelButtonTop.className = 'secondary-button';
+    cancelButtonTop.textContent = 'Avbryt';
+    cancelButtonTop.addEventListener('click', () => {
+      resetRowTodoDraft(tableName);
+      render();
+    });
+
+    const saveButtonTop = document.createElement('button');
+    saveButtonTop.type = 'button';
+    saveButtonTop.className = 'secondary-button';
+    saveButtonTop.textContent = state.rowTodoLoading ? 'Sparar...' : 'Spara';
+    saveButtonTop.disabled = state.rowTodoLoading;
+    saveButtonTop.addEventListener('click', async () => {
+      await saveRowTodoForCurrentRow();
+    });
+
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
-    closeButton.className = 'side-panel__close';
-    closeButton.textContent = 'Stäng';
+    closeButton.className = 'side-panel__close side-panel__close--small';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Stäng');
+    closeButton.title = 'Stäng';
     closeButton.addEventListener('click', closeRowTodoPanel);
 
+    headerActions.appendChild(cancelButtonTop);
+    headerActions.appendChild(saveButtonTop);
+
     header.appendChild(heading);
+    header.appendChild(headerActions);
     header.appendChild(closeButton);
 
     const body = document.createElement('div');
@@ -914,7 +1149,8 @@ import { supabase } from './supabase.js?v=5';
     bodySpan.className = 'detail-field__label';
     bodySpan.textContent = 'Beskrivning';
     const bodyInput = document.createElement('textarea');
-    bodyInput.className = 'detail-field__control notes-form__body';
+    bodyInput.className = 'detail-field__control notes-form__body todo-modal__textarea';
+    bodyInput.rows = 6;
     bodyInput.value = state.rowTodoDraft.beskrivning || '';
     bodyInput.addEventListener('input', () => {
       state.rowTodoDraft.beskrivning = bodyInput.value;
@@ -922,34 +1158,9 @@ import { supabase } from './supabase.js?v=5';
     bodyLabel.appendChild(bodySpan);
     bodyLabel.appendChild(bodyInput);
 
-    const formActions = document.createElement('div');
-    formActions.className = 'side-panel__footer';
-
-    const saveButton = document.createElement('button');
-    saveButton.type = 'button';
-    saveButton.className = 'primary-button';
-    saveButton.textContent = state.rowTodoLoading ? 'Sparar...' : 'Spara';
-    saveButton.disabled = state.rowTodoLoading;
-    saveButton.addEventListener('click', async () => {
-      await saveRowTodoForCurrentRow();
-    });
-
-    const cancelButton = document.createElement('button');
-    cancelButton.type = 'button';
-    cancelButton.className = 'secondary-button';
-    cancelButton.textContent = 'Avbryt';
-    cancelButton.addEventListener('click', () => {
-      resetRowTodoDraft(tableName);
-      render();
-    });
-
-    formActions.appendChild(saveButton);
-    formActions.appendChild(cancelButton);
-
     formCard.appendChild(formTitle);
     formCard.appendChild(categoryLabel);
     formCard.appendChild(bodyLabel);
-    formCard.appendChild(formActions);
 
     const historyCard = document.createElement('section');
     historyCard.className = 'detail-card notes-history';
@@ -1040,7 +1251,6 @@ import { supabase } from './supabase.js?v=5';
     overlay.appendChild(dialog);
     return overlay;
   }
-
 
   function formatDateValue(value) {
     const raw = String(value ?? '').trim();
@@ -1214,6 +1424,7 @@ import { supabase } from './supabase.js?v=5';
       alert('RUTINER har inget arkiv.');
       return;
     }
+    state.linksPanelOpen = false;
     state.archivePanelOpen = true;
     state.detailRowId = null;
     state.newRowDraft = null;
@@ -1242,6 +1453,25 @@ import { supabase } from './supabase.js?v=5';
     return state.filtersByTable[tableName];
   }
 
+  function ensureLinksButton() {
+    if (!userArea) return;
+    let linksButton = document.getElementById('linksButton');
+    if (linksButton) return;
+
+    linksButton = document.createElement('button');
+    linksButton.id = 'linksButton';
+    linksButton.type = 'button';
+    linksButton.className = settingsButton?.className || 'topbar__settings';
+    linksButton.textContent = 'LÄNKAR';
+    linksButton.addEventListener('click', openLinksPanel);
+
+    if (settingsButton && settingsButton.parentElement === userArea) {
+      userArea.insertBefore(linksButton, settingsButton);
+    } else {
+      userArea.appendChild(linksButton);
+    }
+  }
+
   function createNav() {
     nav.innerHTML = '';
 
@@ -1263,8 +1493,10 @@ import { supabase } from './supabase.js?v=5';
         state.archivePanelOpen = false;
         state.notesPanelOpen = false;
         state.notesRowId = null;
+        state.linksPanelOpen = false;
         state.rowTodoPanelOpen = false;
         state.rowTodoRowId = null;
+        state.settingsPanelOpen = false;
         void loadUnreadCountsForTable(tableName);
         render();
       });
@@ -1294,6 +1526,7 @@ import { supabase } from './supabase.js?v=5';
         tableName,
         data: normalizeRow(tableName, tableConfig, draft),
       };
+        state.linksPanelOpen = false;
       state.detailRowId = null;
       state.editingCell = null;
       state.archivePanelOpen = false;
@@ -1403,6 +1636,7 @@ import { supabase } from './supabase.js?v=5';
 
   function openDetailPanel(row) {
     if (!row?.id) return;
+    state.linksPanelOpen = false;
     state.detailRowId = row.id;
     state.editingCell = null;
     state.archivePanelOpen = false;
@@ -2426,6 +2660,12 @@ import { supabase } from './supabase.js?v=5';
         <h2 class="side-panel__title">Match kolumn + dok</h2>
         <p class="side-panel__text">Koppla kolumner till dokument i RUTINER.</p>
       `;
+    } else if (state.settingsView === 'links') {
+      heading.innerHTML = `
+        <p class="side-panel__eyebrow">Settings</p>
+        <h2 class="side-panel__title">Manage Links</h2>
+        <p class="side-panel__text">Skapa och hantera globala länkar.</p>
+      `;
     } else {
       heading.innerHTML = `
         <p class="side-panel__eyebrow">Settings</p>
@@ -2495,6 +2735,14 @@ import { supabase } from './supabase.js?v=5';
       }));
 
       menu.appendChild(createCard({
+        title: 'Manage Links',
+        subtitle: isAdmin() ? 'Hantera länkar' : 'Endast admin',
+        onClick: openSettingsLinks,
+        disabled: !isAdmin(),
+        adminOnly: true,
+      }));
+
+      menu.appendChild(createCard({
         title: 'Logout',
         subtitle: 'To be continued',
         onClick: () => alert('Logout — To be continued'),
@@ -2515,184 +2763,352 @@ import { supabase } from './supabase.js?v=5';
       backRow.appendChild(backButton);
       body.appendChild(backRow);
 
-      const formCard = document.createElement('section');
-      formCard.className = 'detail-card settings-form';
+      if (state.settingsView === 'links') {
+        const formCard = document.createElement('section');
+        formCard.className = 'detail-card settings-form';
 
-      const formTitle = document.createElement('h3');
-      formTitle.className = 'detail-card__title';
-      formTitle.textContent = 'Ny koppling';
+        const formTitle = document.createElement('h3');
+        formTitle.className = 'detail-card__title';
+        formTitle.textContent = 'Ny länk';
 
-      const tableLabel = document.createElement('label');
-      tableLabel.className = 'detail-field';
-      const tableText = document.createElement('span');
-      tableText.className = 'detail-field__label';
-      tableText.textContent = 'Tabell';
-      const tableSelect = document.createElement('select');
-      tableSelect.className = 'detail-field__control';
-      tableSelect.innerHTML = '<option value="">Välj tabell</option>';
-      getSettingsTableOptions().forEach((name) => {
-        const option = document.createElement('option');
-        option.value = name;
-        option.textContent = name;
-        if (state.settingsDraft.tableName === name) option.selected = true;
-        tableSelect.appendChild(option);
-      });
-      tableSelect.addEventListener('change', () => {
-        state.settingsDraft.tableName = tableSelect.value;
-        state.settingsDraft.columnField = '';
-        render();
-      });
-      tableLabel.appendChild(tableText);
-      tableLabel.appendChild(tableSelect);
+        const titleField = document.createElement('label');
+        titleField.className = 'detail-field';
+        const titleText = document.createElement('span');
+        titleText.className = 'detail-field__label';
+        titleText.textContent = 'Länknamn';
+        const titleInput = document.createElement('input');
+        titleInput.className = 'detail-field__control';
+        titleInput.type = 'text';
+        titleInput.value = state.settingsDraft.linkTitle || '';
+        titleInput.addEventListener('input', () => {
+          state.settingsDraft.linkTitle = titleInput.value;
+        });
+        titleField.appendChild(titleText);
+        titleField.appendChild(titleInput);
 
-      const columnLabel = document.createElement('label');
-      columnLabel.className = 'detail-field';
-      const columnText = document.createElement('span');
-      columnText.className = 'detail-field__label';
-      columnText.textContent = 'Kolumn';
-      const columnSelect = document.createElement('select');
-      columnSelect.className = 'detail-field__control';
-      columnSelect.innerHTML = '<option value="">Välj kolumn</option>';
-      getSettingsColumnOptions(state.settingsDraft.tableName).forEach((column) => {
-        const option = document.createElement('option');
-        option.value = column.field;
-        option.textContent = column.name;
-        if (state.settingsDraft.columnField === column.field) option.selected = true;
-        columnSelect.appendChild(option);
-      });
-      columnSelect.addEventListener('change', () => {
-        state.settingsDraft.columnField = columnSelect.value;
-      });
-      columnLabel.appendChild(columnText);
-      columnLabel.appendChild(columnSelect);
+        const urlField = document.createElement('label');
+        urlField.className = 'detail-field';
+        const urlText = document.createElement('span');
+        urlText.className = 'detail-field__label';
+        urlText.textContent = 'Länkadress';
+        const urlInput = document.createElement('input');
+        urlInput.className = 'detail-field__control';
+        urlInput.type = 'url';
+        urlInput.placeholder = 'https://...';
+        urlInput.value = state.settingsDraft.linkUrl || '';
+        urlInput.addEventListener('input', () => {
+          state.settingsDraft.linkUrl = urlInput.value;
+        });
+        urlField.appendChild(urlText);
+        urlField.appendChild(urlInput);
 
-      const documentLabel = document.createElement('label');
-      documentLabel.className = 'detail-field';
-      const documentText = document.createElement('span');
-      documentText.className = 'detail-field__label';
-      documentText.textContent = 'Dokument';
-      const documentSelect = document.createElement('select');
-      documentSelect.className = 'detail-field__control';
-      documentSelect.innerHTML = '<option value="">Välj dokument</option>';
-      getRutinerOptions().forEach((item) => {
-        const option = document.createElement('option');
-        option.value = item.id;
-        option.textContent = `${item.name} · ${item.documentName}`;
-        if (String(state.settingsDraft.rutinerRowId) === String(item.id)) option.selected = true;
-        documentSelect.appendChild(option);
-      });
-      documentSelect.addEventListener('change', () => {
-        state.settingsDraft.rutinerRowId = documentSelect.value;
-      });
-      documentLabel.appendChild(documentText);
-      documentLabel.appendChild(documentSelect);
+        const sortField = document.createElement('label');
+        sortField.className = 'detail-field';
+        const sortText = document.createElement('span');
+        sortText.className = 'detail-field__label';
+        sortText.textContent = 'Ordning';
+        const sortInput = document.createElement('input');
+        sortInput.className = 'detail-field__control';
+        sortInput.type = 'number';
+        sortInput.value = state.settingsDraft.linkSortOrder || '100';
+        sortInput.addEventListener('input', () => {
+          state.settingsDraft.linkSortOrder = sortInput.value;
+        });
+        sortField.appendChild(sortText);
+        sortField.appendChild(sortInput);
 
-      const labelField = document.createElement('label');
-      labelField.className = 'detail-field';
-      const labelText = document.createElement('span');
-      labelText.className = 'detail-field__label';
-      labelText.textContent = 'Label (valfri)';
-      const labelInput = document.createElement('input');
-      labelInput.className = 'detail-field__control';
-      labelInput.type = 'text';
-      labelInput.placeholder = 'Ex. Guide';
-      labelInput.value = state.settingsDraft.label || '';
-      labelInput.addEventListener('input', () => {
-        state.settingsDraft.label = labelInput.value;
-      });
-      labelField.appendChild(labelText);
-      labelField.appendChild(labelInput);
+        const activeField = document.createElement('label');
+        activeField.className = 'detail-field';
+        const activeWrap = document.createElement('div');
+        activeWrap.className = 'settings-checkbox-row';
+        const activeInput = document.createElement('input');
+        activeInput.type = 'checkbox';
+        activeInput.checked = !!state.settingsDraft.linkIsActive;
+        activeInput.addEventListener('change', () => {
+          state.settingsDraft.linkIsActive = activeInput.checked;
+        });
+        const activeLabel = document.createElement('span');
+        activeLabel.className = 'detail-field__label';
+        activeLabel.textContent = 'Aktiv';
+        activeWrap.appendChild(activeInput);
+        activeWrap.appendChild(activeLabel);
+        activeField.appendChild(activeWrap);
 
-      const footer = document.createElement('div');
-      footer.className = 'side-panel__footer';
+        const footer = document.createElement('div');
+        footer.className = 'side-panel__footer';
 
-      const saveButton = document.createElement('button');
-      saveButton.type = 'button';
-      saveButton.className = 'primary-button';
-      saveButton.textContent = state.settingsLoading ? 'Sparar...' : 'Spara';
-      saveButton.disabled = state.settingsLoading || !isAdmin();
-      saveButton.addEventListener('click', async () => {
-        await saveDocumentLinkFromSettings();
-      });
-
-      const resetButton = document.createElement('button');
-      resetButton.type = 'button';
-      resetButton.className = 'secondary-button';
-      resetButton.textContent = 'Rensa';
-      resetButton.addEventListener('click', () => {
-        state.settingsDraft = { tableName: '', columnField: '', rutinerRowId: '', label: '' };
-        render();
-      });
-
-      footer.appendChild(saveButton);
-      footer.appendChild(resetButton);
-
-      formCard.appendChild(formTitle);
-      formCard.appendChild(tableLabel);
-      formCard.appendChild(columnLabel);
-      formCard.appendChild(documentLabel);
-      formCard.appendChild(labelField);
-      formCard.appendChild(footer);
-
-      const listCard = document.createElement('section');
-      listCard.className = 'detail-card settings-list';
-
-      const listTitle = document.createElement('h3');
-      listTitle.className = 'detail-card__title';
-      listTitle.textContent = 'Befintliga kopplingar';
-      listCard.appendChild(listTitle);
-
-      if (!state.documentLinksList.length) {
-        const empty = document.createElement('p');
-        empty.className = 'empty-state';
-        empty.textContent = 'Inga kopplingar ännu.';
-        listCard.appendChild(empty);
-      } else {
-        const list = document.createElement('div');
-        list.className = 'settings-list__rows';
-
-        state.documentLinksList.forEach((item) => {
-          const row = document.createElement('div');
-          row.className = 'settings-list__row';
-
-          const info = document.createElement('div');
-          info.className = 'settings-list__info';
-
-          const title = document.createElement('div');
-          title.className = 'settings-list__title';
-          title.textContent = `${item.table_name} · ${item.column_field}`;
-
-          const rutiner = (state.rowsByTable['RUTINER'] || []).find((r) => String(r.id) === String(item.rutiner_row_id));
-          const subtitle = document.createElement('div');
-          subtitle.className = 'settings-list__meta';
-          subtitle.textContent = `${item.label || 'Dok'} · ${rutiner?.rutin || 'Dokument'} · ${getPdfDisplayName(rutiner?.document || '') || 'Utan filnamn'}`;
-
-          info.appendChild(title);
-          info.appendChild(subtitle);
-
-          const actions = document.createElement('div');
-          actions.className = 'settings-list__actions';
-
-          const deleteButton = document.createElement('button');
-          deleteButton.type = 'button';
-          deleteButton.className = 'secondary-button secondary-button--danger';
-          deleteButton.textContent = 'Ta bort';
-          deleteButton.disabled = !isAdmin();
-          deleteButton.addEventListener('click', async () => {
-            await deleteDocumentLinkFromSettings(item.id);
-          });
-
-          actions.appendChild(deleteButton);
-          row.appendChild(info);
-          row.appendChild(actions);
-          list.appendChild(row);
+        const saveButton = document.createElement('button');
+        saveButton.type = 'button';
+        saveButton.className = 'primary-button';
+        saveButton.textContent = state.settingsLoading ? 'Sparar...' : 'Spara';
+        saveButton.disabled = state.settingsLoading || !isAdmin();
+        saveButton.addEventListener('click', async () => {
+          await saveLinkFromSettings();
         });
 
-        listCard.appendChild(list);
-      }
+        const resetButton = document.createElement('button');
+        resetButton.type = 'button';
+        resetButton.className = 'secondary-button';
+        resetButton.textContent = 'Rensa';
+        resetButton.addEventListener('click', () => {
+          state.settingsDraft.linkTitle = '';
+          state.settingsDraft.linkUrl = '';
+          state.settingsDraft.linkSortOrder = '100';
+          state.settingsDraft.linkIsActive = true;
+          render();
+        });
 
-      body.appendChild(formCard);
-      body.appendChild(listCard);
+        footer.appendChild(saveButton);
+        footer.appendChild(resetButton);
+
+        formCard.appendChild(formTitle);
+        formCard.appendChild(titleField);
+        formCard.appendChild(urlField);
+        formCard.appendChild(sortField);
+        formCard.appendChild(activeField);
+        formCard.appendChild(footer);
+
+        const listCard = document.createElement('section');
+        listCard.className = 'detail-card settings-list';
+
+        const listTitle = document.createElement('h3');
+        listTitle.className = 'detail-card__title';
+        listTitle.textContent = 'Befintliga länkar';
+        listCard.appendChild(listTitle);
+
+        if (!state.linksList.length) {
+          const empty = document.createElement('p');
+          empty.className = 'empty-state';
+          empty.textContent = 'Inga länkar ännu.';
+          listCard.appendChild(empty);
+        } else {
+          const list = document.createElement('div');
+          list.className = 'settings-list__rows';
+
+          state.linksList.forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'settings-list__row';
+
+            const info = document.createElement('div');
+            info.className = 'settings-list__info';
+
+            const title = document.createElement('div');
+            title.className = 'settings-list__title';
+            title.textContent = item.title || 'Utan namn';
+
+            const subtitle = document.createElement('div');
+            subtitle.className = 'settings-list__meta';
+            subtitle.textContent = `${item.url || ''} · ordning ${item.sort_order ?? 100}${item.is_active ? '' : ' · inaktiv'}`;
+
+            info.appendChild(title);
+            info.appendChild(subtitle);
+
+            const actions = document.createElement('div');
+            actions.className = 'settings-list__actions';
+
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.className = 'secondary-button secondary-button--danger';
+            deleteButton.textContent = 'Ta bort';
+            deleteButton.disabled = !isAdmin();
+            deleteButton.addEventListener('click', async () => {
+              await deleteLinkFromSettings(item.id);
+            });
+
+            actions.appendChild(deleteButton);
+            row.appendChild(info);
+            row.appendChild(actions);
+            list.appendChild(row);
+          });
+
+          listCard.appendChild(list);
+        }
+
+        body.appendChild(formCard);
+        body.appendChild(listCard);
+      } else {
+        const formCard = document.createElement('section');
+        formCard.className = 'detail-card settings-form';
+
+        const formTitle = document.createElement('h3');
+        formTitle.className = 'detail-card__title';
+        formTitle.textContent = 'Ny koppling';
+
+        const tableLabel = document.createElement('label');
+        tableLabel.className = 'detail-field';
+        const tableText = document.createElement('span');
+        tableText.className = 'detail-field__label';
+        tableText.textContent = 'Tabell';
+        const tableSelect = document.createElement('select');
+        tableSelect.className = 'detail-field__control';
+        tableSelect.innerHTML = '<option value="">Välj tabell</option>';
+        getSettingsTableOptions().forEach((name) => {
+          const option = document.createElement('option');
+          option.value = name;
+          option.textContent = name;
+          if (state.settingsDraft.tableName === name) option.selected = true;
+          tableSelect.appendChild(option);
+        });
+        tableSelect.addEventListener('change', () => {
+          state.settingsDraft.tableName = tableSelect.value;
+          state.settingsDraft.columnField = '';
+          render();
+        });
+        tableLabel.appendChild(tableText);
+        tableLabel.appendChild(tableSelect);
+
+        const columnLabel = document.createElement('label');
+        columnLabel.className = 'detail-field';
+        const columnText = document.createElement('span');
+        columnText.className = 'detail-field__label';
+        columnText.textContent = 'Kolumn';
+        const columnSelect = document.createElement('select');
+        columnSelect.className = 'detail-field__control';
+        columnSelect.innerHTML = '<option value="">Välj kolumn</option>';
+        getSettingsColumnOptions(state.settingsDraft.tableName).forEach((column) => {
+          const option = document.createElement('option');
+          option.value = column.field;
+          option.textContent = column.name;
+          if (state.settingsDraft.columnField === column.field) option.selected = true;
+          columnSelect.appendChild(option);
+        });
+        columnSelect.addEventListener('change', () => {
+          state.settingsDraft.columnField = columnSelect.value;
+        });
+        columnLabel.appendChild(columnText);
+        columnLabel.appendChild(columnSelect);
+
+        const documentLabel = document.createElement('label');
+        documentLabel.className = 'detail-field';
+        const documentText = document.createElement('span');
+        documentText.className = 'detail-field__label';
+        documentText.textContent = 'Dokument';
+        const documentSelect = document.createElement('select');
+        documentSelect.className = 'detail-field__control';
+        documentSelect.innerHTML = '<option value="">Välj dokument</option>';
+        getRutinerOptions().forEach((item) => {
+          const option = document.createElement('option');
+          option.value = item.id;
+          option.textContent = `${item.name} · ${item.documentName}`;
+          if (String(state.settingsDraft.rutinerRowId) === String(item.id)) option.selected = true;
+          documentSelect.appendChild(option);
+        });
+        documentSelect.addEventListener('change', () => {
+          state.settingsDraft.rutinerRowId = documentSelect.value;
+        });
+        documentLabel.appendChild(documentText);
+        documentLabel.appendChild(documentSelect);
+
+        const labelField = document.createElement('label');
+        labelField.className = 'detail-field';
+        const labelText = document.createElement('span');
+        labelText.className = 'detail-field__label';
+        labelText.textContent = 'Label (valfri)';
+        const labelInput = document.createElement('input');
+        labelInput.className = 'detail-field__control';
+        labelInput.type = 'text';
+        labelInput.placeholder = 'Ex. Guide';
+        labelInput.value = state.settingsDraft.label || '';
+        labelInput.addEventListener('input', () => {
+          state.settingsDraft.label = labelInput.value;
+        });
+        labelField.appendChild(labelText);
+        labelField.appendChild(labelInput);
+
+        const footer = document.createElement('div');
+        footer.className = 'side-panel__footer';
+
+        const saveButton = document.createElement('button');
+        saveButton.type = 'button';
+        saveButton.className = 'primary-button';
+        saveButton.textContent = state.settingsLoading ? 'Sparar...' : 'Spara';
+        saveButton.disabled = state.settingsLoading || !isAdmin();
+        saveButton.addEventListener('click', async () => {
+          await saveDocumentLinkFromSettings();
+        });
+
+        const resetButton = document.createElement('button');
+        resetButton.type = 'button';
+        resetButton.className = 'secondary-button';
+        resetButton.textContent = 'Rensa';
+        resetButton.addEventListener('click', () => {
+          state.settingsDraft.tableName = '';
+          state.settingsDraft.columnField = '';
+          state.settingsDraft.rutinerRowId = '';
+          state.settingsDraft.label = '';
+          render();
+        });
+
+        footer.appendChild(saveButton);
+        footer.appendChild(resetButton);
+
+        formCard.appendChild(formTitle);
+        formCard.appendChild(tableLabel);
+        formCard.appendChild(columnLabel);
+        formCard.appendChild(documentLabel);
+        formCard.appendChild(labelField);
+        formCard.appendChild(footer);
+
+        const listCard = document.createElement('section');
+        listCard.className = 'detail-card settings-list';
+
+        const listTitle = document.createElement('h3');
+        listTitle.className = 'detail-card__title';
+        listTitle.textContent = 'Befintliga kopplingar';
+        listCard.appendChild(listTitle);
+
+        if (!state.documentLinksList.length) {
+          const empty = document.createElement('p');
+          empty.className = 'empty-state';
+          empty.textContent = 'Inga kopplingar ännu.';
+          listCard.appendChild(empty);
+        } else {
+          const list = document.createElement('div');
+          list.className = 'settings-list__rows';
+
+          state.documentLinksList.forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'settings-list__row';
+
+            const info = document.createElement('div');
+            info.className = 'settings-list__info';
+
+            const title = document.createElement('div');
+            title.className = 'settings-list__title';
+            title.textContent = `${item.table_name} · ${item.column_field}`;
+
+            const rutiner = (state.rowsByTable['RUTINER'] || []).find((r) => String(r.id) === String(item.rutiner_row_id));
+            const subtitle = document.createElement('div');
+            subtitle.className = 'settings-list__meta';
+            subtitle.textContent = `${item.label || 'Dok'} · ${rutiner?.rutin || 'Dokument'} · ${getPdfDisplayName(rutiner?.document || '') || 'Utan filnamn'}`;
+
+            info.appendChild(title);
+            info.appendChild(subtitle);
+
+            const actions = document.createElement('div');
+            actions.className = 'settings-list__actions';
+
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.className = 'secondary-button secondary-button--danger';
+            deleteButton.textContent = 'Ta bort';
+            deleteButton.disabled = !isAdmin();
+            deleteButton.addEventListener('click', async () => {
+              await deleteDocumentLinkFromSettings(item.id);
+            });
+
+            actions.appendChild(deleteButton);
+            row.appendChild(info);
+            row.appendChild(actions);
+            list.appendChild(row);
+          });
+
+          listCard.appendChild(list);
+        }
+
+        body.appendChild(formCard);
+        body.appendChild(listCard);
+      }
     }
 
     dialog.appendChild(header);
@@ -2722,19 +3138,47 @@ import { supabase } from './supabase.js?v=5';
     header.className = 'side-panel__header';
 
     const heading = document.createElement('div');
+    heading.className = 'todo-modal__heading';
     heading.innerHTML = `
       <p class="side-panel__eyebrow">${tableName}</p>
       <h2 class="side-panel__title">Notes</h2>
       <p class="side-panel__text">${rowTitle}</p>
     `;
 
+    const headerActions = document.createElement('div');
+    headerActions.className = 'side-panel__header-actions';
+
+    const cancelButtonTop = document.createElement('button');
+    cancelButtonTop.type = 'button';
+    cancelButtonTop.className = 'secondary-button';
+    cancelButtonTop.textContent = 'Avbryt';
+    cancelButtonTop.addEventListener('click', () => {
+      resetNotesDraft();
+      render();
+    });
+
+    const saveButtonTop = document.createElement('button');
+    saveButtonTop.type = 'button';
+    saveButtonTop.className = 'secondary-button';
+    saveButtonTop.textContent = state.notesLoading ? 'Sparar...' : 'Spara';
+    saveButtonTop.disabled = state.notesLoading;
+    saveButtonTop.addEventListener('click', async () => {
+      await saveNoteForCurrentRow();
+    });
+
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
-    closeButton.className = 'side-panel__close';
-    closeButton.textContent = 'Stäng';
+    closeButton.className = 'side-panel__close side-panel__close--small';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Stäng');
+    closeButton.title = 'Stäng';
     closeButton.addEventListener('click', closeNotesPanel);
 
+    headerActions.appendChild(cancelButtonTop);
+    headerActions.appendChild(saveButtonTop);
+
     header.appendChild(heading);
+    header.appendChild(headerActions);
     header.appendChild(closeButton);
 
     const body = document.createElement('div');
@@ -2768,7 +3212,8 @@ import { supabase } from './supabase.js?v=5';
     bodySpan.className = 'detail-field__label';
     bodySpan.textContent = 'Text';
     const bodyInput = document.createElement('textarea');
-    bodyInput.className = 'detail-field__control notes-form__body';
+    bodyInput.className = 'detail-field__control notes-form__body todo-modal__textarea';
+    bodyInput.rows = 6;
     bodyInput.value = state.notesDraft.body || '';
     bodyInput.addEventListener('input', () => {
       state.notesDraft.body = bodyInput.value;
@@ -2776,34 +3221,9 @@ import { supabase } from './supabase.js?v=5';
     bodyLabel.appendChild(bodySpan);
     bodyLabel.appendChild(bodyInput);
 
-    const formActions = document.createElement('div');
-    formActions.className = 'side-panel__footer';
-
-    const saveButton = document.createElement('button');
-    saveButton.type = 'button';
-    saveButton.className = 'primary-button';
-    saveButton.textContent = state.notesLoading ? 'Sparar...' : 'Spara';
-    saveButton.disabled = state.notesLoading;
-    saveButton.addEventListener('click', async () => {
-      await saveNoteForCurrentRow();
-    });
-
-    const cancelButton = document.createElement('button');
-    cancelButton.type = 'button';
-    cancelButton.className = 'secondary-button';
-    cancelButton.textContent = 'Avbryt';
-    cancelButton.addEventListener('click', () => {
-      resetNotesDraft();
-      render();
-    });
-
-    formActions.appendChild(saveButton);
-    formActions.appendChild(cancelButton);
-
     formCard.appendChild(formTitle);
     formCard.appendChild(titleLabel);
     formCard.appendChild(bodyLabel);
-    formCard.appendChild(formActions);
 
     const historyCard = document.createElement('section');
     historyCard.className = 'detail-card notes-history';
@@ -2830,22 +3250,27 @@ import { supabase } from './supabase.js?v=5';
 
       notes.forEach((item) => {
         const card = document.createElement('article');
-        card.className = 'notes-card';
+        card.className = 'note-item';
+
+        const topRow = document.createElement('div');
+        topRow.className = 'note-item__top';
 
         const title = document.createElement('div');
-        title.className = 'notes-card__title';
+        title.className = 'note-item__title';
         title.textContent = item.title || 'Utan rubrik';
 
         const meta = document.createElement('div');
-        meta.className = 'notes-card__meta';
+        meta.className = 'note-item__meta';
         meta.textContent = formatNoteMeta(item);
 
+        topRow.appendChild(title);
+        topRow.appendChild(meta);
+
         const text = document.createElement('div');
-        text.className = 'notes-card__body';
+        text.className = 'note-item__body';
         text.textContent = item.body || '';
 
-        card.appendChild(title);
-        card.appendChild(meta);
+        card.appendChild(topRow);
         card.appendChild(text);
         list.appendChild(card);
       });
@@ -3022,7 +3447,7 @@ import { supabase } from './supabase.js?v=5';
       label.textContent = column.name;
       headerInner.appendChild(label);
 
-      if (!isOpenColumn(column) && !isNotesColumn(column)) {
+      if (!isOpenColumn(column) && !isNotesColumn(column) && !isTodoColumn(column)) {
         const badge = createDocumentBadge(tableName, column);
         if (badge) {
           headerInner.appendChild(badge);
@@ -3135,13 +3560,15 @@ import { supabase } from './supabase.js?v=5';
     openSettingsMenu();
   });
 
-  function render() {
+  async function render() {
     const active = getActiveConfig();
     if (!active) return;
 
     const [tableName, tableConfig] = active;
+    ensureLinksButton();
     createNav();
     app.innerHTML = '';
+
     app.appendChild(createTable(tableName, tableConfig));
 
     const draftRow = getCurrentDraftRow();
@@ -3149,12 +3576,14 @@ import { supabase } from './supabase.js?v=5';
 
     if (state.settingsPanelOpen) {
       app.appendChild(createSettingsPanel());
+    } else if (state.linksPanelOpen) {
+      app.appendChild(createLinksPanel());
     } else if (state.archivePanelOpen && tableName !== 'RUTINER') {
       app.appendChild(createArchivePanel());
-    } else if (state.notesPanelOpen) {
-      app.appendChild(createNotesPanel());
     } else if (state.rowTodoPanelOpen) {
       app.appendChild(createRowTodoPanel());
+    } else if (state.notesPanelOpen) {
+      app.appendChild(createNotesPanel());
     } else if (draftRow) {
       app.appendChild(createDetailPanel(tableName, tableConfig, draftRow, { isDraft: true }));
     } else if (row) {
@@ -3166,6 +3595,7 @@ import { supabase } from './supabase.js?v=5';
     tableEntries.map(([tableName, tableConfig]) => loadTableRows(tableName, tableConfig))
   );
   await loadDocumentLinks();
+  await loadLinks();
   if (state.activeTableName) {
     await loadUnreadCountsForTable(state.activeTableName);
   }

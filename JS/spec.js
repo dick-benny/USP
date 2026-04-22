@@ -21,8 +21,17 @@ window.PlanningSpec = (function () {
       dropdown_todo_kategori: { options: ["Allmänt", "Info", "Kontor", "ShopifyB2B", "Shopify B2C", "Sälj/Marknad", "Logistik", "System utv"], filterEnabled: true, filterOptions: ["Alla", "Allmänt", "Info", "Kontor", "ShopifyB2B", "Shopify B2C", "Sälj/Marknad", "Logistik", "System utv"] }
     },
     rowTodoConfig: {
+      "PRE DEV": {
+        categories: ["Alla", "Design-PO", "Sample test", "Utvärdering"]
+      },
+      "UTVECKLING": {
+        categories: ["Alla", "Design-PO", "Sample test", "Stort sample", "Q-test", "Prissättning"]
+      },
       "SÄLJINTRO": {
         categories: ["Alla", "Koll. Q", "PO beslut", "Media", "B2B-ready", "Shopify-ready", "B2B-intro", "Drop"]
+      },
+      "PROJEKT": {
+        categories: ["Alla", "Start", "Aktuell", "Nästa", "Kommande", "Slut"]
       }
     },
     tables: {
@@ -50,9 +59,9 @@ window.PlanningSpec = (function () {
         { name: "PO beslut", field: "po_beslut", type: "status", width: STATUS_WIDTH, statusLabel: "PO Skickad", mods: { align: "center", readonly: false } },
         { name: "Media", field: "media", type: "status", width: STATUS_WIDTH, statusLabel: "FOTO/AI klar", mods: { align: "center", readonly: false } },
         { name: "B2B-ready", field: "b2b_ready", type: "status", width: STATUS_WIDTH, statusLabel: "KLAR", mods: { align: "center", readonly: false } },
-	{ name: "B2B-intro", field: "b2b_intro", type: "veckonummer", width: "10ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "--" },
-        { name: "Shopify-ready", field: "shopify_ready", type: "status", width: STATUS_WIDTH, statusLabel: "KLAR", mods: { align: "center", readonly: false }, default: "gray" },
-       
+        { name: "B2B-intro", field: "b2b_intro", type: "veckonummer", width: "10ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "--" },
+	{ name: "Shopify-ready", field: "shopify_ready", type: "status", width: STATUS_WIDTH, statusLabel: "KLAR", mods: { align: "center", readonly: false }, default: "gray" },
+        
         { name: "Drop", field: "drop_vecka", type: "veckonummer", width: "10ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "--" }
       ]},
       "PROJEKT": { id: "projekt", dbTable: "projekt", title: "PROJEKT", columns: [

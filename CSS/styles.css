@@ -723,18 +723,681 @@ body {
 
 
 /* =========================================================
-   ROW TODO COMPACT UI
+   STATUS RESET
+   One shared status component for ALL tables and ALL status columns.
+   This block must stay at the END of the file so it wins over older rules.
    ========================================================= */
 
-.todo-item {
+.status-column,
+.status-cell {
+  text-align: center !important;
+}
+
+.status-cell {
+  padding: 10px 8px !important;
+}
+
+.status-button {
+  width: 100% !important;
+  min-height: 38px !important;
+  padding: 8px 10px !important;
+  border-radius: 14px !important;
+  border: 1px solid var(--line-strong) !important;
+  background: var(--white) !important;
+  color: var(--text) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  line-height: 1.1 !important;
+  text-align: center !important;
+  cursor: pointer !important;
+  transition: transform 0.14s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease !important;
+  box-shadow: inset 0 -1px 0 rgba(16, 35, 58, 0.03) !important;
+}
+
+.status-button:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 8px 14px rgba(67, 45, 16, 0.08) !important;
+}
+
+.status-button:active {
+  transform: translateY(0) !important;
+}
+
+.status-button:disabled {
+  cursor: default !important;
+  opacity: 0.8 !important;
+}
+
+.status-button__dot {
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 999px !important;
+  flex: 0 0 10px !important;
+  background: currentColor !important;
+  opacity: 0.88 !important;
+}
+
+.status-button__label {
+  display: block !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.status-button--detail {
+  min-height: 42px !important;
+}
+
+.status-button--gray {
+  background: var(--status-gray-bg) !important;
+  border-color: var(--status-gray-line) !important;
+  color: var(--status-gray-text) !important;
+}
+
+.status-button--yellow {
+  background: var(--status-yellow-bg) !important;
+  border-color: var(--status-yellow-line) !important;
+  color: var(--status-yellow-text) !important;
+}
+
+.status-button--green {
+  background: var(--status-green-bg) !important;
+  border-color: var(--status-green-line) !important;
+  color: var(--status-green-text) !important;
+}
+
+.status-button--red {
+  background: var(--status-red-bg) !important;
+  border-color: var(--status-red-line) !important;
+  color: var(--status-red-text) !important;
+}
+
+/* =========================================================
+   RUTINER / PDF remains isolated and separate from status.
+   ========================================================= */
+
+.rutiner-pdf-link {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font: inherit !important;
+  font-size: 14px !important;
+  line-height: 1.35 !important;
+  font-weight: 700 !important;
+  color: #1a5cff !important;
+  text-decoration: underline !important;
+  text-decoration-thickness: 2px !important;
+  text-underline-offset: 2px !important;
+  cursor: pointer !important;
+  display: inline !important;
+  border-radius: 0 !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+}
+
+.rutiner-pdf-link:hover {
+  color: #003ecc !important;
+  text-decoration: underline !important;
+  text-decoration-thickness: 2px !important;
+  opacity: 1 !important;
+}
+
+.rutiner-pdf-link:active {
+  color: #003ecc !important;
+  transform: translateY(1px);
+}
+
+.rutiner-pdf-link:focus,
+.rutiner-pdf-link:focus-visible {
+  outline: 2px solid #1a5cff !important;
+  outline-offset: 2px !important;
+}
+
+.rutiner-pdf-link::after {
+  content: " ↗";
+  font-size: 0.85em;
+}
+
+.rutiner-pdf-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.rutiner-pdf-field__info {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.rutiner-pdf-field__name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rutiner-pdf-field__name--empty {
+  color: var(--muted);
+}
+
+.rutiner-pdf-field__helper {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.rutiner-pdf-field__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (max-width: 920px) {
+  .status-button__label {
+    white-space: normal !important;
+  }
+
+  .rutiner-pdf-field {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .rutiner-pdf-field__actions {
+    width: 100%;
+  }
+
+  .rutiner-pdf-field__actions .secondary-button {
+    width: 100%;
+  }
+}
+
+
+/* =========================================================
+   NOTES UI
+   ========================================================= */
+
+.notes-button {
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--white);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+
+.notes-button:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.notes-panel .side-panel__body {
+  gap: 16px;
+}
+
+.notes-form__body {
+  min-height: 120px;
+  resize: vertical;
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.notes-history__list {
+  display: grid;
+  gap: 12px;
+}
+
+.notes-card {
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.62);
 }
 
+.notes-card__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.notes-card__meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.notes-card__body {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 920px) {
+  .notes-button {
+    width: 100%;
+    border-radius: 14px;
+  }
+}
+
+
+/* =========================================================
+   DOCUMENT LINKS IN COLUMN HEADERS
+   ========================================================= */
+
+.column-header {
+  position: relative;
+  display: block;
+  min-width: 0;
+  padding-right: 18px;
+}
+
+.column-header__label {
+  display: block;
+  min-width: 0;
+}
+
+.doc-link-dot {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #1a5cff;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(26, 92, 255, 0.12);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.doc-link-dot:hover {
+  transform: scale(1.22);
+  box-shadow: 0 0 0 4px rgba(26, 92, 255, 0.14);
+  background: #003ecc;
+}
+
+.doc-link-dot:focus,
+.doc-link-dot:focus-visible {
+  outline: 2px solid rgba(26, 92, 255, 0.35);
+  outline-offset: 2px;
+}
+
+.doc-link-dot:active {
+  transform: scale(1.08);
+}
+
+
+/* =========================================================
+   SETTINGS UI
+   ========================================================= */
+
+.settings-panel .side-panel__body {
+  gap: 16px;
+}
+
+.settings-list__rows {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-list__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.settings-list__info {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.settings-list__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-list__meta {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.settings-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 920px) {
+  .settings-list__row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .settings-list__actions {
+    width: 100%;
+  }
+
+  .settings-list__actions .secondary-button {
+    width: 100%;
+  }
+}
+
+
+/* =========================================================
+   SETTINGS MENU
+   ========================================================= */
+
+.settings-menu {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-menu__card {
+  position: relative;
+  width: 100%;
+  text-align: left;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.58);
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+
+.settings-menu__card:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-strong);
+}
+
+.settings-menu__card.is-disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.settings-menu__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.settings-menu__meta {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.settings-menu__tag {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  min-height: 20px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(26, 92, 255, 0.10);
+  color: #1a5cff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.settings-back-row {
+  display: flex;
+  justify-content: flex-start;
+}
+
+
+
+/* =========================================================
+   DOCUMENT LINK DOT (final tuned v2)
+   ========================================================= */
+
+.column-header {
+  display: inline-block;
+  min-width: 0;
+}
+
+.column-header__label {
+  position: relative;
+  display: inline-block;
+}
+
+.doc-link-dot {
+  position: absolute;
+  top: -5px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #1a5cff;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.doc-link-dot:hover {
+  transform: scale(1.22);
+  box-shadow: 0 0 0 4px rgba(26, 92, 255, 0.16);
+  background: #003ecc;
+}
+
+.doc-link-dot:focus,
+.doc-link-dot:focus-visible {
+  outline: 2px solid rgba(26, 92, 255, 0.35);
+  outline-offset: 2px;
+}
+
+.doc-link-dot:active {
+  transform: scale(1.1);
+}
+
+/* =========================================================
+   AUTH UI
+   ========================================================= */
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+}
+
+.auth-card {
+  width: min(440px, 100%);
+  padding: 28px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+.auth-card__brand {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-submit {
+  width: 100%;
+}
+
+.auth-error {
+  min-height: 18px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.topbar__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.topbar__user-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.55);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 920px) {
+  .topbar__user {
+    width: 100%;
+  }
+
+  .topbar__user-badge,
+  #logoutButton {
+    width: 100%;
+  }
+}
+
+/* =========================================================
+   NOTES UNREAD BADGE
+   ========================================================= */
+
+.notes-button {
+  position: relative;
+}
+
+.notes-button__badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #1a5cff;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--panel);
+}
+
+/* =========================================================
+   TODO MODAL – REFINED UI
+   Additive block only — keeps the original app styling intact
+   ========================================================= */
+
+.side-panel {
+  position: relative;
+}
+
+.todo-modal__heading .side-panel__eyebrow {
+  margin-bottom: 6px;
+}
+
+.todo-modal__heading .side-panel__title {
+  margin-bottom: 4px;
+}
+
+.todo-modal__heading .side-panel__text {
+  max-width: 42ch;
+}
+
+.side-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-right: 28px;
+}
+
+.side-panel__header-actions .secondary-button {
+  min-width: 92px;
+}
+
+.side-panel__close--small {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--muted, #6b7280);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.side-panel__close--small:hover {
+  background: rgba(0, 0, 0, 0.07);
+  color: var(--text, #1f2937);
+}
+
+.todo-modal__textarea {
+  min-height: 148px;
+  resize: vertical;
+}
+
+.todo-item {
+  padding: 12px 14px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+}
+
 .todo-item.is-done {
-  opacity: 0.72;
+  opacity: 0.66;
 }
 
 .todo-item__top {
@@ -745,41 +1408,51 @@ body {
 }
 
 .todo-item__category {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--text);
+  color: var(--text, #1f2937);
+  letter-spacing: 0.01em;
 }
 
 .todo-item__right {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .todo-item__meta {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--muted, #6b7280);
   white-space: nowrap;
 }
 
 .todo-item__actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .todo-item__body {
-  margin-top: 8px;
+  margin-top: 6px;
   font-size: 14px;
-  color: var(--text);
-  line-height: 1.45;
+  line-height: 1.5;
   white-space: pre-wrap;
+  color: var(--text, #1f2937);
 }
 
 @media (max-width: 920px) {
+  .side-panel__header-actions {
+    gap: 6px;
+    padding-right: 24px;
+  }
+
+  .side-panel__header-actions .secondary-button {
+    min-width: 84px;
+  }
+
   .todo-item__top {
     flex-direction: column;
     align-items: flex-start;
@@ -789,13 +1462,277 @@ body {
     width: 100%;
     justify-content: flex-start;
   }
+}
 
-  .todo-item__actions {
-    width: 100%;
-  }
+/* =========================================================
+   NOTES MODAL – REFINED UI
+   Additive block only — keeps the original app styling intact
+   ========================================================= */
 
-  .todo-item__actions .primary-button,
-  .todo-item__actions .secondary-button {
-    width: 100%;
+.note-item {
+  padding: 12px 14px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+}
+
+.note-item + .note-item {
+  margin-top: 10px;
+}
+
+.note-item__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.note-item__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text, #1f2937);
+  letter-spacing: 0.01em;
+}
+
+.note-item__meta {
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  white-space: nowrap;
+}
+
+.note-item__body {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--text, #1f2937);
+}
+
+@media (max-width: 920px) {
+  .note-item__top {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
+
+/* =========================================================
+   TODO + NOTES – SAFE UI EXTENSION (NON-DESTRUCTIVE)
+   ========================================================= */
+
+/* ===== SPACING SYSTEM ===== */
+:root {
+  --space-xs: 6px;
+  --space-sm: 10px;
+  --space-md: 14px;
+  --space-lg: 20px;
+}
+
+/* ===== PANEL BASE ===== */
+.side-panel {
+  position: relative;
+}
+
+/* ===== HEADER ===== */
+.side-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-left: auto;
+  padding-right: 28px;
+}
+
+/* Close button (top right corner) */
+.side-panel__close--small {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.side-panel__close--small:hover {
+  background: rgba(0,0,0,0.08);
+}
+
+/* ===== FORM ===== */
+.notes-form {
+  margin-bottom: var(--space-lg);
+}
+
+/* Consistent spacing between fields */
+.notes-form .detail-field {
+  margin-top: var(--space-md);
+}
+
+.notes-form .detail-field:first-of-type {
+  margin-top: 0;
+}
+
+/* Larger textarea */
+.todo-modal__textarea {
+  min-height: 150px;
+  resize: vertical;
+}
+
+/* ===== TODO LIST ===== */
+.todo-item {
+  padding: var(--space-md);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.6);
+}
+
+.todo-item + .todo-item {
+  margin-top: var(--space-sm);
+}
+
+.todo-item__top {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.todo-item__body {
+  margin-top: var(--space-xs);
+}
+
+/* ===== NOTES LIST ===== */
+.note-item {
+  padding: var(--space-md);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.6);
+}
+
+.note-item + .note-item {
+  margin-top: var(--space-sm);
+}
+
+.note-item__top {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.note-item__body {
+  margin-top: var(--space-xs);
+}
+
+/* ===== LIST CONTAINER ===== */
+.notes-history__list {
+  margin-top: var(--space-md);
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 920px) {
+  .todo-item__top,
+  .note-item__top {
+    flex-direction: column;
+  }
+}
+
+/* =========================================================
+   TOPBAR – ADAPTIVE NAV
+   Keeps table nav on one row with horizontal scroll.
+   LÄNKAR stays before Settings.
+   ========================================================= */
+
+.topbar__inner {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.topbar__brand {
+  flex: 0 0 auto;
+}
+
+.topbar__nav,
+#tableNav {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.topbar__nav::-webkit-scrollbar,
+#tableNav::-webkit-scrollbar {
+  height: 6px;
+}
+
+.topbar__nav::-webkit-scrollbar-thumb,
+#tableNav::-webkit-scrollbar-thumb {
+  background: rgba(16, 35, 58, 0.18);
+  border-radius: 999px;
+}
+
+.topbar__nav .table-nav__link,
+#tableNav .table-nav__link {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.topbar__user {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  margin-left: 0;
+  padding-right: 0;
+}
+
+#linksButton,
+.topbar__settings,
+.topbar__user-badge {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 920px) {
+  .topbar__inner {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .topbar__brand {
+    width: 100%;
+  }
+
+  .topbar__nav,
+  #tableNav {
+    width: 100%;
+    order: 2;
+  }
+
+  .topbar__user {
+    width: 100%;
+    order: 3;
+    justify-content: flex-start;
+  }
+
+  #linksButton,
+  .topbar__settings,
+  .topbar__user-badge {
+    width: auto;
+  }
+}
+
