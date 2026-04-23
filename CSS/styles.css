@@ -1736,3 +1736,30 @@ body {
   }
 }
 
+
+/* =========================================================
+   RUTINER – DOCUMENT COLUMN WIDTH
+   Exact selector for current codebase:
+   the table that contains .rutiner-pdf-link is the RUTINER table,
+   and the document column is the 2nd data column.
+   ========================================================= */
+
+.data-table:has(.rutiner-pdf-link) thead th:nth-child(2),
+.data-table:has(.rutiner-pdf-link) tbody td:nth-child(2) {
+  width: 34ch !important;
+  min-width: 34ch !important;
+  white-space: nowrap !important;
+}
+
+.data-table:has(.rutiner-pdf-link) tbody td:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.data-table:has(.rutiner-pdf-link) .rutiner-pdf-link {
+  display: inline-block !important;
+  max-width: 100%;
+  white-space: nowrap !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

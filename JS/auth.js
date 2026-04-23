@@ -27,7 +27,7 @@ function fillUserUi(user) {
   const badge = document.getElementById('userBadge');
   if (!badge) return;
   badge.textContent = user
-    ? `${user.initials || '??'} · ${user.isAdmin ? 'Admin' : 'User'}`
+    ? `${user.initials || '??'}`
     : '--';
 }
 
