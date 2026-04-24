@@ -1,0 +1,3 @@
+update public.planning_users
+set email = 'ny@email.se'
+where id = 'USER_ID';

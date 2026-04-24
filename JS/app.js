@@ -80,10 +80,81 @@ import { supabase } from './supabase.js?v=5';
     documentLinksList: [],
     linksList: [],
     linksPanelOpen: false,
+    modalTodoRows: [],
   };
 
   function getActiveConfig() {
     return tableEntries.find(([tableName]) => tableName === state.activeTableName) || null;
+  }
+
+  function getTodoSourceOptions() {
+    return [TODO_TABLE, 'PRE DEV', 'UTVECKLING', 'SÄLJINTRO', 'PROJEKT'];
+  }
+
+  function getTableNameByDbTable(dbTable) {
+    const entry = tableEntries.find(([, tableConfig]) => tableConfig.dbTable === dbTable);
+    return entry?.[0] || '';
+  }
+
+  function getRowTitleFromSourceTable(tableName, rowId) {
+    const row = getRowById(tableName, rowId);
+    if (!row) return '';
+    const titleField = getRowTitleField(tableName);
+    return String(row?.[titleField] || '').trim();
+  }
+
+  function getSourceRowOptions(sourceTableName) {
+    if (!sourceTableName || sourceTableName === TODO_TABLE) {
+      return APP_CONFIG.dropdowns?.dropdown_todo_kategori?.filterOptions || ['Alla'];
+    }
+
+    const titleField = getRowTitleField(sourceTableName);
+    const rows = state.rowsByTable[sourceTableName] || [];
+    const names = rows
+      .map((row) => String(row?.[titleField] || '').trim())
+      .filter(Boolean);
+
+    return ['Alla', 'Privat', ...Array.from(new Set(names))];
+  }
+
+  function isVirtualModalTodoRow(row) {
+    return row?.__virtualType === 'modal_todo';
+  }
+
+  function normalizeModalTodoRow(item) {
+    const sourceTableName = getTableNameByDbTable(item.source_table);
+    const rowName = getRowTitleFromSourceTable(sourceTableName, item.source_row_id);
+
+    return {
+      id: `modal-todo-${item.id}`,
+      __virtualType: 'modal_todo',
+      __modalTodoId: item.id,
+      __source_table_name: sourceTableName,
+      __source_row_id: item.source_row_id,
+      __source_row_name: rowName,
+      kategori: item.kategori || 'Alla',
+      beskrivning: item.beskrivning || '',
+      klart_datum: item.is_done ? (item.updated_at || item.created_at || '') : '',
+      is_done: !!item.is_done,
+      created_at: item.created_at || '',
+      created_by: item.created_by || '',
+    };
+  }
+
+  async function loadModalTodoRows() {
+    try {
+      const { data, error } = await supabase
+        .from('planning_row_todos')
+        .select('*')
+        .order('is_done', { ascending: true })
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      state.modalTodoRows = Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn('Could not load modal todos:', err.message);
+      state.modalTodoRows = [];
+    }
   }
 
   function hasRowTodo(tableName) {
@@ -905,6 +976,7 @@ import { supabase } from './supabase.js?v=5';
 
       if (error) throw error;
       state.rowTodosByKey[getRowTodoKey(tableName, rowId)] = Array.isArray(data) ? data : [];
+      await loadModalTodoRows();
     } catch (err) {
       alert(`Kunde inte läsa ToDos: ${err.message}`);
       state.rowTodosByKey[getRowTodoKey(tableName, rowId)] = [];
@@ -1448,6 +1520,12 @@ import { supabase } from './supabase.js?v=5';
           filters[column.field] = 'Alla';
         }
       });
+
+      if (tableName === TODO_TABLE) {
+        filters.__todo_source = TODO_TABLE;
+        filters.__todo_source_row = 'Alla';
+      }
+
       state.filtersByTable[tableName] = filters;
     }
     return state.filtersByTable[tableName];
@@ -1497,6 +1575,13 @@ import { supabase } from './supabase.js?v=5';
         state.rowTodoPanelOpen = false;
         state.rowTodoRowId = null;
         state.settingsPanelOpen = false;
+
+        if (tableName === TODO_TABLE) {
+          const todoFilters = ensureFilters(TODO_TABLE, APP_CONFIG.tables[TODO_TABLE]);
+          todoFilters.__todo_source = TODO_TABLE;
+          todoFilters.__todo_source_row = 'Alla';
+        }
+
         void loadUnreadCountsForTable(tableName);
         render();
       });
@@ -1511,7 +1596,7 @@ import { supabase } from './supabase.js?v=5';
 
     const newButton = document.createElement('button');
     newButton.type = 'button';
-    newButton.className = 'primary-button';
+    newButton.className = 'secondary-button';
     newButton.textContent = '+ Ny rad';
 
     newButton.addEventListener('click', () => {
@@ -1526,7 +1611,7 @@ import { supabase } from './supabase.js?v=5';
         tableName,
         data: normalizeRow(tableName, tableConfig, draft),
       };
-        state.linksPanelOpen = false;
+      state.linksPanelOpen = false;
       state.detailRowId = null;
       state.editingCell = null;
       state.archivePanelOpen = false;
@@ -1557,6 +1642,70 @@ import { supabase } from './supabase.js?v=5';
     wrapper.className = 'filters';
 
     let hasFilters = false;
+
+    if (tableName === TODO_TABLE) {
+      const sourceItem = document.createElement('label');
+      sourceItem.className = 'filter-item';
+
+      const sourceLabel = document.createElement('span');
+      sourceLabel.className = 'filter-item__label';
+      sourceLabel.textContent = 'Källa';
+
+      const sourceSelect = document.createElement('select');
+      sourceSelect.className = 'filter-item__control';
+
+      getTodoSourceOptions().forEach((option) => {
+        const opt = document.createElement('option');
+        opt.value = option;
+        opt.textContent = option;
+        if ((filters.__todo_source || TODO_TABLE) === option) {
+          opt.selected = true;
+        }
+        sourceSelect.appendChild(opt);
+      });
+
+      sourceSelect.addEventListener('change', () => {
+        filters.__todo_source = sourceSelect.value;
+        filters.__todo_source_row = 'Alla';
+        render();
+      });
+
+      sourceItem.appendChild(sourceLabel);
+      sourceItem.appendChild(sourceSelect);
+      wrapper.appendChild(sourceItem);
+      hasFilters = true;
+
+      const rowItem = document.createElement('label');
+      rowItem.className = 'filter-item';
+
+      const rowLabel = document.createElement('span');
+      rowLabel.className = 'filter-item__label';
+      rowLabel.textContent = 'Rad';
+
+      const rowSelect = document.createElement('select');
+      rowSelect.className = 'filter-item__control';
+
+      getSourceRowOptions(filters.__todo_source || TODO_TABLE).forEach((option) => {
+        const opt = document.createElement('option');
+        opt.value = option;
+        opt.textContent = option;
+        if ((filters.__todo_source_row || 'Alla') === option) {
+          opt.selected = true;
+        }
+        rowSelect.appendChild(opt);
+      });
+
+      rowSelect.addEventListener('change', () => {
+        filters.__todo_source_row = rowSelect.value;
+        render();
+      });
+
+      rowItem.appendChild(rowLabel);
+      rowItem.appendChild(rowSelect);
+      wrapper.appendChild(rowItem);
+
+      return wrapper;
+    }
 
     getVisibleColumns(tableConfig).forEach((column) => {
       if (column.type === 'status') return;
@@ -1602,11 +1751,41 @@ import { supabase } from './supabase.js?v=5';
   }
 
   function getFilteredRows(tableName, tableConfig) {
-    const rows = state.rowsByTable[tableName] || [];
     const filters = ensureFilters(tableName, tableConfig);
+
+    if (tableName === TODO_TABLE) {
+      const source = filters.__todo_source || TODO_TABLE;
+      const sourceRow = filters.__todo_source_row || 'Alla';
+
+      if (source === TODO_TABLE) {
+        const rows = state.rowsByTable[tableName] || [];
+        return rows.filter((row) => {
+          if (!sourceRow || sourceRow === 'Alla') return true;
+          return String(row.kategori ?? '') === sourceRow;
+        });
+      }
+
+      let rows = (state.modalTodoRows || [])
+        .filter((item) => getTableNameByDbTable(item.source_table) === source)
+        .map(normalizeModalTodoRow);
+
+      if (sourceRow && sourceRow !== 'Alla') {
+        if (sourceRow === 'Privat') {
+          const currentUser = (window.CurrentUser?.initials || '').trim();
+          rows = rows.filter((row) => String(row.created_by || '') === currentUser);
+        } else {
+          rows = rows.filter((row) => String(row.__source_row_name || '') === sourceRow);
+        }
+      }
+
+      return rows;
+    }
+
+    const rows = state.rowsByTable[tableName] || [];
 
     return rows.filter((row) =>
       Object.entries(filters).every(([field, value]) => {
+        if (field === '__todo_source' || field === '__todo_source_row') return true;
         if (!value || value === 'Alla') return true;
         return String(row[field] ?? '') === value;
       })
@@ -2149,6 +2328,10 @@ import { supabase } from './supabase.js?v=5';
     const wrap = document.createElement('div');
     wrap.className = 'row-actions';
 
+    if (isVirtualModalTodoRow(row)) {
+      return wrap;
+    }
+
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'notes-button';
@@ -2177,6 +2360,10 @@ import { supabase } from './supabase.js?v=5';
   function createOpenButton(row) {
     const wrap = document.createElement('div');
     wrap.className = 'row-actions';
+
+    if (isVirtualModalTodoRow(row)) {
+      return wrap;
+    }
 
     const button = document.createElement('button');
     button.type = 'button';
@@ -2718,34 +2905,39 @@ import { supabase } from './supabase.js?v=5';
         return card;
       };
 
-      menu.appendChild(createCard({
-        title: 'Match kolumn + dok',
-        subtitle: isAdmin() ? 'Öppna dokumentkopplingar' : 'Endast admin',
-        onClick: openSettingsDocumentLinks,
-        disabled: !isAdmin(),
-        adminOnly: true,
-      }));
+      if (isAdmin()) {
+        menu.appendChild(createCard({
+          title: 'Match kolumn + dok',
+          subtitle: 'Öppna dokumentkopplingar',
+          onClick: openSettingsDocumentLinks,
+          disabled: false,
+          adminOnly: true,
+        }));
 
-      menu.appendChild(createCard({
-        title: 'Manage Users',
-        subtitle: isAdmin() ? 'To be continued' : 'To be continued · Endast admin',
-        onClick: () => alert('Manage Users — To be continued'),
-        disabled: !isAdmin(),
-        adminOnly: true,
-      }));
+        menu.appendChild(createCard({
+          title: 'Manage Users',
+          subtitle: 'To be continued',
+          onClick: () => alert('Manage Users — To be continued'),
+          disabled: false,
+          adminOnly: true,
+        }));
 
-      menu.appendChild(createCard({
-        title: 'Manage Links',
-        subtitle: isAdmin() ? 'Hantera länkar' : 'Endast admin',
-        onClick: openSettingsLinks,
-        disabled: !isAdmin(),
-        adminOnly: true,
-      }));
+        menu.appendChild(createCard({
+          title: 'Manage Links',
+          subtitle: 'Hantera länkar',
+          onClick: openSettingsLinks,
+          disabled: false,
+          adminOnly: true,
+        }));
+      }
 
       menu.appendChild(createCard({
         title: 'Logout',
-        subtitle: 'To be continued',
-        onClick: () => alert('Logout — To be continued'),
+        subtitle: 'Logga ut från appen',
+        onClick: async () => {
+          const { signOutUser } = await import('./auth.js?v=5');
+          await signOutUser();
+        },
         disabled: false,
         adminOnly: false,
       }));
@@ -3499,9 +3691,10 @@ import { supabase } from './supabase.js?v=5';
         const cellKey = getCellKey(row, column);
         const isEditing = state.editingCell === cellKey;
         const isSaving = state.savingCell === cellKey;
-        const editableText = isEditableTextColumn(column) && !!row.id && !row.is_done;
-        const editableDropdown = isEditableDropdownColumn(column) && !!row.id && !row.is_done;
-        const statusToggle = isStatusColumn(column) && !!row.id && !row.is_done;
+        const isReadonlyRow = isVirtualModalTodoRow(row);
+        const editableText = isEditableTextColumn(column) && !!row.id && !row.is_done && !isReadonlyRow;
+        const editableDropdown = isEditableDropdownColumn(column) && !!row.id && !row.is_done && !isReadonlyRow;
+        const statusToggle = isStatusColumn(column) && !!row.id && !row.is_done && !isReadonlyRow;
         const editable = editableText || editableDropdown || statusToggle;
 
         if (editable) td.classList.add('is-editable');
@@ -3599,6 +3792,7 @@ import { supabase } from './supabase.js?v=5';
   );
   await loadDocumentLinks();
   await loadLinks();
+  await loadModalTodoRows();
   if (state.activeTableName) {
     await loadUnreadCountsForTable(state.activeTableName);
   }

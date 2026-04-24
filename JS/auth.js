@@ -1,4 +1,4 @@
-import { supabase } from './supabase.js?v=5';
+import { supabase } from './supabase.js';
 
 let currentUser = null;
 let appLoaded = false;

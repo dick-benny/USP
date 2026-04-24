@@ -1,0 +1,22 @@
+insert into public.planning_users (
+  id,
+  email,
+  full_name,
+  initials,
+  role,
+  is_active
+)
+values (
+  '994df433-3cc9-4835-9e99-00b06c6b0a1c',
+  'david@cappelendimyr.com',
+  'David Holm',
+  'DH',
+  'user',
+  true
+)
+on conflict (id) do update set
+  email = excluded.email,
+  full_name = excluded.full_name,
+  initials = excluded.initials,
+  role = excluded.role,
+  is_active = excluded.is_active;

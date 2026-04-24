@@ -7,27 +7,56 @@
   <link rel="stylesheet" href="./CSS/styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar__inner">
-      <div class="topbar__brand" aria-label="Appnamn">
+  <section id="authView" class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-card__brand">
         <span class="topbar__eyebrow">USP workspace</span>
         <strong class="topbar__title">Planning</strong>
       </div>
 
-      <nav id="tableNav" class="table-nav topbar__nav" aria-label="Vyflikar"></nav>
+      <form id="authForm" class="auth-form">
+        <label class="detail-field">
+          <span class="detail-field__label">E-post</span>
+          <input id="authEmail" class="detail-field__control" type="email" autocomplete="email" required />
+        </label>
 
-      <div class="topbar__user">
-          <button id="userBadge" class="topbar__user-badge topbar__settings" type="button" aria-label="Profil och inställningar">DE</button>
-        </div>
+        <label class="detail-field">
+          <span class="detail-field__label">Lösenord</span>
+          <input id="authPassword" class="detail-field__control" type="password" autocomplete="current-password" required />
+        </label>
+
+        <button id="authSubmit" class="primary-button auth-submit" type="submit">Logga in</button>
+        <p id="authError" class="auth-error"></p>
+      </form>
     </div>
-  </header>
+  </section>
 
-  <main class="page">
-    <section id="app" class="view-shell"></section>
-  </main>
+  <section id="appView" hidden>
+    <header class="topbar">
+      <div class="topbar__inner">
+        <div class="topbar__brand" aria-label="Appnamn">
+          <span class="topbar__eyebrow">USP workspace</span>
+          <strong class="topbar__title">Planning</strong>
+        </div>
+
+        <nav id="tableNav" class="table-nav topbar__nav" aria-label="Vyflikar"></nav>
+
+        <div class="topbar__user">
+          <button id="userBadge" class="topbar__user-badge topbar__settings" type="button" aria-label="Profil och inställningar">--</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="page">
+      <section id="app" class="view-shell"></section>
+    </main>
+  </section>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./JS/spec.js"></script>
-  <script type="module" src="./JS/app.js"></script>
+  <script type="module">
+    import { bootstrapAuth } from './JS/auth.js?v=5';
+    bootstrapAuth();
+  </script>
 </body>
 </html>
