@@ -105,7 +105,8 @@ import { supabase } from './supabase.js?v=5';
 
   function getSourceRowOptions(sourceTableName) {
     if (!sourceTableName || sourceTableName === TODO_TABLE) {
-      return APP_CONFIG.dropdowns?.dropdown_todo_kategori?.filterOptions || ['Alla'];
+      const options = APP_CONFIG.dropdowns?.dropdown_todo_kategori?.filterOptions || ['Alla'];
+      return ['Alla', 'Privat', ...options.filter((item) => item !== 'Alla' && item !== 'Privat')];
     }
 
     const titleField = getRowTitleField(sourceTableName);
@@ -162,7 +163,8 @@ import { supabase } from './supabase.js?v=5';
   }
 
   function getRowTodoCategories(tableName) {
-    return APP_CONFIG.rowTodoConfig?.[tableName]?.categories || ['Alla'];
+    const categories = APP_CONFIG.rowTodoConfig?.[tableName]?.categories || ['Alla'];
+    return ['Alla', 'Privat', ...categories.filter((item) => item !== 'Alla' && item !== 'Privat')];
   }
 
   function getVisibleColumns(tableConfig) {
@@ -179,6 +181,24 @@ import { supabase } from './supabase.js?v=5';
 
   function getFieldTypeConfig(typeName) {
     return APP_CONFIG.fieldTypes?.[typeName] || null;
+  }
+
+  function getDropdownConfig(tableName, column) {
+    const dropdown = APP_CONFIG.dropdowns?.[column.type];
+    if (!dropdown) return null;
+
+    if (tableName === TODO_TABLE && column.field === 'kategori') {
+      const options = dropdown.options || [];
+      const filterOptions = dropdown.filterOptions || ['Alla'];
+
+      return {
+        ...dropdown,
+        options: ['Alla', 'Privat', ...options.filter((item) => item !== 'Alla' && item !== 'Privat')],
+        filterOptions: ['Alla', 'Privat', ...filterOptions.filter((item) => item !== 'Alla' && item !== 'Privat')],
+      };
+    }
+
+    return dropdown;
   }
 
   function getAlignment(column) {
@@ -1515,7 +1535,7 @@ import { supabase } from './supabase.js?v=5';
       const filters = {};
       getVisibleColumns(tableConfig).forEach((column) => {
         if (column.type === 'status') return;
-        const dropdown = APP_CONFIG.dropdowns?.[column.type];
+        const dropdown = getDropdownConfig(tableName, column);
         if (dropdown?.filterEnabled) {
           filters[column.field] = 'Alla';
         }
@@ -1709,7 +1729,7 @@ import { supabase } from './supabase.js?v=5';
 
     getVisibleColumns(tableConfig).forEach((column) => {
       if (column.type === 'status') return;
-      const dropdown = APP_CONFIG.dropdowns?.[column.type];
+      const dropdown = getDropdownConfig(tableName, column);
       if (!dropdown?.filterEnabled) return;
       hasFilters = true;
 
@@ -1761,6 +1781,10 @@ import { supabase } from './supabase.js?v=5';
         const rows = state.rowsByTable[tableName] || [];
         return rows.filter((row) => {
           if (!sourceRow || sourceRow === 'Alla') return true;
+          if (sourceRow === 'Privat') {
+            const currentUser = getCurrentUserInitials();
+            return String(row.created_by || '') === currentUser;
+          }
           return String(row.kategori ?? '') === sourceRow;
         });
       }
@@ -1771,7 +1795,7 @@ import { supabase } from './supabase.js?v=5';
 
       if (sourceRow && sourceRow !== 'Alla') {
         if (sourceRow === 'Privat') {
-          const currentUser = (window.CurrentUser?.initials || '').trim();
+          const currentUser = getCurrentUserInitials();
           rows = rows.filter((row) => String(row.created_by || '') === currentUser);
         } else {
           rows = rows.filter((row) => String(row.__source_row_name || '') === sourceRow);
@@ -1797,7 +1821,7 @@ import { supabase } from './supabase.js?v=5';
   }
 
   function isEditableDropdownColumn(column) {
-    const dropdown = APP_CONFIG.dropdowns?.[column.type];
+    const dropdown = getDropdownConfig(state.activeTableName, column);
     return !!dropdown?.options?.length && !isOpenColumn(column);
   }
 
@@ -1848,6 +1872,10 @@ import { supabase } from './supabase.js?v=5';
       payload[column.field] = value;
     });
     payload.is_done = !!draftRow.is_done;
+
+    if (tableName === TODO_TABLE && !payload.created_by) {
+      payload.created_by = getCurrentUserInitials();
+    }
 
     const { data, error } = await supabase
       .from(tableConfig.dbTable)
@@ -2409,7 +2437,7 @@ import { supabase } from './supabase.js?v=5';
   }
 
   function createEditableDropdownControl(tableConfig, row, column) {
-    const dropdown = APP_CONFIG.dropdowns?.[column.type];
+    const dropdown = getDropdownConfig(state.activeTableName, column);
     const select = document.createElement('select');
     select.className = 'cell-editor cell-editor--select';
 
@@ -2570,7 +2598,7 @@ import { supabase } from './supabase.js?v=5';
     label.textContent = column.name;
 
     let control;
-    const dropdown = APP_CONFIG.dropdowns?.[column.type];
+    const dropdown = getDropdownConfig(state.activeTableName, column);
 
     if (isStatusColumn(column)) {
       control = createStatusButton(column, row[column.field], true);
