@@ -38,17 +38,17 @@ window.PlanningSpec = (function () {
       "PRE DEV": { id: "pre_dev", dbTable: "pre_dev", title: "PRE DEV", columns: [
         { name: "Utv idé", field: "utv_ide", type: "text", key: true, width: PRIMARY_TITLE_WIDTH, mods: { align: "left", displayMode: "text", readonly: false } },
         { name: "Kategori", field: "kategori", type: "dropdown_pre_dev_kategori", width: "14ch", mods: { align: "left", displayMode: "select", readonly: false } },
-        { name: "Design-PO", field: "design_po", type: "status", width: STATUS_WIDTH, statusLabel: "Skickad?", mods: { align: "center", readonly: false } },
-        { name: "Sample test", field: "sample_test", type: "status", width: STATUS_WIDTH, statusLabel: "Klar?", mods: { align: "center", readonly: false } },
+        { name: "Design", field: "design_po", type: "status", width: STATUS_WIDTH, statusLabel: "Skickad?", mods: { align: "center", readonly: false } },
+        { name: "Design sample", field: "sample_test", type: "status", width: STATUS_WIDTH, statusLabel: "Klar?", mods: { align: "center", readonly: false } },
         { name: "Utvärdering", field: "utvardering", type: "status", width: STATUS_WIDTH, statusLabel: "Omdöme?", mods: { align: "center", readonly: false } }
       ]},
       "UTVECKLING": { id: "utveckling", dbTable: "utveckling", title: "UTVECKLING", columns: [
-        { name: "Produktidé", field: "produktide", type: "text", key: true, width: PRIMARY_TITLE_WIDTH, mods: { align: "left", displayMode: "text", readonly: false } },
+        { name: "Namn", field: "produktide", type: "text", key: true, width: PRIMARY_TITLE_WIDTH, mods: { align: "left", displayMode: "text", readonly: false } },
         { name: "Kategori", field: "kategori", type: "dropdown_dev_kategori", width: "14ch", mods: { align: "left", displayMode: "select", readonly: false } },
         { name: "Syfte", field: "syfte", type: "dropdown_dev_syfte", width: "14ch", mods: { align: "left", displayMode: "select", readonly: false } },
-        { name: "Design-PO", field: "design_po", type: "status", width: STATUS_WIDTH, statusLabel: "Skickad?", mods: { align: "center", readonly: false } },
-        { name: "Sample test", field: "sample_test", type: "status", width: STATUS_WIDTH, statusLabel: "Klar?", mods: { align: "center", readonly: false } },
-        { name: "Stort sample", field: "stort_sample", type: "status", width: STATUS_WIDTH, statusLabel: "PO skickad?", mods: { align: "center", readonly: false } },
+        { name: "Design", field: "design_po", type: "status", width: STATUS_WIDTH, statusLabel: "Skickad?", mods: { align: "center", readonly: false } },
+        { name: "Design Sample", field: "sample_test", type: "status", width: STATUS_WIDTH, statusLabel: "Klar?", mods: { align: "center", readonly: false } },
+        { name: "Fullsize", field: "stort_sample", type: "status", width: STATUS_WIDTH, statusLabel: "PO skickad?", mods: { align: "center", readonly: false } },
         { name: "Q-test", field: "q_test", type: "status", width: STATUS_WIDTH, statusLabel: "Godkänd?", mods: { align: "center", readonly: false } },
         { name: "Prissättning", field: "prissattning", type: "status", width: STATUS_WIDTH, statusLabel: "Beslutat?", mods: { align: "center", readonly: false } }
       ]},

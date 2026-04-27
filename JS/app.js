@@ -52,6 +52,8 @@ import { supabase } from './supabase.js?v=5';
     archivePanelOpen: false,
     archiveRowsByTable: {},
     archiveLoading: false,
+    archiveContextRow: null,
+    archiveReadOnlyPanel: false,
     notesPanelOpen: false,
     notesRowId: null,
     notesRowsByKey: {},
@@ -105,8 +107,7 @@ import { supabase } from './supabase.js?v=5';
 
   function getSourceRowOptions(sourceTableName) {
     if (!sourceTableName || sourceTableName === TODO_TABLE) {
-      const options = APP_CONFIG.dropdowns?.dropdown_todo_kategori?.filterOptions || ['Alla'];
-      return ['Alla', 'Privat', ...options.filter((item) => item !== 'Alla' && item !== 'Privat')];
+      return APP_CONFIG.dropdowns?.dropdown_todo_kategori?.filterOptions || ['Alla'];
     }
 
     const titleField = getRowTitleField(sourceTableName);
@@ -163,8 +164,7 @@ import { supabase } from './supabase.js?v=5';
   }
 
   function getRowTodoCategories(tableName) {
-    const categories = APP_CONFIG.rowTodoConfig?.[tableName]?.categories || ['Alla'];
-    return ['Alla', 'Privat', ...categories.filter((item) => item !== 'Alla' && item !== 'Privat')];
+    return ['Allmänt'];
   }
 
   function getVisibleColumns(tableConfig) {
@@ -181,24 +181,6 @@ import { supabase } from './supabase.js?v=5';
 
   function getFieldTypeConfig(typeName) {
     return APP_CONFIG.fieldTypes?.[typeName] || null;
-  }
-
-  function getDropdownConfig(tableName, column) {
-    const dropdown = APP_CONFIG.dropdowns?.[column.type];
-    if (!dropdown) return null;
-
-    if (tableName === TODO_TABLE && column.field === 'kategori') {
-      const options = dropdown.options || [];
-      const filterOptions = dropdown.filterOptions || ['Alla'];
-
-      return {
-        ...dropdown,
-        options: ['Alla', 'Privat', ...options.filter((item) => item !== 'Alla' && item !== 'Privat')],
-        filterOptions: ['Alla', 'Privat', ...filterOptions.filter((item) => item !== 'Alla' && item !== 'Privat')],
-      };
-    }
-
-    return dropdown;
   }
 
   function getAlignment(column) {
@@ -313,6 +295,9 @@ import { supabase } from './supabase.js?v=5';
 
   function getCurrentDetailRow() {
     if (!state.activeTableName || !state.detailRowId) return null;
+    if (state.archiveContextRow && String(state.archiveContextRow.id) === String(state.detailRowId)) {
+      return state.archiveContextRow;
+    }
     return getRowById(state.activeTableName, state.detailRowId);
   }
 
@@ -854,6 +839,9 @@ import { supabase } from './supabase.js?v=5';
 
   function getCurrentNotesRow() {
     if (!state.activeTableName || !state.notesRowId) return null;
+    if (state.archiveContextRow && String(state.archiveContextRow.id) === String(state.notesRowId)) {
+      return state.archiveContextRow;
+    }
     return getRowById(state.activeTableName, state.notesRowId);
   }
 
@@ -893,6 +881,8 @@ import { supabase } from './supabase.js?v=5';
 
   function openNotesPanel(row) {
     if (!row?.id) return;
+    state.archiveContextRow = null;
+    state.archiveReadOnlyPanel = false;
     state.linksPanelOpen = false;
     state.notesPanelOpen = true;
     state.notesRowId = row.id;
@@ -908,11 +898,14 @@ import { supabase } from './supabase.js?v=5';
   function closeNotesPanel() {
     state.notesPanelOpen = false;
     state.notesRowId = null;
+    state.archiveContextRow = null;
+    state.archiveReadOnlyPanel = false;
     resetNotesDraft();
     render();
   }
 
   async function saveNoteForCurrentRow() {
+    if (state.archiveReadOnlyPanel) return;
     const row = getCurrentNotesRow();
     if (!row) return;
     const title = String(state.notesDraft.title || '').trim();
@@ -966,13 +959,15 @@ import { supabase } from './supabase.js?v=5';
 
   function getCurrentRowTodoRow() {
     if (!state.activeTableName || !state.rowTodoRowId) return null;
+    if (state.archiveContextRow && String(state.archiveContextRow.id) === String(state.rowTodoRowId)) {
+      return state.archiveContextRow;
+    }
     return getRowById(state.activeTableName, state.rowTodoRowId);
   }
 
   function resetRowTodoDraft(tableName) {
-    const categories = getRowTodoCategories(tableName);
     state.rowTodoDraft = {
-      kategori: categories[0] || 'Alla',
+      kategori: 'Allmänt',
       beskrivning: '',
     };
   }
@@ -1008,6 +1003,8 @@ import { supabase } from './supabase.js?v=5';
 
   function openRowTodoPanel(row) {
     if (!row?.id || !hasRowTodo(state.activeTableName)) return;
+    state.archiveContextRow = null;
+    state.archiveReadOnlyPanel = false;
     state.linksPanelOpen = false;
     state.rowTodoPanelOpen = true;
     state.rowTodoRowId = row.id;
@@ -1025,15 +1022,18 @@ import { supabase } from './supabase.js?v=5';
   function closeRowTodoPanel() {
     state.rowTodoPanelOpen = false;
     state.rowTodoRowId = null;
+    state.archiveContextRow = null;
+    state.archiveReadOnlyPanel = false;
     resetRowTodoDraft(state.activeTableName);
     render();
   }
 
   async function saveRowTodoForCurrentRow() {
+    if (state.archiveReadOnlyPanel) return;
     const row = getCurrentRowTodoRow();
     if (!row) return;
 
-    const kategori = String(state.rowTodoDraft.kategori || 'Alla').trim() || 'Alla';
+    const kategori = 'Allmänt';
     const beskrivning = String(state.rowTodoDraft.beskrivning || '').trim();
 
     if (!beskrivning) {
@@ -1072,6 +1072,7 @@ import { supabase } from './supabase.js?v=5';
   }
 
   async function toggleRowTodoDone(item) {
+    if (state.archiveReadOnlyPanel) return;
     state.rowTodoLoading = true;
     render();
 
@@ -1093,6 +1094,7 @@ import { supabase } from './supabase.js?v=5';
   }
 
   async function deleteRowTodo(item) {
+    if (state.archiveReadOnlyPanel) return;
     const confirmed = window.confirm('Ta bort denna ToDo?');
     if (!confirmed) return;
 
@@ -1140,13 +1142,10 @@ import { supabase } from './supabase.js?v=5';
     const row = getCurrentRowTodoRow();
     const rowKey = row ? getRowTodoKey(tableName, row.id) : '';
     const todos = state.rowTodosByKey[rowKey] || [];
+    const isArchiveReadOnly = !!state.archiveReadOnlyPanel;
     const titleField = getRowTitleField(tableName);
     const rowTitle = row ? (row[titleField] || 'Rad') : 'Rad';
-    const categories = getRowTodoCategories(tableName);
-    const selectedCategory = String(state.rowTodoDraft.kategori || 'Alla');
-    const filteredTodos = selectedCategory === 'Alla'
-      ? todos
-      : todos.filter((item) => String(item.kategori || '') === selectedCategory);
+    const filteredTodos = todos;
 
     const overlay = document.createElement('div');
     overlay.className = 'overlay-modal';
@@ -1165,7 +1164,7 @@ import { supabase } from './supabase.js?v=5';
     heading.innerHTML = `
       <p class="side-panel__eyebrow">${tableName}</p>
       <h2 class="side-panel__title">ToDo</h2>
-      <p class="side-panel__text">${rowTitle}</p>
+      <p class="side-panel__text">${isArchiveReadOnly ? `${rowTitle} · Arkiv · read-only` : rowTitle}</p>
     `;
 
     const headerActions = document.createElement('div');
@@ -1197,11 +1196,13 @@ import { supabase } from './supabase.js?v=5';
     closeButton.title = 'Stäng';
     closeButton.addEventListener('click', closeRowTodoPanel);
 
-    headerActions.appendChild(cancelButtonTop);
-    headerActions.appendChild(saveButtonTop);
+    if (!isArchiveReadOnly) {
+      headerActions.appendChild(cancelButtonTop);
+      headerActions.appendChild(saveButtonTop);
+      header.appendChild(headerActions);
+    }
 
     header.appendChild(heading);
-    header.appendChild(headerActions);
     header.appendChild(closeButton);
 
     const body = document.createElement('div');
@@ -1213,27 +1214,6 @@ import { supabase } from './supabase.js?v=5';
     const formTitle = document.createElement('h3');
     formTitle.className = 'detail-card__title';
     formTitle.textContent = 'Ny ToDo';
-
-    const categoryLabel = document.createElement('label');
-    categoryLabel.className = 'detail-field';
-    const categorySpan = document.createElement('span');
-    categorySpan.className = 'detail-field__label';
-    categorySpan.textContent = 'Kategori';
-    const categorySelect = document.createElement('select');
-    categorySelect.className = 'detail-field__control';
-    categories.forEach((value) => {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = value;
-      if ((state.rowTodoDraft.kategori || 'Alla') === value) option.selected = true;
-      categorySelect.appendChild(option);
-    });
-    categorySelect.addEventListener('change', () => {
-      state.rowTodoDraft.kategori = categorySelect.value;
-      render();
-    });
-    categoryLabel.appendChild(categorySpan);
-    categoryLabel.appendChild(categorySelect);
 
     const bodyLabel = document.createElement('label');
     bodyLabel.className = 'detail-field';
@@ -1251,7 +1231,6 @@ import { supabase } from './supabase.js?v=5';
     bodyLabel.appendChild(bodyInput);
 
     formCard.appendChild(formTitle);
-    formCard.appendChild(categoryLabel);
     formCard.appendChild(bodyLabel);
 
     const historyCard = document.createElement('section');
@@ -1271,7 +1250,7 @@ import { supabase } from './supabase.js?v=5';
     } else if (!filteredTodos.length) {
       const empty = document.createElement('p');
       empty.className = 'empty-state';
-      empty.textContent = selectedCategory === 'Alla' ? 'Inga ToDos ännu.' : 'Inga ToDos i vald kategori.';
+      empty.textContent = 'Inga ToDos ännu.';
       historyCard.appendChild(empty);
     } else {
       const list = document.createElement('div');
@@ -1282,21 +1261,18 @@ import { supabase } from './supabase.js?v=5';
         card.className = `todo-item${item.is_done ? ' is-done' : ''}`;
 
         const topRow = document.createElement('div');
-        topRow.className = 'todo-item__top';
+        topRow.className = 'todo-row-line';
 
         const title = document.createElement('div');
-        title.className = 'todo-item__category';
-        title.textContent = item.kategori || 'Alla';
-
-        const rightGroup = document.createElement('div');
-        rightGroup.className = 'todo-item__right';
+        title.className = 'todo-row-line__title';
+        title.textContent = 'Allmänt';
 
         const meta = document.createElement('div');
-        meta.className = 'todo-item__meta';
+        meta.className = 'todo-row-line__date';
         meta.textContent = `${formatDateTimeValue(item.created_at)}${item.created_by ? ` · ${item.created_by}` : ''}`;
 
         const actions = document.createElement('div');
-        actions.className = 'todo-item__actions';
+        actions.className = 'todo-row-line__actions';
 
         const doneButton = document.createElement('button');
         doneButton.type = 'button';
@@ -1314,13 +1290,16 @@ import { supabase } from './supabase.js?v=5';
           await deleteRowTodo(item);
         });
 
-        actions.appendChild(doneButton);
-        actions.appendChild(deleteButton);
-        rightGroup.appendChild(meta);
-        rightGroup.appendChild(actions);
+        if (!isArchiveReadOnly) {
+          actions.appendChild(doneButton);
+          actions.appendChild(deleteButton);
+        }
 
         topRow.appendChild(title);
-        topRow.appendChild(rightGroup);
+        topRow.appendChild(meta);
+        if (!isArchiveReadOnly) {
+          topRow.appendChild(actions);
+        }
 
         const text = document.createElement('div');
         text.className = 'todo-item__body';
@@ -1335,7 +1314,9 @@ import { supabase } from './supabase.js?v=5';
       historyCard.appendChild(list);
     }
 
-    body.appendChild(formCard);
+    if (!isArchiveReadOnly) {
+      body.appendChild(formCard);
+    }
     body.appendChild(historyCard);
 
     dialog.appendChild(header);
@@ -1535,7 +1516,7 @@ import { supabase } from './supabase.js?v=5';
       const filters = {};
       getVisibleColumns(tableConfig).forEach((column) => {
         if (column.type === 'status') return;
-        const dropdown = getDropdownConfig(tableName, column);
+        const dropdown = APP_CONFIG.dropdowns?.[column.type];
         if (dropdown?.filterEnabled) {
           filters[column.field] = 'Alla';
         }
@@ -1595,6 +1576,8 @@ import { supabase } from './supabase.js?v=5';
         state.rowTodoPanelOpen = false;
         state.rowTodoRowId = null;
         state.settingsPanelOpen = false;
+        state.archiveContextRow = null;
+        state.archiveReadOnlyPanel = false;
 
         if (tableName === TODO_TABLE) {
           const todoFilters = ensureFilters(TODO_TABLE, APP_CONFIG.tables[TODO_TABLE]);
@@ -1729,7 +1712,7 @@ import { supabase } from './supabase.js?v=5';
 
     getVisibleColumns(tableConfig).forEach((column) => {
       if (column.type === 'status') return;
-      const dropdown = getDropdownConfig(tableName, column);
+      const dropdown = APP_CONFIG.dropdowns?.[column.type];
       if (!dropdown?.filterEnabled) return;
       hasFilters = true;
 
@@ -1781,10 +1764,6 @@ import { supabase } from './supabase.js?v=5';
         const rows = state.rowsByTable[tableName] || [];
         return rows.filter((row) => {
           if (!sourceRow || sourceRow === 'Alla') return true;
-          if (sourceRow === 'Privat') {
-            const currentUser = getCurrentUserInitials();
-            return String(row.created_by || '') === currentUser;
-          }
           return String(row.kategori ?? '') === sourceRow;
         });
       }
@@ -1795,7 +1774,7 @@ import { supabase } from './supabase.js?v=5';
 
       if (sourceRow && sourceRow !== 'Alla') {
         if (sourceRow === 'Privat') {
-          const currentUser = getCurrentUserInitials();
+          const currentUser = (window.CurrentUser?.initials || '').trim();
           rows = rows.filter((row) => String(row.created_by || '') === currentUser);
         } else {
           rows = rows.filter((row) => String(row.__source_row_name || '') === sourceRow);
@@ -1821,7 +1800,7 @@ import { supabase } from './supabase.js?v=5';
   }
 
   function isEditableDropdownColumn(column) {
-    const dropdown = getDropdownConfig(state.activeTableName, column);
+    const dropdown = APP_CONFIG.dropdowns?.[column.type];
     return !!dropdown?.options?.length && !isOpenColumn(column);
   }
 
@@ -1839,6 +1818,8 @@ import { supabase } from './supabase.js?v=5';
 
   function openDetailPanel(row) {
     if (!row?.id) return;
+    state.archiveContextRow = null;
+    state.archiveReadOnlyPanel = false;
     state.linksPanelOpen = false;
     state.detailRowId = row.id;
     state.editingCell = null;
@@ -1854,6 +1835,8 @@ import { supabase } from './supabase.js?v=5';
   function closeDetailPanel() {
     state.detailRowId = null;
     state.newRowDraft = null;
+    state.archiveContextRow = null;
+    state.archiveReadOnlyPanel = false;
     render();
   }
 
@@ -1872,10 +1855,6 @@ import { supabase } from './supabase.js?v=5';
       payload[column.field] = value;
     });
     payload.is_done = !!draftRow.is_done;
-
-    if (tableName === TODO_TABLE && !payload.created_by) {
-      payload.created_by = getCurrentUserInitials();
-    }
 
     const { data, error } = await supabase
       .from(tableConfig.dbTable)
@@ -2437,7 +2416,7 @@ import { supabase } from './supabase.js?v=5';
   }
 
   function createEditableDropdownControl(tableConfig, row, column) {
-    const dropdown = getDropdownConfig(state.activeTableName, column);
+    const dropdown = APP_CONFIG.dropdowns?.[column.type];
     const select = document.createElement('select');
     select.className = 'cell-editor cell-editor--select';
 
@@ -2585,6 +2564,7 @@ import { supabase } from './supabase.js?v=5';
 
   function createDetailField(tableConfig, row, column, options = {}) {
     const isDraft = !!options.isDraft;
+    const isArchiveReadOnly = !!state.archiveReadOnlyPanel;
 
     if (isPdfColumn(column)) {
       return createPdfDetailField(tableConfig, row, column, { isDraft });
@@ -2598,7 +2578,7 @@ import { supabase } from './supabase.js?v=5';
     label.textContent = column.name;
 
     let control;
-    const dropdown = getDropdownConfig(state.activeTableName, column);
+    const dropdown = APP_CONFIG.dropdowns?.[column.type];
 
     if (isStatusColumn(column)) {
       control = createStatusButton(column, row[column.field], true);
@@ -2681,6 +2661,10 @@ import { supabase } from './supabase.js?v=5';
       }
     }
 
+    if (isArchiveReadOnly && control) {
+      control.disabled = true;
+    }
+
     field.appendChild(label);
     field.appendChild(control);
     return field;
@@ -2755,6 +2739,35 @@ import { supabase } from './supabase.js?v=5';
     return `Skapade ny rad i ${targetTable}${targetRowId ? ` (#${targetRowId})` : ''}`;
   }
 
+  function getArchiveRowFromItem(tableName, item) {
+    const payload = item?.payload_json || {};
+    const rowId = item?.source_row_id || payload.id || item?.row_id || item?.id;
+    return {
+      ...payload,
+      id: rowId,
+      is_archived: true,
+      archived_at: item?.archived_at || '',
+      archive_reason: item?.archive_reason || '',
+    };
+  }
+
+  function openArchiveDetailPanel(item) {
+    const row = getArchiveRowFromItem(state.activeTableName, item);
+    if (!row?.id) return;
+
+    state.archiveContextRow = row;
+    state.archiveReadOnlyPanel = true;
+    state.detailRowId = row.id;
+    state.newRowDraft = null;
+    state.notesPanelOpen = false;
+    state.notesRowId = null;
+    state.rowTodoPanelOpen = false;
+    state.rowTodoRowId = null;
+    state.settingsPanelOpen = false;
+    state.linksPanelOpen = false;
+    render();
+  }
+
   function createArchivePanel() {
     const tableName = state.activeTableName;
     const rows = state.archiveRowsByTable[tableName] || [];
@@ -2814,32 +2827,30 @@ import { supabase } from './supabase.js?v=5';
         title.className = 'detail-card__title';
         title.textContent = payload[titleField] || 'Arkiverad rad';
 
-        const archived = document.createElement('p');
-        archived.className = 'detail-card__text';
-        archived.textContent = `Arkiverad: ${formatDateTimeValue(item.archived_at)}`;
+        const archived = document.createElement('span');
+        archived.className = 'archive-row-line__date';
+        archived.textContent = formatDateTimeValue(item.archived_at);
 
-        const reason = document.createElement('p');
-        reason.className = 'detail-card__text';
-        reason.textContent = `Typ: ${item.archive_reason || 'archived'}`;
+        const archiveActions = document.createElement('div');
+        archiveActions.className = 'archive-row-line__actions';
 
-        card.appendChild(title);
-        card.appendChild(archived);
-        card.appendChild(reason);
+        const openButton = document.createElement('button');
+        openButton.type = 'button';
+        openButton.className = 'secondary-button';
+        openButton.textContent = 'Öppna';
+        openButton.addEventListener('click', () => openArchiveDetailPanel(item));
 
-        const transitionText = getArchiveTransitionText(item);
-        if (transitionText) {
-          const transition = document.createElement('p');
-          transition.className = 'detail-card__text';
-          transition.textContent = transitionText;
-          card.appendChild(transition);
-        }
+        archiveActions.appendChild(openButton);
 
-        if (tableName === 'TODO' && item.week_key) {
-          const week = document.createElement('p');
-          week.className = 'detail-card__text';
-          week.textContent = `Vecka: ${item.week_key}`;
-          card.appendChild(week);
-        }
+        const rowLine = document.createElement('div');
+        rowLine.className = 'archive-row-line';
+
+        title.className = 'archive-row-line__title';
+
+        rowLine.appendChild(title);
+        rowLine.appendChild(archived);
+        rowLine.appendChild(archiveActions);
+        card.appendChild(rowLine);
 
         list.appendChild(card);
       });
@@ -3342,6 +3353,7 @@ import { supabase } from './supabase.js?v=5';
     const row = getCurrentNotesRow();
     const rowKey = row ? getNotesRowKey(tableName, row.id) : '';
     const notes = state.notesRowsByKey[rowKey] || [];
+    const isArchiveReadOnly = !!state.archiveReadOnlyPanel;
     const titleField = getRowTitleField(tableName);
     const rowTitle = row ? (row[titleField] || 'Rad') : 'Rad';
 
@@ -3362,7 +3374,7 @@ import { supabase } from './supabase.js?v=5';
     heading.innerHTML = `
       <p class="side-panel__eyebrow">${tableName}</p>
       <h2 class="side-panel__title">Notes</h2>
-      <p class="side-panel__text">${rowTitle}</p>
+      <p class="side-panel__text">${isArchiveReadOnly ? `${rowTitle} · Arkiv · read-only` : rowTitle}</p>
     `;
 
     const headerActions = document.createElement('div');
@@ -3394,11 +3406,13 @@ import { supabase } from './supabase.js?v=5';
     closeButton.title = 'Stäng';
     closeButton.addEventListener('click', closeNotesPanel);
 
-    headerActions.appendChild(cancelButtonTop);
-    headerActions.appendChild(saveButtonTop);
+    if (!isArchiveReadOnly) {
+      headerActions.appendChild(cancelButtonTop);
+      headerActions.appendChild(saveButtonTop);
+      header.appendChild(headerActions);
+    }
 
     header.appendChild(heading);
-    header.appendChild(headerActions);
     header.appendChild(closeButton);
 
     const body = document.createElement('div');
@@ -3498,7 +3512,9 @@ import { supabase } from './supabase.js?v=5';
       historyCard.appendChild(list);
     }
 
-    body.appendChild(formCard);
+    if (!isArchiveReadOnly) {
+      body.appendChild(formCard);
+    }
     body.appendChild(historyCard);
 
     dialog.appendChild(header);
@@ -3528,7 +3544,7 @@ import { supabase } from './supabase.js?v=5';
     heading.innerHTML = `
       <p class="side-panel__eyebrow">${tableName}</p>
       <h2 class="side-panel__title">${isDraft ? 'Ny rad' : 'Radöversikt'}</h2>
-      <p class="side-panel__text">${isDraft ? 'Fyll i fälten nedan och välj Spara eller Avbryt.' : 'Redigera fälten nedan eller välj åtgärd.'}</p>
+      <p class="side-panel__text">${isDraft ? 'Fyll i fälten nedan och välj Spara eller Avbryt.' : (state.archiveReadOnlyPanel ? 'Arkiverad rad · read-only. Notes och ToDo finns i övre högra hörnet.' : 'Redigera fälten nedan eller välj åtgärd.')}</p>
     `;
 
     const headerActions = document.createElement('div');
@@ -3552,6 +3568,40 @@ import { supabase } from './supabase.js?v=5';
 
       headerActions.appendChild(cancelButton);
       headerActions.appendChild(saveButton);
+    } else if (state.archiveReadOnlyPanel) {
+      const notesButton = document.createElement('button');
+      notesButton.type = 'button';
+      notesButton.className = 'secondary-button';
+      notesButton.textContent = 'Notes';
+      notesButton.addEventListener('click', () => {
+        state.notesPanelOpen = true;
+        state.notesRowId = row.id;
+        state.rowTodoPanelOpen = false;
+        state.rowTodoRowId = null;
+        state.detailRowId = null;
+        resetNotesDraft();
+        void loadNotesForRow(tableName, row.id);
+        render();
+      });
+      headerActions.appendChild(notesButton);
+
+      if (hasRowTodo(tableName)) {
+        const todoButton = document.createElement('button');
+        todoButton.type = 'button';
+        todoButton.className = 'secondary-button';
+        todoButton.textContent = 'ToDo';
+        todoButton.addEventListener('click', () => {
+          state.rowTodoPanelOpen = true;
+          state.rowTodoRowId = row.id;
+          state.notesPanelOpen = false;
+          state.notesRowId = null;
+          state.detailRowId = null;
+          resetRowTodoDraft(tableName);
+          void loadRowTodosForRow(tableName, row.id);
+          render();
+        });
+        headerActions.appendChild(todoButton);
+      }
     } else {
       const actions = getActionConfig(tableName);
 
@@ -3719,7 +3769,7 @@ import { supabase } from './supabase.js?v=5';
         const cellKey = getCellKey(row, column);
         const isEditing = state.editingCell === cellKey;
         const isSaving = state.savingCell === cellKey;
-        const isReadonlyRow = isVirtualModalTodoRow(row);
+        const isReadonlyRow = isVirtualModalTodoRow(row) || !!row.is_archived;
         const editableText = isEditableTextColumn(column) && !!row.id && !row.is_done && !isReadonlyRow;
         const editableDropdown = isEditableDropdownColumn(column) && !!row.id && !row.is_done && !isReadonlyRow;
         const statusToggle = isStatusColumn(column) && !!row.id && !row.is_done && !isReadonlyRow;
@@ -3804,6 +3854,14 @@ import { supabase } from './supabase.js?v=5';
       app.appendChild(createLinksPanel());
     } else if (state.archivePanelOpen && tableName !== 'RUTINER') {
       app.appendChild(createArchivePanel());
+
+      if (state.rowTodoPanelOpen) {
+        app.appendChild(createRowTodoPanel());
+      } else if (state.notesPanelOpen) {
+        app.appendChild(createNotesPanel());
+      } else if (row) {
+        app.appendChild(createDetailPanel(tableName, tableConfig, row));
+      }
     } else if (state.rowTodoPanelOpen) {
       app.appendChild(createRowTodoPanel());
     } else if (state.notesPanelOpen) {
