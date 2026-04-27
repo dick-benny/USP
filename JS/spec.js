@@ -14,7 +14,7 @@ window.PlanningSpec = (function () {
     },
     dropdowns: {
       dropdown_product_kategori: { options: ["matta", "colonnade", "tapestry", "SoftAss", "packaging"], filterEnabled: true, filterOptions: ["Alla", "matta", "colonnade", "tapestry", "SoftAss", "packaging"] },
-      dropdown_project_kategori: { options: ["volymprojekt", "Shopifyprojekt", "samarbetsprojekt", "kundprojekt"], filterEnabled: true, filterOptions: ["Alla", "volymprojekt", "Shopifyprojekt", "samarbetsprojekt", "kundprojekt"] },
+      dropdown_project_kategori: { options: ["volymprojekt", "Shopifyprojekt", "samarbetsprojekt", "kundprojekt", "Säljintro"], filterEnabled: true, filterOptions: ["Alla", "volymprojekt", "Shopifyprojekt", "samarbetsprojekt", "kundprojekt", "Säljintro"] },
       dropdown_dev_kategori: { options: ["matta", "colonnade", "tapestry", "softAss", "packaging"], filterEnabled: true, filterOptions: ["Alla", "matta", "colonnade", "tapestry", "softAss", "packaging"] },
       dropdown_dev_syfte: { options: ["kund", "samarbete", "produkt"], filterEnabled: true, filterOptions: ["Alla", "kund", "samarbete", "produkt"] },
       dropdown_pre_dev_kategori: { options: ["färg", "kvalitet", "garn"], filterEnabled: true, filterOptions: ["Alla", "färg", "kvalitet", "garn"] },

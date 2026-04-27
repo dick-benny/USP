@@ -1738,98 +1738,45 @@ body {
 
 
 /* =========================================================
-   RUTINER – DOCUMENT COLUMN WIDTH
-   Exact selector for current codebase:
-   the table that contains .rutiner-pdf-link is the RUTINER table,
-   and the document column is the 2nd data column.
+   MODAL HEADER ALIGNMENT – Notes / ToDo
+   Keeps headings on the left and actions on the right.
+   Additive final override.
    ========================================================= */
 
-.data-table:has(.rutiner-pdf-link) thead th:nth-child(2),
-.data-table:has(.rutiner-pdf-link) tbody td:nth-child(2) {
-  width: 34ch !important;
-  min-width: 34ch !important;
-  white-space: nowrap !important;
+.notes-panel .side-panel__header {
+  position: relative;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: flex-start !important;
+  gap: 16px !important;
 }
 
-.data-table:has(.rutiner-pdf-link) tbody td:nth-child(2) {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.notes-panel .todo-modal__heading {
+  order: 1 !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  text-align: left !important;
 }
 
-.data-table:has(.rutiner-pdf-link) .rutiner-pdf-link {
-  display: inline-block !important;
-  max-width: 100%;
-  white-space: nowrap !important;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.notes-panel .side-panel__header-actions {
+  order: 2 !important;
+  margin-left: auto !important;
+  padding-right: 28px !important;
+  flex: 0 0 auto !important;
 }
 
-/* =========================================================
-   ARCHIVE + TODO COMPACT ROWS
-   ========================================================= */
-
-.archive-row-line,
-.todo-row-line {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  width: 100%;
-}
-
-.archive-row-line__title,
-.todo-row-line__title {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.archive-row-line__date,
-.todo-row-line__date {
-  color: var(--muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.archive-row-line__actions,
-.todo-row-line__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-
-.archive-item__actions {
-  padding: 0;
-}
-
-.todo-item__body {
-  margin-top: 8px;
+.notes-panel .side-panel__close--small {
+  order: 3 !important;
 }
 
 @media (max-width: 920px) {
-  .archive-row-line,
-  .todo-row-line {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
+  .notes-panel .side-panel__header {
+    align-items: flex-start !important;
   }
 
-  .archive-row-line__actions,
-  .todo-row-line__actions {
+  .notes-panel .side-panel__header-actions {
     width: 100%;
-    margin-left: 0;
-  }
-
-  .archive-row-line__actions .secondary-button,
-  .todo-row-line__actions .secondary-button,
-  .todo-row-line__actions .primary-button {
-    width: 100%;
+    margin-left: 0 !important;
+    padding-right: 24px !important;
   }
 }

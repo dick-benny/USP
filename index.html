@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>USP Planning</title>
-  <link rel="stylesheet" href="./CSS/styles.css" />
+  <link rel="stylesheet" href="./CSS/styles.css?v=5" />
 </head>
 <body>
   <section id="authView" class="auth-shell">
     <div class="auth-card">
       <div class="auth-card__brand">
-        <span class="topbar__eyebrow">USP workspace</span>
+        <span class="topbar__eyebrow">TODO</span>
         <strong class="topbar__title">Planning</strong>
       </div>
 
@@ -26,23 +26,23 @@
         </label>
 
         <button id="authSubmit" class="primary-button auth-submit" type="submit">Logga in</button>
-        <p id="authError" class="auth-error"></p>
+        <p id="authError" class="auth-error" aria-live="polite"></p>
       </form>
     </div>
   </section>
 
-  <section id="appView" hidden>
+  <div id="appView" hidden style="display:none;">
     <header class="topbar">
       <div class="topbar__inner">
         <div class="topbar__brand" aria-label="Appnamn">
-          <span class="topbar__eyebrow">USP workspace</span>
+          <span class="topbar__eyebrow">TODO</span>
           <strong class="topbar__title">Planning</strong>
         </div>
-
         <nav id="tableNav" class="table-nav topbar__nav" aria-label="Vyflikar"></nav>
-
         <div class="topbar__user">
-          <button id="userBadge" class="topbar__user-badge topbar__settings" type="button" aria-label="Profil och inställningar">--</button>
+          <span id="userBadge" class="topbar__user-badge">--</span>
+          <button id="settingsButton" class="topbar__settings" type="button">SETTINGS</button>
+          <button id="logoutButton" class="secondary-button" type="button">LOGOUT</button>
         </div>
       </div>
     </header>
@@ -50,13 +50,12 @@
     <main class="page">
       <section id="app" class="view-shell"></section>
     </main>
-  </section>
+  </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./JS/spec.js"></script>
+  <script src="./JS/spec.js?v=5"></script>
   <script type="module">
     import { bootstrapAuth } from './JS/auth.js?v=5';
-    bootstrapAuth();
+    await bootstrapAuth();
   </script>
 </body>
 </html>

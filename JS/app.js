@@ -1840,6 +1840,45 @@ import { supabase } from './supabase.js?v=5';
     render();
   }
 
+  async function createSaljintroProjects(saljintroRow) {
+    const produkt = String(saljintroRow?.produkt || '').trim();
+    if (!produkt) return;
+
+    const projektEntry = tableEntries.find(([name]) => name === 'PROJEKT');
+    if (!projektEntry) return;
+
+    const [, projektConfig] = projektEntry;
+    const projectNames = ['Media', 'B2B-ready', 'Shopify-ready'];
+
+    const payload = projectNames.map((name) => ({
+      projektnamn: `${produkt} - ${name}`,
+      kategori: 'Säljintro',
+      start_datum: '',
+      aktuell: '',
+      nasta: '',
+      kommande: '',
+      slut_datum: '',
+      is_done: false,
+    }));
+
+    const { data, error } = await supabase
+      .from(projektConfig.dbTable)
+      .insert(payload)
+      .select('*');
+
+    if (error) {
+      throw new Error(error.message || 'Kunde inte skapa projekt för Säljintro.');
+    }
+
+    const normalizedProjects = (Array.isArray(data) ? data : [])
+      .map((row) => normalizeRow('PROJEKT', projektConfig, row));
+
+    state.rowsByTable['PROJEKT'] = [
+      ...normalizedProjects,
+      ...(state.rowsByTable['PROJEKT'] || []),
+    ];
+  }
+
   async function saveNewRow(tableName, tableConfig, draftRow) {
     if (!draftRow) return;
 
@@ -1897,6 +1936,14 @@ import { supabase } from './supabase.js?v=5';
       state.detailRowId = finalRow.id || null;
       render();
       return;
+    }
+
+    try {
+      if (tableName === 'SÄLJINTRO') {
+        await createSaljintroProjects(finalRow);
+      }
+    } catch (err) {
+      alert(`Raden skapades, men projekt kunde inte skapas automatiskt: ${err.message}`);
     }
 
     state.savingCell = null;
