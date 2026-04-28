@@ -18,7 +18,7 @@ window.PlanningSpec = (function () {
       dropdown_dev_kategori: { options: ["matta", "colonnade", "tapestry", "softAss", "packaging"], filterEnabled: true, filterOptions: ["Alla", "matta", "colonnade", "tapestry", "softAss", "packaging"] },
       dropdown_dev_syfte: { options: ["kund", "samarbete", "produkt"], filterEnabled: true, filterOptions: ["Alla", "kund", "samarbete", "produkt"] },
       dropdown_pre_dev_kategori: { options: ["färg", "kvalitet", "garn"], filterEnabled: true, filterOptions: ["Alla", "färg", "kvalitet", "garn"] },
-      dropdown_todo_kategori: { options: ["Allmänt", "Info", "Kontor", "ShopifyB2B", "Shopify B2C", "Sälj/Marknad", "Logistik", "System utv"], filterEnabled: true, filterOptions: ["Alla", "Allmänt", "Info", "Kontor", "ShopifyB2B", "Shopify B2C", "Sälj/Marknad", "Logistik", "System utv"] }
+      dropdown_todo_kategori: { options: ["Allmänt", "Info", "Kontor", "ShopifyB2B", "Shopify B2C", "Sälj/Marknad", "Logistik", "System utv","Intro Lina"], filterEnabled: true, filterOptions: ["Alla", "Allmänt", "Info", "Kontor", "ShopifyB2B", "Shopify B2C", "Sälj/Marknad", "Logistik", "System utv","Intro Lina"] }
     },
     rowTodoConfig: {
       "PRE DEV": {
