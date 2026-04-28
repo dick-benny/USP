@@ -2070,46 +2070,6 @@ import { supabase } from './supabase.js?v=5';
     render();
   }
 
-  async function createSaljintroProjects(saljintroRow) {
-    const produkt = String(saljintroRow?.produkt || '').trim();
-    if (!produkt) return;
-
-    const projektEntry = tableEntries.find(([name]) => name === 'PROJEKT');
-    if (!projektEntry) return;
-
-    const [, projektConfig] = projektEntry;
-    const projectNames = ['Media', 'B2B-ready', 'Shopify-ready'];
-
-    const payload = projectNames.map((name) => ({
-      projektnamn: `${produkt} - ${name}`,
-      kategori: 'Säljintro',
-      start_datum: '',
-      aktuell: '',
-      nasta: '',
-      kommande: '',
-      slut_datum: '',
-      owner_initials: saljintroRow.owner_initials || getCurrentUserInitials(),
-      is_done: false,
-    }));
-
-    const { data, error } = await supabase
-      .from(projektConfig.dbTable)
-      .insert(payload)
-      .select('*');
-
-    if (error) {
-      throw new Error(error.message || 'Kunde inte skapa projekt för Säljintro.');
-    }
-
-    const normalizedProjects = (Array.isArray(data) ? data : [])
-      .map((row) => normalizeRow('PROJEKT', projektConfig, row));
-
-    state.rowsByTable['PROJEKT'] = [
-      ...normalizedProjects,
-      ...(state.rowsByTable['PROJEKT'] || []),
-    ];
-  }
-
   async function saveNewRow(tableName, tableConfig, draftRow) {
     if (!draftRow) return;
 
@@ -2171,14 +2131,6 @@ import { supabase } from './supabase.js?v=5';
       state.detailRowId = finalRow.id || null;
       render();
       return;
-    }
-
-    try {
-      if (tableName === 'SÄLJINTRO') {
-        await createSaljintroProjects(finalRow);
-      }
-    } catch (err) {
-      alert(`Raden skapades, men projekt kunde inte skapas automatiskt: ${err.message}`);
     }
 
     state.savingCell = null;
@@ -3856,86 +3808,19 @@ import { supabase } from './supabase.js?v=5';
     header.className = 'side-panel__header';
 
     const heading = document.createElement('div');
-    heading.className = 'todo-modal__heading';
     heading.innerHTML = `
       <p class="side-panel__eyebrow">${tableName}</p>
       <h2 class="side-panel__title">${isDraft ? 'Ny rad' : 'Radöversikt'}</h2>
       <p class="side-panel__text">${isDraft ? 'Fyll i fälten nedan och välj Spara eller Avbryt.' : 'Redigera fälten nedan eller välj åtgärd.'}</p>
     `;
 
-    const headerActions = document.createElement('div');
-    headerActions.className = 'side-panel__header-actions';
-
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
-    closeButton.className = 'side-panel__close side-panel__close--small';
-    closeButton.textContent = '×';
-    closeButton.setAttribute('aria-label', 'Stäng');
-    closeButton.title = 'Stäng';
+    closeButton.className = 'side-panel__close';
+    closeButton.textContent = isDraft ? 'Avbryt' : 'Stäng';
     closeButton.addEventListener('click', closeDetailPanel);
 
     header.appendChild(heading);
-
-    if (isDraft) {
-      const cancelButton = document.createElement('button');
-      cancelButton.type = 'button';
-      cancelButton.className = 'secondary-button';
-      cancelButton.textContent = 'Avbryt';
-      cancelButton.addEventListener('click', closeDetailPanel);
-
-      const saveButton = document.createElement('button');
-      saveButton.type = 'button';
-      saveButton.className = 'secondary-button';
-      saveButton.textContent = state.savingCell === '__new_row__' ? 'Sparar...' : 'Spara';
-      saveButton.disabled = state.savingCell === '__new_row__';
-      saveButton.addEventListener('click', async () => {
-        await saveNewRow(tableName, tableConfig, row);
-      });
-
-      headerActions.appendChild(cancelButton);
-      headerActions.appendChild(saveButton);
-      header.appendChild(headerActions);
-    } else {
-      const actions = getActionConfig(tableName);
-
-      if (actions.primary && !['PRE DEV','UTVECKLING'].includes(tableName)) {
-        const primaryButton = document.createElement('button');
-        primaryButton.type = 'button';
-        primaryButton.className = 'secondary-button';
-        primaryButton.textContent = actions.primary.label;
-        primaryButton.addEventListener('click', async () => {
-          await runRowAction(tableName, tableConfig, row, actions.primary.action);
-        });
-        headerActions.appendChild(primaryButton);
-      }
-
-      if (actions.secondary) {
-        const secondaryButton = document.createElement('button');
-        secondaryButton.type = 'button';
-        secondaryButton.className = 'secondary-button';
-        secondaryButton.textContent = actions.secondary.label;
-        secondaryButton.addEventListener('click', async () => {
-          await runRowAction(tableName, tableConfig, row, actions.secondary.action);
-        });
-        headerActions.appendChild(secondaryButton);
-      }
-
-      if (actions.danger) {
-        const deleteButton = document.createElement('button');
-        deleteButton.type = 'button';
-        deleteButton.className = 'secondary-button secondary-button--danger';
-        deleteButton.textContent = actions.danger.label;
-        deleteButton.addEventListener('click', async () => {
-          await runRowAction(tableName, tableConfig, row, actions.danger.action);
-        });
-        headerActions.appendChild(deleteButton);
-      }
-
-      if (headerActions.children.length) {
-        header.appendChild(headerActions);
-      }
-    }
-
     header.appendChild(closeButton);
 
     const body = document.createElement('div');
@@ -3952,8 +3837,67 @@ import { supabase } from './supabase.js?v=5';
 
     body.appendChild(grid);
 
+    const footer = document.createElement('div');
+    footer.className = 'side-panel__footer';
+
+    if (isDraft) {
+      const saveButton = document.createElement('button');
+      saveButton.type = 'button';
+      saveButton.className = 'primary-button';
+      saveButton.textContent = state.savingCell === '__new_row__' ? 'Sparar...' : 'Spara';
+      saveButton.disabled = state.savingCell === '__new_row__';
+      saveButton.addEventListener('click', async () => {
+        await saveNewRow(tableName, tableConfig, row);
+      });
+
+      const cancelButton = document.createElement('button');
+      cancelButton.type = 'button';
+      cancelButton.className = 'secondary-button';
+      cancelButton.textContent = 'Avbryt';
+      cancelButton.addEventListener('click', closeDetailPanel);
+
+      footer.appendChild(saveButton);
+      footer.appendChild(cancelButton);
+    } else {
+      const actions = getActionConfig(tableName);
+
+      if (actions.primary) {
+        const primaryButton = document.createElement('button');
+        primaryButton.type = 'button';
+        primaryButton.className = 'primary-button';
+        primaryButton.textContent = actions.primary.label;
+        primaryButton.addEventListener('click', async () => {
+          await runRowAction(tableName, tableConfig, row, actions.primary.action);
+        });
+        footer.appendChild(primaryButton);
+      }
+
+      if (actions.secondary) {
+        const secondaryButton = document.createElement('button');
+        secondaryButton.type = 'button';
+        secondaryButton.className = 'secondary-button';
+        secondaryButton.textContent = actions.secondary.label;
+        secondaryButton.addEventListener('click', async () => {
+          await runRowAction(tableName, tableConfig, row, actions.secondary.action);
+        });
+        footer.appendChild(secondaryButton);
+      }
+
+      if (actions.danger) {
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'secondary-button secondary-button--danger';
+        deleteButton.textContent = actions.danger.label;
+        deleteButton.addEventListener('click', async () => {
+          await runRowAction(tableName, tableConfig, row, actions.danger.action);
+        });
+        footer.appendChild(deleteButton);
+      }
+    }
+
     dialog.appendChild(header);
     dialog.appendChild(body);
+    dialog.appendChild(footer);
     overlay.appendChild(dialog);
     return overlay;
   }

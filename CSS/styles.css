@@ -1822,3 +1822,75 @@ body {
     color: #000000 !important;
   }
 }
+
+
+/* =========================================================
+   OWNER BADGES
+   Initial badge before first/key column text.
+   Admin can change owner via dropdown.
+   ========================================================= */
+
+.owner-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.owner-cell__content {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.owner-cell__content .cell-text,
+.owner-cell__content .cell-chip {
+  min-width: 0;
+}
+
+.owner-badge {
+  --owner-badge-bg: var(--text);
+  --owner-badge-fg: var(--white);
+  flex: 0 0 auto;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(16, 35, 58, 0.14);
+  background: var(--owner-badge-bg);
+  color: var(--owner-badge-fg);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(16, 35, 58, 0.10);
+}
+
+.owner-badge--select {
+  cursor: pointer;
+  padding: 0 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: center;
+  text-align-last: center;
+  outline: none;
+}
+
+.owner-badge--select:hover,
+.owner-badge--select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(187, 146, 87, 0.14);
+}
+
+@media print {
+  .owner-badge {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #999999 !important;
+    box-shadow: none !important;
+  }
+}
