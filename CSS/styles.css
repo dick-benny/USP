@@ -1,4 +1,5 @@
 :root {
+  --color-green: #3BFFB0;
   --bg: #f5f1e6;
   --panel: #fbf8f1;
   --line: #ded3bd;
@@ -9,7 +10,7 @@
   --chip: #ebe4d5;
   --white: #ffffff;
   --danger: #a34b3c;
-  --success: #7e8f62;
+  --success: var(--color-green-line);
   --shadow: 0 12px 34px rgba(67, 45, 16, 0.08);
 
   --status-gray-bg: #e9e5de;
@@ -20,14 +21,17 @@
   --status-yellow-line: #d8c47c;
   --status-yellow-text: #7c6841;
 
-  --status-green-bg: #dfead4;
-  --status-green-line: #a8c08d;
-  --status-green-text: #526b3b;
+  --status-green-bg: var(--color-green);
+  --status-green-line: var(--color-green-line);
+  --status-green-text: var(--color-green-text);
 
   --status-red-bg: #f3d8d2;
   --status-red-line: #d4a198;
   --status-red-text: #844f47;
-}
+
+  --color-green-text: #003322;
+  --color-green-line: #25C98A;
+  --color-green-row: rgba(59, 255, 176, 0.20);}
 
 * {
   box-sizing: border-box;
@@ -1522,6 +1526,7 @@ body {
 
 /* ===== SPACING SYSTEM ===== */
 :root {
+  --color-green: #3BFFB0;
   --space-xs: 6px;
   --space-sm: 10px;
   --space-md: 14px;
@@ -1894,3 +1899,24 @@ body {
     box-shadow: none !important;
   }
 }
+
+/* =========================================================
+   GREEN COLOR OVERRIDE
+   Applies to TODO completed rows and green status toggle buttons.
+   Keep this block at the END of the file so it wins over older rules.
+   ========================================================= */
+
+.data-table tbody tr.is-done td {
+  background: var(--color-green-row) !important;
+}
+
+.status-button--green {
+  background: var(--color-green) !important;
+  border-color: var(--color-green-line) !important;
+  color: var(--color-green-text) !important;
+}
+
+.status-button--green .status-button__dot {
+  background: currentColor !important;
+}
+
