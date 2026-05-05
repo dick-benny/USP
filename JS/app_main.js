@@ -8,11 +8,11 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=15';
-import { createTodoController } from './app_todo.js?v=15';
-import { createRenderController } from './app_render.js?v=15';
-import { createDataController } from './app_data.js?v=15';
-import { createActionController } from './app_actions.js?v=15';
+} from './app_constants.js?v=19';
+import { createTodoController } from './app_todo.js?v=19';
+import { createRenderController } from './app_render.js?v=19';
+import { createDataController } from './app_data.js?v=19';
+import { createActionController } from './app_actions.js?v=19';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -147,6 +147,26 @@ export async function runPlanningApp() {
       .filter(Boolean);
 
     return ['Alla', 'Privat', ...Array.from(new Set(names))];
+  }
+
+  function getSaljintroProductOptions() {
+    const rows = state.rowsByTable['SÄLJINTRO'] || [];
+    const products = rows
+      .map((row) => String(row?.produkt || '').trim())
+      .filter(Boolean);
+
+    return ['Alla', ...Array.from(new Set(products)).sort((a, b) => a.localeCompare(b, 'sv'))];
+  }
+
+  function getProjektProductFromName(projectName) {
+    const value = String(projectName || '').trim();
+    if (!value) return '';
+
+    const autoProjectSuffixes = [' - Media', ' - B2B-ready', ' - Shopify-ready'];
+    const suffix = autoProjectSuffixes.find((item) => value.endsWith(item));
+
+    if (!suffix) return '';
+    return value.slice(0, -suffix.length).trim();
   }
 
   function isVirtualModalTodoRow(row) {
@@ -572,7 +592,10 @@ export async function runPlanningApp() {
     const overlay = document.createElement('div');
     overlay.className = 'overlay-modal';
     overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) closeLinksPanel();
+      if (event.target === overlay) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     });
 
     const dialog = document.createElement('aside');
@@ -1269,7 +1292,10 @@ export async function runPlanningApp() {
     const overlay = document.createElement('div');
     overlay.className = 'overlay-modal';
     overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) closeRowTodoPanel();
+      if (event.target === overlay) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     });
 
     const dialog = document.createElement('aside');
@@ -1626,7 +1652,7 @@ export async function runPlanningApp() {
   function ensureFilters(tableName, tableConfig) {
     if (!state.filtersByTable[tableName]) {
       const filters = {};
-      getVisibleColumns(tableConfig).forEach((column) => {
+    getVisibleColumns(tableConfig).forEach((column) => {
         if (column.type === 'status') return;
         const dropdown = APP_CONFIG.dropdowns?.[column.type];
         if (dropdown?.filterEnabled) {
@@ -1637,6 +1663,10 @@ export async function runPlanningApp() {
       if (tableName === TODO_TABLE) {
         filters.__todo_source = TODO_TABLE;
         filters.__todo_source_row = 'Alla';
+      }
+
+      if (tableName === 'PROJEKT') {
+        filters.__projekt_product = 'Alla';
       }
 
       state.filtersByTable[tableName] = filters;
@@ -1850,6 +1880,38 @@ export async function runPlanningApp() {
       return wrapper;
     }
 
+    if (tableName === 'PROJEKT') {
+      const productItem = document.createElement('label');
+      productItem.className = 'filter-item';
+
+      const productLabel = document.createElement('span');
+      productLabel.className = 'filter-item__label';
+      productLabel.textContent = 'Säljintro - Produkt';
+
+      const productSelect = document.createElement('select');
+      productSelect.className = 'filter-item__control';
+
+      getSaljintroProductOptions().forEach((option) => {
+        const opt = document.createElement('option');
+        opt.value = option;
+        opt.textContent = option;
+        if ((filters.__projekt_product || 'Alla') === option) {
+          opt.selected = true;
+        }
+        productSelect.appendChild(opt);
+      });
+
+      productSelect.addEventListener('change', () => {
+        filters.__projekt_product = productSelect.value;
+        render();
+      });
+
+      productItem.appendChild(productLabel);
+      productItem.appendChild(productSelect);
+      wrapper.appendChild(productItem);
+      hasFilters = true;
+    }
+
     getVisibleColumns(tableConfig).forEach((column) => {
       if (column.type === 'status') return;
       const dropdown = APP_CONFIG.dropdowns?.[column.type];
@@ -1933,6 +1995,10 @@ export async function runPlanningApp() {
     return rows.filter((row) =>
       Object.entries(filters).every(([field, value]) => {
         if (field === '__todo_source' || field === '__todo_source_row') return true;
+        if (field === '__projekt_product') {
+          if (!value || value === 'Alla') return true;
+          return getProjektProductFromName(row.projektnamn) === value;
+        }
         if (!value || value === 'Alla') return true;
         return String(row[field] ?? '') === value;
       })
@@ -2078,7 +2144,7 @@ export async function runPlanningApp() {
       alert(`Raden skapades, men PDF kunde inte hanteras: ${err.message}`);
       state.rowsByTable[tableName] = [finalRow, ...(state.rowsByTable[tableName] || [])];
       state.newRowDraft = null;
-      state.detailRowId = finalRow.id || null;
+      state.detailRowId = null;
       render();
       return;
     }
@@ -2094,7 +2160,7 @@ export async function runPlanningApp() {
     state.savingCell = null;
     state.rowsByTable[tableName] = [finalRow, ...(state.rowsByTable[tableName] || [])];
     state.newRowDraft = null;
-    state.detailRowId = finalRow.id || null;
+    state.detailRowId = null;
     render();
   }
 
@@ -2712,7 +2778,10 @@ export async function runPlanningApp() {
     const overlay = document.createElement('div');
     overlay.className = 'overlay-modal';
     overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) closeArchivePanel();
+      if (event.target === overlay) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     });
 
     const dialog = document.createElement('aside');
@@ -2807,7 +2876,10 @@ export async function runPlanningApp() {
     const overlay = document.createElement('div');
     overlay.className = 'overlay-modal';
     overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) closeSettingsPanel();
+      if (event.target === overlay) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     });
 
     const dialog = document.createElement('aside');
@@ -2911,7 +2983,7 @@ export async function runPlanningApp() {
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=15');
+          const { signOutUser } = await import('./auth.js?v=19');
           await signOutUser();
         },
         disabled: false,
@@ -3296,7 +3368,10 @@ export async function runPlanningApp() {
     const overlay = document.createElement('div');
     overlay.className = 'overlay-modal';
     overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) closeNotesPanel();
+      if (event.target === overlay) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     });
 
     const dialog = document.createElement('aside');
@@ -3462,7 +3537,10 @@ export async function runPlanningApp() {
     const overlay = document.createElement('div');
     overlay.className = 'overlay-modal';
     overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) closeDetailPanel();
+      if (event.target === overlay) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     });
 
     const dialog = document.createElement('aside');
