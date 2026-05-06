@@ -1,3 +1,3 @@
-import { runPlanningApp } from './app_main.js?v=19';
+import { runPlanningApp } from './app_main.js?v=20';
 
 await runPlanningApp();

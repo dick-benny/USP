@@ -10,7 +10,7 @@ import {
   PDF_PREFIX,
 } from './app_constants.js?v=19';
 import { createTodoController } from './app_todo.js?v=19';
-import { createRenderController } from './app_render.js?v=19';
+import { createRenderController } from './app_render.js?v=20';
 import { createDataController } from './app_data.js?v=19';
 import { createActionController } from './app_actions.js?v=19';
 
@@ -28,6 +28,18 @@ export async function runPlanningApp() {
 
   const { APP_CONFIG, SAMPLE_ROWS = {} } = spec;
   const tableEntries = Object.entries(APP_CONFIG.tables);
+  const placeholderEntries = [
+    ['MARKNAD', { id: 'marknad', title: 'MARKNAD', placeholder: true }],
+['CDM PROJECTS', { id: 'cdm_projects', title: 'CDM PROJECTS', placeholder: true }],
+   
+  ];
+
+  const projektIndex = tableEntries.findIndex(([tableName]) => tableName === 'PROJEKT');
+  if (projektIndex >= 0) {
+    tableEntries.splice(projektIndex + 1, 0, ...placeholderEntries);
+  } else {
+    tableEntries.push(...placeholderEntries);
+  }
   const isAdmin = () => !!window.CurrentUser?.isAdmin;
 
   const state = {
@@ -884,6 +896,8 @@ export async function runPlanningApp() {
     if (!userId || !active) return;
 
     const [, tableConfig] = active;
+    if (!tableConfig?.dbTable) return;
+
     const initials = getCurrentUserInitials();
 
     try {
@@ -3706,7 +3720,7 @@ export async function runPlanningApp() {
   });
 
   await Promise.all(
-    tableEntries.map(([tableName, tableConfig]) => loadTableRowsFromData(state, tableName, tableConfig))
+    tableEntries.filter(([, tableConfig]) => !!tableConfig.dbTable).map(([tableName, tableConfig]) => loadTableRowsFromData(state, tableName, tableConfig))
   );
   await archiveCompletedTodosFromPreviousWeeks();
   await loadDocumentLinks();

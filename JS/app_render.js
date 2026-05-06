@@ -59,6 +59,37 @@ export function createRenderController(deps) {
     return `V${String(getISOWeekNumber(now)).padStart(2, '0')} - ${formatDateSv(now)}`;
   }
 
+  function createPlaceholderView(tableName, tableConfig) {
+    const shell = document.createElement('section');
+    shell.className = 'view-card';
+
+    const header = document.createElement('div');
+    header.className = 'view-card__header';
+
+    const titleBlock = document.createElement('div');
+    titleBlock.className = 'view-card__title-block';
+
+    const title = document.createElement('h1');
+    title.className = 'view-card__title';
+    title.textContent = tableConfig.title || tableName;
+
+    const subtitle = document.createElement('p');
+    subtitle.className = 'view-card__subtitle';
+    subtitle.textContent = getCurrentWeekSubtitle();
+
+    titleBlock.appendChild(title);
+    titleBlock.appendChild(subtitle);
+    header.appendChild(titleBlock);
+
+    const body = document.createElement('div');
+    body.className = 'empty-state';
+    body.textContent = 'To Be Continued';
+
+    shell.appendChild(header);
+    shell.appendChild(body);
+    return shell;
+  }
+
   function createTable(tableName, tableConfig) {
     const rows = getFilteredRows(tableName, tableConfig);
     const visibleColumns = getVisibleColumns(tableConfig);
@@ -239,6 +270,11 @@ export function createRenderController(deps) {
   ensureLinksButton();
     createNav();
     app.innerHTML = '';
+
+    if (tableConfig.placeholder) {
+      app.appendChild(createPlaceholderView(tableName, tableConfig));
+      return;
+    }
 
     app.appendChild(createTable(tableName, tableConfig));
 
