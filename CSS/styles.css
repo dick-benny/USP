@@ -9,7 +9,7 @@
   --chip: #ebe4d5;
   --white: #ffffff;
   --danger: #a34b3c;
-  --success: #7e8f62;
+  --success: var(--green-line);
   --shadow: 0 12px 34px rgba(67, 45, 16, 0.08);
 
   --status-gray-bg: #e9e5de;
@@ -20,13 +20,17 @@
   --status-yellow-line: #d8c47c;
   --status-yellow-text: #7c6841;
 
-  --status-green-bg: #dfead4;
-  --status-green-line: #a8c08d;
-  --status-green-text: #526b3b;
+  --status-green-bg: var(--green);
+  --status-green-line: var(--green-line);
+  --status-green-text: var(--green-text);
 
   --status-red-bg: #f3d8d2;
   --status-red-line: #d4a198;
   --status-red-text: #844f47;
+  --green: #3BFFB0;
+  --green-line: #24D98F;
+  --green-text: #003322;
+  --green-row-bg: rgba(59, 255, 176, 0.20);
 }
 
 * {
@@ -374,7 +378,7 @@ body {
 }
 
 .data-table tbody tr.is-done td {
-  background: rgba(126, 143, 98, 0.08);
+  background: var(--green-row-bg);
 }
 
 .data-table td.is-editable {
@@ -1932,4 +1936,26 @@ button[aria-label="Stäng"]:hover {
 button[aria-label="Close"]:active,
 button[aria-label="Stäng"]:active {
   transform: scale(0.95);
+}
+
+
+/* =========================================================
+   SHARED GREEN SYSTEM
+   One source of truth for:
+   - TODO completed rows
+   - green status toggle buttons
+   ========================================================= */
+
+.data-table tbody tr.is-done td {
+  background: var(--green-row-bg) !important;
+}
+
+.status-button--green {
+  background: var(--status-green-bg) !important;
+  border-color: var(--status-green-line) !important;
+  color: var(--status-green-text) !important;
+}
+
+.status-button--green .status-button__dot {
+  background: currentColor !important;
 }
