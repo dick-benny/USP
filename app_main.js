@@ -8,11 +8,11 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=42';
-import { createTodoController } from './app_todo.js?v=42';
-import { createRenderController } from './app_render.js?v=42';
-import { createDataController } from './app_data.js?v=42';
-import { createActionController } from './app_actions.js?v=42';
+} from './app_constants.js?v=40';
+import { createTodoController } from './app_todo.js?v=40';
+import { createRenderController } from './app_render.js?v=40';
+import { createDataController } from './app_data.js?v=40';
+import { createActionController } from './app_actions.js?v=40';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -2010,111 +2010,44 @@ export async function runPlanningApp() {
     render();
   }
 
-  async function createDigProdRowsFromSaljintro(saljintroRow) {
+  async function createSaljintroProjects(saljintroRow) {
     const produkt = String(saljintroRow?.produkt || '').trim();
-    if (!produkt) return [];
+    if (!produkt) return;
 
-    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
-    if (!digProdEntry) return [];
+    const projektEntry = tableEntries.find(([name]) => name === 'PROJEKT');
+    if (!projektEntry) return;
 
-    const [, digProdConfig] = digProdEntry;
-    const ownerInitials = saljintroRow.owner_initials || getCurrentUserInitials();
+    const [, projektConfig] = projektEntry;
+    const projectNames = ['Media', 'B2B-ready', 'Shopify-ready'];
 
-    const payload = ['B2B-ready', 'Shopify-ready'].map((kategori) => ({
-      produktnamn: produkt,
-      kategori,
-      p_info: 'gray',
-      metafalt: 'gray',
-      copy: 'gray',
-      packshot: 'gray',
-      owner_initials: ownerInitials,
+    const payload = projectNames.map((name) => ({
+      projektnamn: `${produkt} - ${name}`,
+      kategori: 'Säljintro',
+      start_datum: '',
+      aktuell: '',
+      nasta: '',
+      kommande: '',
+      slut_datum: '',
+      owner_initials: saljintroRow.owner_initials || getCurrentUserInitials(),
       is_done: false,
     }));
 
     const { data, error } = await supabase
-      .from(digProdConfig.dbTable)
+      .from(projektConfig.dbTable)
       .insert(payload)
       .select('*');
 
     if (error) {
-      throw new Error(error.message || 'Kunde inte skapa DIG PROD-rader.');
+      throw new Error(error.message || 'Kunde inte skapa projekt för Säljintro.');
     }
 
-    const normalizedRows = (Array.isArray(data) ? data : [])
-      .map((row) => normalizeRow('DIG PROD', digProdConfig, row));
+    const normalizedProjects = (Array.isArray(data) ? data : [])
+      .map((row) => normalizeRow('PROJEKT', projektConfig, row));
 
-    state.rowsByTable['DIG PROD'] = [
-      ...normalizedRows,
-      ...(state.rowsByTable['DIG PROD'] || []),
+    state.rowsByTable['PROJEKT'] = [
+      ...normalizedProjects,
+      ...(state.rowsByTable['PROJEKT'] || []),
     ];
-
-    return normalizedRows;
-  }
-
-  async function createSaljintroFromUtveckling(utvecklingRow) {
-    const produkt = String(utvecklingRow?.produktide || '').trim();
-    if (!produkt) {
-      alert('Produktnamn saknas i UTVECKLING-raden.');
-      return;
-    }
-
-    const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
-    if (!saljintroEntry) return;
-
-    const [, saljintroConfig] = saljintroEntry;
-    const key = getCellKey(utvecklingRow, UI_OPEN_COLUMN);
-    state.savingCell = key;
-    render();
-
-    const payload = {
-      produkt,
-      kategori: utvecklingRow.kategori || 'matta',
-      koll_q: '--',
-      po_beslut: 'gray',
-      media: 'gray',
-      b2b_ready: 'gray',
-      shopify_ready: 'gray',
-      b2b_intro: '--',
-      drop_vecka: '--',
-      owner_initials: utvecklingRow.owner_initials || getCurrentUserInitials(),
-      is_done: false,
-    };
-
-    const { data, error } = await supabase
-      .from(saljintroConfig.dbTable)
-      .insert(payload)
-      .select('*')
-      .single();
-
-    if (error) {
-      state.savingCell = null;
-      alert(`Kunde inte skapa rad i SÄLJINTRO: ${error.message}`);
-      render();
-      return;
-    }
-
-    const finalRow = normalizeRow('SÄLJINTRO', saljintroConfig, data);
-
-    try {
-      await createDigProdRowsFromSaljintro(finalRow);
-    } catch (err) {
-      alert(`SÄLJINTRO-raden skapades, men DIG PROD-rader kunde inte skapas: ${err.message}`);
-    }
-
-    state.rowsByTable['SÄLJINTRO'] = [
-      finalRow,
-      ...(state.rowsByTable['SÄLJINTRO'] || []),
-    ];
-
-    try {
-      await archiveRow('UTVECKLING', APP_CONFIG.tables['UTVECKLING'], utvecklingRow);
-    } catch (err) {
-      alert(`SÄLJINTRO skapades men raden kunde inte arkiveras: ${err.message}`);
-    }
-
-    state.savingCell = null;
-    state.detailRowId = null;
-    render();
   }
 
   async function saveNewRow(tableName, tableConfig, draftRow) {
@@ -2180,13 +2113,8 @@ export async function runPlanningApp() {
       return;
     }
 
-    try {
-      if (tableName === 'SÄLJINTRO') {
-        await createDigProdRowsFromSaljintro(finalRow);
-      }
-    } catch (err) {
-      alert(`Raden skapades, men DIG PROD-rader kunde inte skapas automatiskt: ${err.message}`);
-    }
+    // SÄLJINTRO -> PROJEKT autoskapande är avstängt.
+    // Ny SÄLJINTRO -> DIG PROD-logik läggs till separat när specifikationen är klar.
 
     state.savingCell = null;
     state.rowsByTable[tableName] = [finalRow, ...(state.rowsByTable[tableName] || [])];
@@ -3056,7 +2984,7 @@ export async function runPlanningApp() {
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=42');
+          const { signOutUser } = await import('./auth.js?v=40');
           await signOutUser();
         },
         disabled: false,
@@ -3664,17 +3592,6 @@ export async function runPlanningApp() {
       header.appendChild(headerActions);
     } else {
       const actions = getActionConfig(tableName);
-
-      if (tableName === 'UTVECKLING') {
-        const saljintroButton = document.createElement('button');
-        saljintroButton.type = 'button';
-        saljintroButton.className = 'secondary-button';
-        saljintroButton.textContent = 'SÄLJINTRO';
-        saljintroButton.addEventListener('click', async () => {
-          await createSaljintroFromUtveckling(row);
-        });
-        headerActions.appendChild(saljintroButton);
-      }
 
       if (actions.primary && !['PRE DEV','UTVECKLING'].includes(tableName)) {
         const primaryButton = document.createElement('button');

@@ -248,6 +248,30 @@ export function createActionController(deps) {
         danger: { label: 'Ta bort', action: 'delete' },
       };
     }
+    if (tableName === 'DIG PROD') {
+      return {
+        primary: { label: 'Klar', action: 'archive' },
+        danger: { label: 'Ta bort', action: 'delete' },
+      };
+    }
+    if (tableName === 'INKÖP') {
+      return {
+        primary: { label: 'Klar', action: 'archive' },
+        danger: { label: 'Ta bort', action: 'delete' },
+      };
+    }
+    if (tableName === 'MARKNAD') {
+      return {
+        primary: { label: 'Klar', action: 'archive' },
+        danger: { label: 'Ta bort', action: 'delete' },
+      };
+    }
+    if (tableName === 'SÄLJ') {
+      return {
+        primary: { label: 'Klar', action: 'archive' },
+        danger: { label: 'Ta bort', action: 'delete' },
+      };
+    }
     if (tableName === TODO_TABLE) {
       return {
         primary: { label: 'Markera Klar', action: 'complete_todo' },
