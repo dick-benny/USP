@@ -9,9 +9,90 @@ export function createActionController(deps) {
     loadArchiveRows,
     loadModalTodoRows,
     loadTableRowsFromData,
+    normalizeRow,
     render,
     toggleTodoDone,
   } = deps;
+
+  function getTodayDateString() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  async function updateSaljintroReadyFromDigProd(row) {
+    const produktnamn = String(row?.produktnamn || '').trim();
+    const kategori = String(row?.kategori || '').trim();
+
+    if (!produktnamn) return;
+
+    let payload = null;
+    if (kategori === 'B2B-ready') {
+      payload = {
+        b2b_ready: 'green',
+        b2b_ready_datum: getTodayDateString(),
+      };
+    } else if (kategori === 'Shopify-ready') {
+      payload = {
+        shopify_ready: 'green',
+        shopify_ready_datum: getTodayDateString(),
+      };
+    }
+
+    if (!payload) return;
+
+    const { data, error } = await supabase
+      .from('saljintro')
+      .update(payload)
+      .eq('produkt', produktnamn)
+      .select('*');
+
+    if (error) {
+      throw new Error(error.message || 'Kunde inte uppdatera SÄLJINTRO.');
+    }
+
+    const updatedRows = Array.isArray(data) ? data : [];
+    if (!updatedRows.length) return;
+
+    const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
+    if (!saljintroEntry) return;
+
+    const [, saljintroConfig] = saljintroEntry;
+    const normalizedRows = updatedRows.map((item) => normalizeRow('SÄLJINTRO', saljintroConfig, item));
+    const normalizedById = new Map(normalizedRows.map((item) => [String(item.id), item]));
+
+    state.rowsByTable['SÄLJINTRO'] = (state.rowsByTable['SÄLJINTRO'] || []).map((item) =>
+      normalizedById.get(String(item.id)) || item
+    );
+  }
+
+  async function archiveDigProdRow(tableConfig, row) {
+    const archivePayload = {
+      source_table: tableConfig.dbTable,
+      source_row_id: row.id,
+      payload_json: row,
+      archive_reason: 'archived',
+    };
+
+    let archiveError = null;
+
+    const { error: insertError } = await supabase
+      .from('planning_archive')
+      .insert(archivePayload);
+
+    archiveError = insertError;
+
+    if (archiveError) {
+      throw new Error(archiveError.message || 'Kunde inte lägga DIG PROD-raden i Arkiv.');
+    }
+
+    const { error: deleteError } = await supabase
+      .from(tableConfig.dbTable)
+      .delete()
+      .eq('id', row.id);
+
+    if (deleteError) {
+      throw new Error(deleteError.message || 'Kunde inte ta bort DIG PROD-raden efter arkivering.');
+    }
+  }
 
   async function archiveRow(tableName, tableConfig, row) {
     const confirmed = window.confirm('Lägg raden i Arkiv?');
@@ -21,21 +102,31 @@ export function createActionController(deps) {
     state.savingCell = key;
     render();
 
-    const { error } = await supabase.rpc('planning_archive_row', {
-      p_source_table: tableConfig.dbTable,
-      p_row_id: row.id,
-      p_mark_done: true,
-      p_archive_reason: 'archived',
-      p_note: null,
-    });
+    try {
+      if (tableName === 'DIG PROD') {
+        await archiveDigProdRow(tableConfig, row);
+        await updateSaljintroReadyFromDigProd(row);
+      } else {
+        const { error } = await supabase.rpc('planning_archive_row', {
+          p_source_table: tableConfig.dbTable,
+          p_row_id: row.id,
+          p_mark_done: true,
+          p_archive_reason: 'archived',
+          p_note: null,
+        });
 
-    state.savingCell = null;
-
-    if (error) {
-      alert(`Kunde inte arkivera raden: ${error.message}`);
+        if (error) {
+          throw new Error(error.message || 'Kunde inte arkivera raden.');
+        }
+      }
+    } catch (err) {
+      state.savingCell = null;
+      alert(`Kunde inte arkivera raden: ${err.message}`);
       render();
       return;
     }
+
+    state.savingCell = null;
 
     state.rowsByTable[tableName] =
       (state.rowsByTable[tableName] || []).filter((item) => item.id !== row.id);

@@ -3,7 +3,7 @@ import {
   STATUS_ORDER,
   OWNER_TABLES,
   PDF_BUCKET,
-} from './app_constants.js?v=37';
+} from './app_constants.js?v=63';
 
 export function createDataController({ APP_CONFIG, SAMPLE_ROWS = {} }) {
   function getFieldTypeConfig(typeName) {

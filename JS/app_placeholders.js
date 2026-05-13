@@ -5,7 +5,7 @@ export const PLACEHOLDER_VIEWS = [
   ['CDM PROJECTS', { id: 'cdm_projects', title: 'CDM PROJECTS', placeholder: true }],
 ];
 
-export function insertPlaceholderViews(tableEntries, insertAfterTableName = 'PROJEKT') {
+export function insertPlaceholderViews(tableEntries, insertAfterTableName = 'SÄLJINTRO') {
   if (!Array.isArray(tableEntries)) return tableEntries;
 
   const existingNames = new Set(tableEntries.map(([tableName]) => tableName));

@@ -8,11 +8,11 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=42';
-import { createTodoController } from './app_todo.js?v=42';
-import { createRenderController } from './app_render.js?v=42';
-import { createDataController } from './app_data.js?v=42';
-import { createActionController } from './app_actions.js?v=42';
+} from './app_constants.js?v=63';
+import { createTodoController } from './app_todo.js?v=63';
+import { createRenderController } from './app_render.js?v=63';
+import { createDataController } from './app_data.js?v=63';
+import { createActionController } from './app_actions.js?v=63';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -39,13 +39,7 @@ export async function runPlanningApp() {
   const saljIndex = tableEntries.findIndex(([tableName]) => tableName === 'SÄLJ');
   const saljEntry = saljIndex >= 0 ? tableEntries.splice(saljIndex, 1)[0] : null;
   const inkopIndex = tableEntries.findIndex(([tableName]) => tableName === 'INKÖP');
-  const inkopEntry = inkopIndex >= 0 ? tableEntries.splice(inkopIndex, 1)[0] : null;  const entriesAfterProjekt = [
-    ...(digProdEntry ? [digProdEntry] : []),
-    ...(marknadEntry ? [marknadEntry] : []),
-    ...(saljEntry ? [saljEntry] : []),
-    ...(inkopEntry ? [inkopEntry] : []),
-    ...placeholderEntries,
-  ];
+  const inkopEntry = inkopIndex >= 0 ? tableEntries.splice(inkopIndex, 1)[0] : null;
 
   const insertIndex = tableEntries.findIndex(
     ([tableName]) => tableName === 'SÄLJINTRO'
@@ -145,6 +139,7 @@ export async function runPlanningApp() {
     loadArchiveRows,
     loadModalTodoRows,
     loadTableRowsFromData,
+    normalizeRow,
     render,
     toggleTodoDone,
   });
@@ -155,7 +150,7 @@ export async function runPlanningApp() {
   }
 
   function getTodoSourceOptions() {
-    return [TODO_TABLE, 'PRE DEV', 'UTVECKLING', 'SÄLJINTRO', 'PROJEKT'];
+    return [TODO_TABLE, 'PRE DEV', 'UTVECKLING', 'SÄLJINTRO'];
   }
 
   function getTableNameByDbTable(dbTable) {
@@ -185,25 +180,6 @@ export async function runPlanningApp() {
     return ['Alla', 'Privat', ...Array.from(new Set(names))];
   }
 
-  function getSaljintroProductOptions() {
-    const rows = state.rowsByTable['SÄLJINTRO'] || [];
-    const products = rows
-      .map((row) => String(row?.produkt || '').trim())
-      .filter(Boolean);
-
-    return ['Alla', ...Array.from(new Set(products)).sort((a, b) => a.localeCompare(b, 'sv'))];
-  }
-
-  function getProjektProductFromName(projectName) {
-    const value = String(projectName || '').trim();
-    if (!value) return '';
-
-    const autoProjectSuffixes = [' - Media', ' - B2B-ready', ' - Shopify-ready'];
-    const suffix = autoProjectSuffixes.find((item) => value.endsWith(item));
-
-    if (!suffix) return '';
-    return value.slice(0, -suffix.length).trim();
-  }
 
   function isVirtualModalTodoRow(row) {
     return row?.__virtualType === 'modal_todo';
@@ -255,7 +231,7 @@ export async function runPlanningApp() {
 
   function getVisibleColumns(tableConfig) {
     const columns = [
-      ...tableConfig.columns.filter((column) => column.field !== 'id'),
+      ...tableConfig.columns.filter((column) => column.field !== 'id' && !column.hiddenInTable),
       UI_OPEN_COLUMN,
       UI_NOTES_COLUMN,
     ];
@@ -1717,10 +1693,6 @@ export async function runPlanningApp() {
         }
       });
 
-      if (tableName === 'PROJEKT') {
-        filters.__projekt_product = 'Alla';
-      }
-
       state.filtersByTable[tableName] = filters;
     }
     return state.filtersByTable[tableName];
@@ -1797,48 +1769,46 @@ export async function runPlanningApp() {
     const wrap = document.createElement('div');
     wrap.className = 'view-actions';
 
-  if (tableName === 'DIG PROD') {
-    return wrap;
-  }
+    if (tableName !== 'DIG PROD') {
+      const newButton = document.createElement('button');
+      newButton.type = 'button';
+      newButton.className = 'secondary-button';
+      newButton.textContent = '+ Ny rad';
 
-    const newButton = document.createElement('button');
-    newButton.type = 'button';
-    newButton.className = 'secondary-button';
-    newButton.textContent = '+ Ny rad';
+      newButton.addEventListener('click', () => {
+        const draft = {};
+        tableConfig.columns.forEach((column) => {
+          if (column.field === 'id') return;
+          draft[column.field] = getDefaultValue(tableName, column);
+        });
 
-    newButton.addEventListener('click', () => {
-      const draft = {};
-      tableConfig.columns.forEach((column) => {
-        if (column.field === 'id') return;
-        draft[column.field] = getDefaultValue(tableName, column);
+        if (isOwnerEnabledTable(tableName)) {
+          draft.owner_initials = getCurrentUserInitials();
+        }
+
+        if (tableName === 'MARKNAD' || tableName === 'SÄLJ' || tableName === 'INKÖP') {
+          draft.klart_datum = new Date().toISOString().slice(0, 10);
+        }
+
+        draft.is_done = false;
+
+        state.newRowDraft = {
+          tableName,
+          data: normalizeRow(tableName, tableConfig, draft),
+        };
+        state.linksPanelOpen = false;
+        state.detailRowId = null;
+        state.editingCell = null;
+        state.archivePanelOpen = false;
+        state.notesPanelOpen = false;
+        state.notesRowId = null;
+        state.rowTodoPanelOpen = false;
+        state.rowTodoRowId = null;
+        render();
       });
 
-      if (isOwnerEnabledTable(tableName)) {
-        draft.owner_initials = getCurrentUserInitials();
-      }
-
-      if (tableName === 'MARKNAD' || tableName === 'SÄLJ' || tableName === 'INKÖP') {
-        draft.klart_datum = new Date().toISOString().slice(0, 10);
-      }
-
-      draft.is_done = false;
-
-      state.newRowDraft = {
-        tableName,
-        data: normalizeRow(tableName, tableConfig, draft),
-      };
-      state.linksPanelOpen = false;
-      state.detailRowId = null;
-      state.editingCell = null;
-      state.archivePanelOpen = false;
-      state.notesPanelOpen = false;
-      state.notesRowId = null;
-      state.rowTodoPanelOpen = false;
-      state.rowTodoRowId = null;
-      render();
-    });
-
-    wrap.appendChild(newButton);
+      wrap.appendChild(newButton);
+    }
 
     if (tableName !== 'RUTINER') {
       const archiveButton = document.createElement('button');
@@ -1867,38 +1837,6 @@ export async function runPlanningApp() {
     wrapper.className = 'filters';
 
     let hasFilters = false;
-
-    if (tableName === 'PROJEKT') {
-      const productItem = document.createElement('label');
-      productItem.className = 'filter-item';
-
-      const productLabel = document.createElement('span');
-      productLabel.className = 'filter-item__label';
-      productLabel.textContent = 'Säljintro - Produkt';
-
-      const productSelect = document.createElement('select');
-      productSelect.className = 'filter-item__control';
-
-      getSaljintroProductOptions().forEach((option) => {
-        const opt = document.createElement('option');
-        opt.value = option;
-        opt.textContent = option;
-        if ((filters.__projekt_product || 'Alla') === option) {
-          opt.selected = true;
-        }
-        productSelect.appendChild(opt);
-      });
-
-      productSelect.addEventListener('change', () => {
-        filters.__projekt_product = productSelect.value;
-        render();
-      });
-
-      productItem.appendChild(productLabel);
-      productItem.appendChild(productSelect);
-      wrapper.appendChild(productItem);
-      hasFilters = true;
-    }
 
     getVisibleColumns(tableConfig).forEach((column) => {
       if (column.type === 'status') return;
@@ -1959,10 +1897,6 @@ export async function runPlanningApp() {
       }
 
       return       Object.entries(filters).every(([field, value]) => {
-        if (field === '__projekt_product') {
-          if (!value || value === 'Alla') return true;
-          return getProjektProductFromName(row.projektnamn) === value;
-        }
         if (!value || value === 'Alla') return true;
         return String(row[field] ?? '') === value;
       });
@@ -2071,9 +2005,11 @@ export async function runPlanningApp() {
       kategori: utvecklingRow.kategori || 'matta',
       koll_q: '--',
       po_beslut: 'gray',
-      media: 'gray',
+      po_beslut_datum: null,
       b2b_ready: 'gray',
+      b2b_ready_datum: null,
       shopify_ready: 'gray',
+      shopify_ready_datum: null,
       b2b_intro: '--',
       drop_vecka: '--',
       owner_initials: utvecklingRow.owner_initials || getCurrentUserInitials(),
@@ -2128,6 +2064,7 @@ export async function runPlanningApp() {
       if (column.field === 'id') return;
       let value = draftRow[column.field];
       if (column.type === 'status') value = normalizeStatusValue(value);
+      if (column.type === 'date') value = String(value || '').trim() || null;
       if (column.type === 'pdf') value = '';
       payload[column.field] = value;
     });
@@ -2206,21 +2143,40 @@ export async function runPlanningApp() {
     let normalizedNextValue = nextValue;
     if (column.type === 'status') normalizedNextValue = normalizeStatusValue(nextValue);
     if (column.type === 'pdf') normalizedNextValue = normalizePdfPath(nextValue);
+    const dbNextValue = column.type === 'date'
+      ? (String(normalizedNextValue || '').trim() || null)
+      : normalizedNextValue;
 
     const currentValue = row[column.field] ?? '';
-    if (String(currentValue) === String(normalizedNextValue)) {
+    const linkedStatusField = column.autoStatusField || '';
+    const shouldSetLinkedStatus = !!linkedStatusField && String(normalizedNextValue || '').trim();
+    const linkedStatusValue = column.autoStatusValue || 'yellow';
+    const currentLinkedStatusValue = linkedStatusField ? row[linkedStatusField] : undefined;
+
+    if (
+      String(currentValue) === String(normalizedNextValue) &&
+      (!shouldSetLinkedStatus || String(currentLinkedStatusValue || '') === linkedStatusValue)
+    ) {
       state.editingCell = null;
       render();
       return true;
     }
 
+    const updatePayload = { [column.field]: dbNextValue };
+    if (shouldSetLinkedStatus) {
+      updatePayload[linkedStatusField] = linkedStatusValue;
+    }
+
     state.savingCell = key;
     row[column.field] = normalizedNextValue;
+    if (shouldSetLinkedStatus) {
+      row[linkedStatusField] = linkedStatusValue;
+    }
     render();
 
     const { error } = await supabase
       .from(tableConfig.dbTable)
-      .update({ [column.field]: normalizedNextValue })
+      .update(updatePayload)
       .eq('id', row.id);
 
     state.savingCell = null;
@@ -2229,6 +2185,9 @@ export async function runPlanningApp() {
     if (error) {
       alert(`Kunde inte spara ${column.name}: ${error.message}`);
       row[column.field] = currentValue;
+      if (shouldSetLinkedStatus) {
+        row[linkedStatusField] = currentLinkedStatusValue;
+      }
       render();
       return false;
     }
@@ -2238,6 +2197,8 @@ export async function runPlanningApp() {
   }
 
   async function toggleStatusCell(tableConfig, row, column) {
+    if (column.lockManualStatus) return;
+
     const current = normalizeStatusValue(row[column.field]);
     const currentIndex = STATUS_ORDER.indexOf(current);
     const nextValue = STATUS_ORDER[(currentIndex + 1) % STATUS_ORDER.length];
@@ -2253,7 +2214,7 @@ export async function runPlanningApp() {
   }
 
 
-  function createStatusButton(column, value, isDetail = false) {
+  function createStatusButton(column, value, isDetail = false, row = null) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `${getStatusClass(value)}${isDetail ? ' status-button--detail' : ''}`;
@@ -2265,12 +2226,21 @@ export async function runPlanningApp() {
 
     const label = document.createElement('span');
     label.className = 'status-button__label';
-    label.textContent = getStatusLabel(column);
 
-    button.appendChild(dot);
-    if (!column.hideStatusLabel) {
+    const renderedValue = column.renderFromField && row
+      ? String(row?.[column.renderFromField] || '').trim()
+      : '';
+
+    label.textContent = renderedValue || getStatusLabel(column);
+
+    if (!renderedValue) {
+      button.appendChild(dot);
+    }
+
+    if (!column.hideStatusLabel || renderedValue) {
       button.appendChild(label);
     }
+
     return button;
   }
 
@@ -2415,7 +2385,7 @@ export async function runPlanningApp() {
     const text = rawValue === undefined || rawValue === null ? '' : String(rawValue);
 
     if (isStatusColumn(column)) {
-      return createStatusButton(column, text, false);
+      return createStatusButton(column, text, false, row);
     }
 
     if (isPdfColumn(column)) {
@@ -2735,9 +2705,10 @@ export async function runPlanningApp() {
     const dropdown = APP_CONFIG.dropdowns?.[column.type];
 
     if (isStatusColumn(column)) {
-      control = createStatusButton(column, row[column.field], true);
+      control = createStatusButton(column, row[column.field], true, row);
 
       control.addEventListener('click', async () => {
+        if (column.lockManualStatus) return;
         const current = normalizeStatusValue(row[column.field]);
         const next = STATUS_ORDER[(STATUS_ORDER.indexOf(current) + 1) % STATUS_ORDER.length];
         row[column.field] = next;
@@ -2801,7 +2772,12 @@ export async function runPlanningApp() {
     if (!isStatusColumn(column)) {
       if (isDraft) {
         const syncDraftValue = () => {
-          row[column.field] = getNextValue();
+          const nextDraftValue = getNextValue();
+          row[column.field] = nextDraftValue;
+
+          if (column.autoStatusField && String(nextDraftValue || '').trim()) {
+            row[column.autoStatusField] = column.autoStatusValue || 'yellow';
+          }
         };
 
         if (control.tagName === 'INPUT') {
@@ -2824,6 +2800,10 @@ export async function runPlanningApp() {
     if (tableName === 'PRE DEV') return 'utv_ide';
     if (tableName === 'UTVECKLING') return 'produktide';
     if (tableName === 'SÄLJINTRO') return 'produkt';
+    if (tableName === 'DIG PROD') return 'produktnamn';
+    if (tableName === 'MARKNAD') return 'beskrivning';
+    if (tableName === 'SÄLJ') return 'beskrivning';
+    if (tableName === 'INKÖP') return 'beskrivning';
     if (tableName === 'TODO') return 'beskrivning';
     return '';
   }
@@ -3056,7 +3036,7 @@ export async function runPlanningApp() {
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=42');
+          const { signOutUser } = await import('./auth.js?v=63');
           await signOutUser();
         },
         disabled: false,

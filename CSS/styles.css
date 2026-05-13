@@ -9,7 +9,13 @@
   --chip: #ebe4d5;
   --white: #ffffff;
   --danger: #a34b3c;
-  --success: #7e8f62;
+
+  --green: #D9FFEF;
+  --green-line: #7DFFC9;
+  --green-text: #179B63;
+  --green-row-bg: rgba(59, 255, 176, 0.18);
+
+  --success: var(--green-line);
   --shadow: 0 12px 34px rgba(67, 45, 16, 0.08);
 
   --status-gray-bg: #e9e5de;
@@ -20,9 +26,9 @@
   --status-yellow-line: #d8c47c;
   --status-yellow-text: #7c6841;
 
-  --status-green-bg: #dfead4;
-  --status-green-line: #a8c08d;
-  --status-green-text: #526b3b;
+  --status-green-bg: var(--green);
+  --status-green-line: var(--green-line);
+  --status-green-text: var(--green-text);
 
   --status-red-bg: #f3d8d2;
   --status-red-line: #d4a198;
@@ -374,7 +380,7 @@ body {
 }
 
 .data-table tbody tr.is-done td {
-  background: rgba(126, 143, 98, 0.08);
+  background: var(--green-row-bg);
 }
 
 .data-table td.is-editable {
@@ -622,7 +628,7 @@ body {
 }
 
 .toast--success {
-  background: #4f6036;
+  background: var(--green-text);
 }
 
 .toast--error {
@@ -723,9 +729,8 @@ body {
 
 
 /* =========================================================
-   STATUS RESET
-   One shared status component for ALL tables and ALL status columns.
-   This block must stay at the END of the file so it wins over older rules.
+   STATUS FINAL SAFEGUARDS
+   Keep this compact block near the end so status colors stay variable-driven.
    ========================================================= */
 
 .status-column,
@@ -735,61 +740,6 @@ body {
 
 .status-cell {
   padding: 10px 8px !important;
-}
-
-.status-button {
-  width: 100% !important;
-  min-height: 38px !important;
-  padding: 8px 10px !important;
-  border-radius: 14px !important;
-  border: 1px solid var(--line-strong) !important;
-  background: var(--white) !important;
-  color: var(--text) !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 8px !important;
-  font-size: 12px !important;
-  font-weight: 700 !important;
-  line-height: 1.1 !important;
-  text-align: center !important;
-  cursor: pointer !important;
-  transition: transform 0.14s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease !important;
-  box-shadow: inset 0 -1px 0 rgba(16, 35, 58, 0.03) !important;
-}
-
-.status-button:hover {
-  transform: translateY(-1px) !important;
-  box-shadow: 0 8px 14px rgba(67, 45, 16, 0.08) !important;
-}
-
-.status-button:active {
-  transform: translateY(0) !important;
-}
-
-.status-button:disabled {
-  cursor: default !important;
-  opacity: 0.8 !important;
-}
-
-.status-button__dot {
-  width: 10px !important;
-  height: 10px !important;
-  border-radius: 999px !important;
-  flex: 0 0 10px !important;
-  background: currentColor !important;
-  opacity: 0.88 !important;
-}
-
-.status-button__label {
-  display: block !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-}
-
-.status-button--detail {
-  min-height: 42px !important;
 }
 
 .status-button--gray {
@@ -1941,4 +1891,17 @@ button[aria-label="Stäng"]:active {
 .cell-text--overdue {
   color: #ff4d4f !important;
   font-weight: 700;
+}
+
+/* =========================================================
+   GREEN COLOR SYSTEM - FINAL OVERRIDE
+   Central source for all green/status-success usage.
+   ========================================================= */
+
+.data-table tbody tr.is-done td {
+  background: var(--green-row-bg) !important;
+}
+
+.toast--success {
+  background: var(--green-text) !important;
 }
