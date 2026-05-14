@@ -35,6 +35,23 @@ function createFilterSelect({ labelText, value, options, onChange }) {
 }
 
 export function createFilterController({ state, APP_CONFIG, getVisibleColumns, render }) {
+  function getSaljintroProductOptions() {
+    const products = (state.rowsByTable['SÄLJINTRO'] || [])
+      .map((row) => String(row?.produkt || '').trim());
+
+    return ['Alla', ...getUniqueSortedValues(products)];
+  }
+
+  function getProjektProductFromName(projectName) {
+    const value = String(projectName || '').trim();
+    if (!value) return '';
+
+    const autoProjectSuffixes = [' - Media', ' - B2B-ready', ' - Shopify-ready'];
+    const suffix = autoProjectSuffixes.find((item) => value.endsWith(item));
+
+    if (!suffix) return '';
+    return value.slice(0, -suffix.length).trim();
+  }
 
   function ensureFilters(tableName, tableConfig) {
     if (!state.filtersByTable[tableName]) {
@@ -48,12 +65,29 @@ export function createFilterController({ state, APP_CONFIG, getVisibleColumns, r
         }
       });
 
+      if (tableName === 'PROJEKT') {
+        filters.__projekt_product = 'Alla';
+      }
+
       state.filtersByTable[tableName] = filters;
     }
 
     return state.filtersByTable[tableName];
   }
 
+  function appendProjektProductFilter(wrapper, filters) {
+    wrapper.appendChild(createFilterSelect({
+      labelText: 'Säljintro - Produkt',
+      value: filters.__projekt_product || 'Alla',
+      options: getSaljintroProductOptions(),
+      onChange: (nextValue) => {
+        filters.__projekt_product = nextValue;
+        render();
+      },
+    }));
+
+    return true;
+  }
 
   function appendDropdownFilters(wrapper, tableConfig, filters) {
     let hasFilters = false;
@@ -86,6 +120,10 @@ export function createFilterController({ state, APP_CONFIG, getVisibleColumns, r
 
     let hasFilters = false;
 
+    if (tableName === 'PROJEKT') {
+      hasFilters = appendProjektProductFilter(wrapper, filters) || hasFilters;
+    }
+
     hasFilters = appendDropdownFilters(wrapper, tableConfig, filters) || hasFilters;
 
     if (!hasFilters) {
@@ -101,6 +139,10 @@ export function createFilterController({ state, APP_CONFIG, getVisibleColumns, r
 
     return rows.filter((row) =>
       Object.entries(filters).every(([field, value]) => {
+        if (field === '__projekt_product') {
+          if (!value || value === 'Alla') return true;
+          return getProjektProductFromName(row.projektnamn) === value;
+        }
 
         if (!value || value === 'Alla') return true;
         return String(row[field] ?? '') === value;

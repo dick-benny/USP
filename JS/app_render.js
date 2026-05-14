@@ -15,6 +15,7 @@ export function createRenderController(deps) {
     createArchivePanel,
     createRowTodoPanel,
     createNotesPanel,
+    createColumnChecklistPanel,
     createDetailPanel,
     getFilteredRows,
     getVisibleColumns,
@@ -26,6 +27,7 @@ export function createRenderController(deps) {
     isNotesColumn,
     isTodoColumn,
     createDocumentBadge,
+    createChecklistBadge,
     isVirtualModalTodoRow,
     createOpenButton,
     createNotesButton,
@@ -140,6 +142,11 @@ export function createRenderController(deps) {
       headerInner.appendChild(label);
 
       if (!isOpenColumn(column) && !isNotesColumn(column) && !isTodoColumn(column)) {
+        const checklistBadge = createChecklistBadge(tableName, column);
+        if (checklistBadge) {
+          headerInner.appendChild(checklistBadge);
+        }
+
         const badge = createDocumentBadge(tableName, column);
         if (badge) {
           headerInner.appendChild(badge);
@@ -291,6 +298,9 @@ export function createRenderController(deps) {
       app.appendChild(createRowTodoPanel());
     } else if (state.notesPanelOpen) {
       app.appendChild(createNotesPanel());
+    } else if (state.columnChecklistPanelOpen) {
+      const checklistPanel = createColumnChecklistPanel();
+      if (checklistPanel) app.appendChild(checklistPanel);
     } else if (draftRow) {
       app.appendChild(createDetailPanel(tableName, tableConfig, draftRow, { isDraft: true }));
     } else if (row) {

@@ -1,11 +1,9 @@
 export const PLACEHOLDER_VIEWS = [
   ['MARKNAD', { id: 'marknad', title: 'MARKNAD', placeholder: true }],
   ['SÄLJ', { id: 'salj', title: 'SÄLJ', placeholder: true }],
-  ['INKÖP', { id: 'inkop', title: 'INKÖP', placeholder: true }],
-  ['CDM PROJECTS', { id: 'cdm_projects', title: 'CDM PROJECTS', placeholder: true }],
-];
+  ['INKÖP', { id: 'inkop', title: 'INKÖP', placeholder: true }],];
 
-export function insertPlaceholderViews(tableEntries, insertAfterTableName = 'SÄLJINTRO') {
+export function insertPlaceholderViews(tableEntries, insertAfterTableName = 'PROJEKT') {
   if (!Array.isArray(tableEntries)) return tableEntries;
 
   const existingNames = new Set(tableEntries.map(([tableName]) => tableName));

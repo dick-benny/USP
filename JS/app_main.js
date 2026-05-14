@@ -8,11 +8,11 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=63';
-import { createTodoController } from './app_todo.js?v=63';
-import { createRenderController } from './app_render.js?v=63';
-import { createDataController } from './app_data.js?v=63';
-import { createActionController } from './app_actions.js?v=63';
+} from './app_constants.js?v=79';
+import { createTodoController } from './app_todo.js?v=79';
+import { createRenderController } from './app_render.js?v=79';
+import { createDataController } from './app_data.js?v=79';
+import { createActionController } from './app_actions.js?v=79';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -34,12 +34,20 @@ export async function runPlanningApp() {
 
   const digProdIndex = tableEntries.findIndex(([tableName]) => tableName === 'DIG PROD');
   const digProdEntry = digProdIndex >= 0 ? tableEntries.splice(digProdIndex, 1)[0] : null;
+  const cdmProjectsIndex = tableEntries.findIndex(([tableName]) => tableName === 'CDM PROJECTS');
+  const cdmProjectsEntry = cdmProjectsIndex >= 0 ? tableEntries.splice(cdmProjectsIndex, 1)[0] : null;
   const marknadIndex = tableEntries.findIndex(([tableName]) => tableName === 'MARKNAD');
   const marknadEntry = marknadIndex >= 0 ? tableEntries.splice(marknadIndex, 1)[0] : null;
   const saljIndex = tableEntries.findIndex(([tableName]) => tableName === 'SÄLJ');
   const saljEntry = saljIndex >= 0 ? tableEntries.splice(saljIndex, 1)[0] : null;
   const inkopIndex = tableEntries.findIndex(([tableName]) => tableName === 'INKÖP');
-  const inkopEntry = inkopIndex >= 0 ? tableEntries.splice(inkopIndex, 1)[0] : null;
+  const inkopEntry = inkopIndex >= 0 ? tableEntries.splice(inkopIndex, 1)[0] : null;  const entriesAfterProjekt = [
+    ...(digProdEntry ? [digProdEntry] : []),
+    ...(marknadEntry ? [marknadEntry] : []),
+    ...(saljEntry ? [saljEntry] : []),
+    ...(inkopEntry ? [inkopEntry] : []),
+    ...placeholderEntries,
+  ];
 
   const insertIndex = tableEntries.findIndex(
     ([tableName]) => tableName === 'SÄLJINTRO'
@@ -47,6 +55,7 @@ export async function runPlanningApp() {
 
   const orderedEntries = [
     ...(digProdEntry ? [digProdEntry] : []),
+    ...(cdmProjectsEntry ? [cdmProjectsEntry] : []),
     ...(inkopEntry ? [inkopEntry] : []),
     ...(marknadEntry ? [marknadEntry] : []),
     ...(saljEntry ? [saljEntry] : []),
@@ -83,6 +92,9 @@ export async function runPlanningApp() {
     rowTodoLoading: false,
     rowTodoDraft: { kategori: 'Allmänt', beskrivning: '' },
     documentLinksByTable: {},
+    columnChecklistsByTable: {},
+    columnChecklistPanelOpen: false,
+    columnChecklistActive: null,
     settingsPanelOpen: false,
     settingsView: 'menu',
     settingsLoading: false,
@@ -95,8 +107,16 @@ export async function runPlanningApp() {
       linkUrl: '',
       linkSortOrder: '100',
       linkIsActive: true,
+      checklistId: '',
+      checklistTableName: '',
+      checklistColumnField: '',
+      checklistTitle: '',
+      checklistBody: '',
+      checklistSortOrder: '100',
+      checklistIsActive: true,
     },
     documentLinksList: [],
+    columnChecklistsList: [],
     linksList: [],
     linksPanelOpen: false,
     modalTodoRows: [],
@@ -180,6 +200,25 @@ export async function runPlanningApp() {
     return ['Alla', 'Privat', ...Array.from(new Set(names))];
   }
 
+  function getSaljintroProductOptions() {
+    const rows = state.rowsByTable['SÄLJINTRO'] || [];
+    const products = rows
+      .map((row) => String(row?.produkt || '').trim())
+      .filter(Boolean);
+
+    return ['Alla', ...Array.from(new Set(products)).sort((a, b) => a.localeCompare(b, 'sv'))];
+  }
+
+  function getProjektProductFromName(projectName) {
+    const value = String(projectName || '').trim();
+    if (!value) return '';
+
+    const autoProjectSuffixes = [' - Media', ' - B2B-ready', ' - Shopify-ready'];
+    const suffix = autoProjectSuffixes.find((item) => value.endsWith(item));
+
+    if (!suffix) return '';
+    return value.slice(0, -suffix.length).trim();
+  }
 
   function isVirtualModalTodoRow(row) {
     return row?.__virtualType === 'modal_todo';
@@ -261,6 +300,10 @@ export async function runPlanningApp() {
     return column?.type === 'pdf';
   }
 
+  function isFileColumn(column) {
+    return column?.type === 'pdf' || column?.type === 'excel';
+  }
+
   function getRowById(tableName, rowId) {
     return (state.rowsByTable[tableName] || []).find((row) => String(row.id) === String(rowId)) || null;
   }
@@ -317,6 +360,177 @@ export async function runPlanningApp() {
 
   function getDocumentLinkForColumn(tableName, column) {
     return state.documentLinksByTable?.[tableName]?.[column.field] || null;
+  }
+
+  function normalizeColumnChecklists(rows) {
+    const checklistsByTable = {};
+    (rows || []).forEach((item) => {
+      const tableName = String(item.table_name || '').trim();
+      const columnField = String(item.column_field || '').trim();
+      if (!tableName || !columnField || item.is_active === false) return;
+      if (!checklistsByTable[tableName]) checklistsByTable[tableName] = {};
+      checklistsByTable[tableName][columnField] = item;
+    });
+    return checklistsByTable;
+  }
+
+  async function loadColumnChecklists() {
+    try {
+      const { data, error } = await supabase
+        .from('planning_column_checklists')
+        .select('*')
+        .order('table_name', { ascending: true })
+        .order('column_field', { ascending: true })
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      state.columnChecklistsList = rows;
+      state.columnChecklistsByTable = normalizeColumnChecklists(rows);
+    } catch (err) {
+      console.warn('Could not load column checklists:', err.message);
+      state.columnChecklistsList = [];
+      state.columnChecklistsByTable = {};
+    }
+  }
+
+  function getColumnChecklistForColumn(tableName, column) {
+    return state.columnChecklistsByTable?.[tableName]?.[column.field] || null;
+  }
+
+  function openColumnChecklist(tableName, column) {
+    const checklist = getColumnChecklistForColumn(tableName, column);
+    if (!checklist) return;
+
+    state.columnChecklistPanelOpen = true;
+    state.columnChecklistActive = {
+      tableName,
+      columnName: column.name,
+      columnField: column.field,
+      checklist,
+    };
+    state.linksPanelOpen = false;
+    state.settingsPanelOpen = false;
+    state.archivePanelOpen = false;
+    state.notesPanelOpen = false;
+    state.notesRowId = null;
+    state.rowTodoPanelOpen = false;
+    state.rowTodoRowId = null;
+    state.detailRowId = null;
+    state.newRowDraft = null;
+    render();
+  }
+
+  function closeColumnChecklistPanel() {
+    state.columnChecklistPanelOpen = false;
+    state.columnChecklistActive = null;
+    render();
+  }
+
+  function createChecklistBadge(tableName, column) {
+    const checklist = getColumnChecklistForColumn(tableName, column);
+    if (!checklist) return null;
+
+    const badge = document.createElement('button');
+    badge.type = 'button';
+    badge.className = 'column-checklist-badge';
+    badge.textContent = '✓';
+    badge.title = String(checklist.title || 'Visa checklist').trim() || 'Visa checklist';
+    badge.setAttribute('aria-label', `Visa checklist för ${column.name}`);
+    badge.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openColumnChecklist(tableName, column);
+    });
+
+    return badge;
+  }
+
+  function getChecklistItems(body) {
+    return String(body || '')
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function createColumnChecklistPanel() {
+    const active = state.columnChecklistActive;
+    const checklist = active?.checklist;
+    if (!active || !checklist) return null;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay-modal';
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    });
+
+    const dialog = document.createElement('aside');
+    dialog.className = 'side-panel overlay-modal__dialog checklist-panel';
+
+    const header = document.createElement('div');
+    header.className = 'side-panel__header';
+
+    const heading = document.createElement('div');
+    const title = String(checklist.title || active.columnName || 'Checklist').trim();
+    heading.innerHTML = `
+      <p class="side-panel__eyebrow">${active.tableName} · ${active.columnName}</p>
+      <h2 class="side-panel__title">${title}</h2>
+      <p class="side-panel__text">Checklist för kolumnen.</p>
+    `;
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'side-panel__close';
+    closeButton.textContent = 'Stäng';
+    closeButton.addEventListener('click', closeColumnChecklistPanel);
+
+    header.appendChild(heading);
+    header.appendChild(closeButton);
+
+    const body = document.createElement('div');
+    body.className = 'side-panel__body';
+
+    const card = document.createElement('section');
+    card.className = 'detail-card checklist-card';
+
+    const items = getChecklistItems(checklist.body);
+    if (!items.length) {
+      const empty = document.createElement('p');
+      empty.className = 'empty-state';
+      empty.textContent = 'Checklistan saknar punkter ännu.';
+      card.appendChild(empty);
+    } else {
+      const list = document.createElement('ul');
+      list.className = 'checklist-list';
+
+      items.forEach((item) => {
+        const li = document.createElement('li');
+        li.className = 'checklist-list__item';
+
+        const mark = document.createElement('span');
+        mark.className = 'checklist-list__mark';
+        mark.textContent = '✓';
+
+        const text = document.createElement('span');
+        text.className = 'checklist-list__text';
+        text.textContent = item;
+
+        li.appendChild(mark);
+        li.appendChild(text);
+        list.appendChild(li);
+      });
+
+      card.appendChild(list);
+    }
+
+    body.appendChild(card);
+    dialog.appendChild(header);
+    dialog.appendChild(body);
+    overlay.appendChild(dialog);
+    return overlay;
   }
 
   function getRutinerDocumentPathByRowId(rutinerRowId) {
@@ -405,6 +619,19 @@ export async function runPlanningApp() {
   function openSettingsLinks() {
     state.settingsPanelOpen = true;
     state.settingsView = 'links';
+    state.archivePanelOpen = false;
+    state.notesPanelOpen = false;
+    state.notesRowId = null;
+    state.rowTodoPanelOpen = false;
+    state.rowTodoRowId = null;
+    state.detailRowId = null;
+    state.newRowDraft = null;
+    render();
+  }
+
+  function openSettingsChecklists() {
+    state.settingsPanelOpen = true;
+    state.settingsView = 'checklists';
     state.archivePanelOpen = false;
     state.notesPanelOpen = false;
     state.notesRowId = null;
@@ -614,6 +841,127 @@ export async function runPlanningApp() {
       render();
     }
   }
+
+
+  function resetChecklistDraft() {
+    state.settingsDraft.checklistId = '';
+    state.settingsDraft.checklistTableName = '';
+    state.settingsDraft.checklistColumnField = '';
+    state.settingsDraft.checklistTitle = '';
+    state.settingsDraft.checklistBody = '';
+    state.settingsDraft.checklistSortOrder = '100';
+    state.settingsDraft.checklistIsActive = true;
+  }
+
+  function editChecklistFromSettings(item) {
+    state.settingsDraft.checklistId = String(item.id || '');
+    state.settingsDraft.checklistTableName = String(item.table_name || '');
+    state.settingsDraft.checklistColumnField = String(item.column_field || '');
+    state.settingsDraft.checklistTitle = String(item.title || '');
+    state.settingsDraft.checklistBody = String(item.body || '');
+    state.settingsDraft.checklistSortOrder = String(item.sort_order ?? 100);
+    state.settingsDraft.checklistIsActive = item.is_active !== false;
+    render();
+  }
+
+  async function saveChecklistFromSettings() {
+    const tableName = String(state.settingsDraft.checklistTableName || '').trim();
+    const columnField = String(state.settingsDraft.checklistColumnField || '').trim();
+    const title = String(state.settingsDraft.checklistTitle || '').trim();
+    const body = String(state.settingsDraft.checklistBody || '').trim();
+    const sortOrder = Number.parseInt(String(state.settingsDraft.checklistSortOrder || '100').trim(), 10);
+    const isActive = !!state.settingsDraft.checklistIsActive;
+    const id = String(state.settingsDraft.checklistId || '').trim();
+
+    if (!tableName) return alert('Välj tabell.');
+    if (!columnField) return alert('Välj kolumn.');
+    if (!title) return alert('Ange titel.');
+    if (!body) return alert('Ange minst en punkt.');
+
+    state.settingsLoading = true;
+    render();
+
+    try {
+      const payload = {
+        table_name: tableName,
+        column_field: columnField,
+        title,
+        body,
+        sort_order: Number.isFinite(sortOrder) ? sortOrder : 100,
+        is_active: isActive,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (id) {
+        const { error } = await supabase
+          .from('planning_column_checklists')
+          .update(payload)
+          .eq('id', id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('planning_column_checklists')
+          .upsert(payload, { onConflict: 'table_name,column_field' });
+        if (error) throw error;
+      }
+
+      resetChecklistDraft();
+      await loadColumnChecklists();
+    } catch (err) {
+      alert(`Kunde inte spara checklistan: ${err.message}`);
+    } finally {
+      state.settingsLoading = false;
+      render();
+    }
+  }
+
+  async function setChecklistActiveFromSettings(item, isActive) {
+    if (!item?.id) return;
+
+    state.settingsLoading = true;
+    render();
+
+    try {
+      const { error } = await supabase
+        .from('planning_column_checklists')
+        .update({ is_active: !!isActive, updated_at: new Date().toISOString() })
+        .eq('id', item.id);
+
+      if (error) throw error;
+      await loadColumnChecklists();
+    } catch (err) {
+      alert(`Kunde inte uppdatera checklistan: ${err.message}`);
+    } finally {
+      state.settingsLoading = false;
+      render();
+    }
+  }
+
+  async function deleteChecklistFromSettings(item) {
+    if (!item?.id) return;
+    const confirmed = window.confirm('Ta bort denna checklist permanent?');
+    if (!confirmed) return;
+
+    state.settingsLoading = true;
+    render();
+
+    try {
+      const { error } = await supabase
+        .from('planning_column_checklists')
+        .delete()
+        .eq('id', item.id);
+
+      if (error) throw error;
+      if (String(state.settingsDraft.checklistId) === String(item.id)) resetChecklistDraft();
+      await loadColumnChecklists();
+    } catch (err) {
+      alert(`Kunde inte ta bort checklistan: ${err.message}`);
+    } finally {
+      state.settingsLoading = false;
+      render();
+    }
+  }
+
 
 
   function createLinksPanel() {
@@ -1014,6 +1362,7 @@ export async function runPlanningApp() {
     if (tableName === 'UTVECKLING') return 'produktide';
     if (tableName === 'SÄLJINTRO') return 'produkt';
     if (tableName === 'DIG PROD') return 'produktnamn';
+    if (tableName === 'CDM PROJECTS') return 'projektnamn';
     if (tableName === 'MARKNAD') return 'beskrivning';
     if (tableName === 'SÄLJ') return 'beskrivning';
     if (tableName === 'INKÖP') return 'beskrivning';
@@ -1585,6 +1934,38 @@ export async function runPlanningApp() {
     return file.type === 'application/pdf' || name.endsWith('.pdf');
   }
 
+  function isExcelFile(file) {
+    if (!file) return false;
+
+    const name = String(file.name || '').toLowerCase().trim();
+    const type = String(file.type || '').toLowerCase().trim();
+
+    if (
+      name.endsWith('.xlsx') ||
+      name.endsWith('.xls') ||
+      name.endsWith('.xlsm') ||
+      name.endsWith('.csv')
+    ) {
+      return true;
+    }
+
+    return (
+      type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      type === 'application/vnd.ms-excel' ||
+      type === 'application/vnd.ms-excel.sheet.macroenabled.12' ||
+      type === 'text/csv' ||
+      type === 'application/csv' ||
+      type === 'text/plain' ||
+      type === 'application/octet-stream'
+    );
+  }
+
+  function isSupportedUploadFile(column, file) {
+    if (!file) return false;
+    if (column?.type === 'excel') return true;
+    return isPdfFile(file);
+  }
+
   function sanitizePdfFileName(name) {
     const raw = String(name || 'dokument.pdf').trim();
     return raw
@@ -1600,8 +1981,8 @@ export async function runPlanningApp() {
     return `${PDF_PREFIX}/${Date.now()}-${safeName}`;
   }
 
-  async function uploadPdfFile(file) {
-    if (!isPdfFile(file)) {
+  async function uploadPdfFile(file, column = null) {
+    if (!isSupportedUploadFile(column, file)) {
       throw new Error('Endast PDF-filer stöds.');
     }
 
@@ -1611,11 +1992,11 @@ export async function runPlanningApp() {
       .upload(storagePath, file, {
         cacheControl: '3600',
         upsert: false,
-        contentType: 'application/pdf',
+        contentType: file.type || 'application/octet-stream',
       });
 
     if (error) {
-      throw new Error(error.message || 'Kunde inte ladda upp PDF.');
+      throw new Error(error.message || 'Kunde inte ladda upp filen.');
     }
 
     return storagePath;
@@ -1630,7 +2011,7 @@ export async function runPlanningApp() {
       .remove([objectPath]);
 
     if (error) {
-      throw new Error(error.message || 'Kunde inte ta bort PDF från storage.');
+      throw new Error(error.message || 'Kunde inte ta bort Fil från storage.');
     }
   }
 
@@ -1744,6 +2125,8 @@ export async function runPlanningApp() {
         state.rowTodoPanelOpen = false;
         state.rowTodoRowId = null;
         state.settingsPanelOpen = false;
+        state.columnChecklistPanelOpen = false;
+        state.columnChecklistActive = null;
 
         void loadUnreadCountsForTable(tableName);
         render();
@@ -2065,7 +2448,7 @@ export async function runPlanningApp() {
       let value = draftRow[column.field];
       if (column.type === 'status') value = normalizeStatusValue(value);
       if (column.type === 'date') value = String(value || '').trim() || null;
-      if (column.type === 'pdf') value = '';
+      if (isFileColumn(column)) value = '';
       payload[column.field] = value;
     });
     if (isOwnerEnabledTable(tableName)) {
@@ -2090,26 +2473,26 @@ export async function runPlanningApp() {
     let finalRow = normalizeRow(tableName, tableConfig, data);
 
     try {
-      const pdfColumns = tableConfig.columns.filter((column) => isPdfColumn(column));
-      for (const column of pdfColumns) {
+      const fileColumns = tableConfig.columns.filter((column) => isFileColumn(column));
+      for (const column of fileColumns) {
         const draftFile = getDraftPdfFile(draftRow, column.field);
         if (!draftFile) continue;
 
-        const storagePath = await uploadPdfFile(draftFile);
+        const storagePath = await uploadPdfFile(draftFile, column);
         const { error: updateError } = await supabase
           .from(tableConfig.dbTable)
           .update({ [column.field]: storagePath })
           .eq('id', data.id);
 
         if (updateError) {
-          throw new Error(updateError.message || 'Kunde inte koppla PDF till raden.');
+          throw new Error(updateError.message || 'Kunde inte koppla Fil till raden.');
         }
 
         finalRow[column.field] = storagePath;
       }
     } catch (err) {
       state.savingCell = null;
-      alert(`Raden skapades, men PDF kunde inte hanteras: ${err.message}`);
+      alert(`Raden skapades, men Fil kunde inte hanteras: ${err.message}`);
       state.rowsByTable[tableName] = [finalRow, ...(state.rowsByTable[tableName] || [])];
       state.newRowDraft = null;
       state.detailRowId = null;
@@ -2142,7 +2525,7 @@ export async function runPlanningApp() {
 
     let normalizedNextValue = nextValue;
     if (column.type === 'status') normalizedNextValue = normalizeStatusValue(nextValue);
-    if (column.type === 'pdf') normalizedNextValue = normalizePdfPath(nextValue);
+    if (isFileColumn(column)) normalizedNextValue = normalizePdfPath(nextValue);
     const dbNextValue = column.type === 'date'
       ? (String(normalizedNextValue || '').trim() || null)
       : normalizedNextValue;
@@ -2220,10 +2603,6 @@ export async function runPlanningApp() {
     button.className = `${getStatusClass(value)}${isDetail ? ' status-button--detail' : ''}`;
     button.setAttribute('aria-label', `${column.name}: ${getStatusLabel(column)} (${normalizeStatusValue(value)})`);
 
-    const dot = document.createElement('span');
-    dot.className = 'status-button__dot';
-    dot.setAttribute('aria-hidden', 'true');
-
     const label = document.createElement('span');
     label.className = 'status-button__label';
 
@@ -2233,10 +2612,6 @@ export async function runPlanningApp() {
 
     label.textContent = renderedValue || getStatusLabel(column);
 
-    if (!renderedValue) {
-      button.appendChild(dot);
-    }
-
     if (!column.hideStatusLabel || renderedValue) {
       button.appendChild(label);
     }
@@ -2244,20 +2619,41 @@ export async function runPlanningApp() {
     return button;
   }
 
-  async function openPdfDocument(value) {
+  function openExternalFileUrl(url, column = null) {
+    const value = String(url || '').trim();
+    if (!value) {
+      alert('Dokumentväg saknas.');
+      return;
+    }
+
+    if (column?.type === 'excel') {
+      const officeUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(value)}`;
+      window.open(officeUrl, '_blank', 'noopener');
+      return;
+    }
+
+    window.open(value, '_blank', 'noopener');
+  }
+
+  async function openPdfDocument(value, column = null) {
     const objectPath = normalizePdfPath(value);
     if (!objectPath) {
       alert('Dokumentväg saknas.');
       return;
     }
 
+    if (objectPath.startsWith('http://') || objectPath.startsWith('https://')) {
+      openExternalFileUrl(objectPath, column);
+      return;
+    }
+
     try {
       const { data, error } = await supabase.storage
         .from(PDF_BUCKET)
-        .createSignedUrl(objectPath, 60);
+        .createSignedUrl(objectPath, column?.type === 'excel' ? 3600 : 60);
 
       if (!error && data?.signedUrl) {
-        window.open(data.signedUrl, '_blank', 'noopener');
+        openExternalFileUrl(data.signedUrl, column);
         return;
       }
     } catch (err) {
@@ -2266,15 +2662,15 @@ export async function runPlanningApp() {
 
     const { data } = supabase.storage.from(PDF_BUCKET).getPublicUrl(objectPath);
     if (data?.publicUrl) {
-      window.open(data.publicUrl, '_blank', 'noopener');
+      openExternalFileUrl(data.publicUrl, column);
       return;
     }
 
-    alert('Kunde inte öppna PDF-dokumentet.');
+    alert('Kunde inte öppna filen.');
   }
 
   async function replacePdfForExistingRow(tableConfig, row, column, file) {
-    if (!isPdfFile(file)) {
+    if (column?.type !== 'excel' && !isPdfFile(file)) {
       alert('Välj en PDF-fil.');
       return;
     }
@@ -2286,7 +2682,7 @@ export async function runPlanningApp() {
     render();
 
     try {
-      const newPath = await uploadPdfFile(file);
+      const newPath = await uploadPdfFile(file, column);
 
       const { error: updateError } = await supabase
         .from(tableConfig.dbTable)
@@ -2294,7 +2690,7 @@ export async function runPlanningApp() {
         .eq('id', row.id);
 
       if (updateError) {
-        throw new Error(updateError.message || 'Kunde inte spara PDF på raden.');
+        throw new Error(updateError.message || 'Kunde inte spara Fil på raden.');
       }
 
       row[column.field] = newPath;
@@ -2303,11 +2699,11 @@ export async function runPlanningApp() {
         try {
           await removePdfFromStorage(oldPath);
         } catch (cleanupError) {
-          console.warn('Old PDF cleanup failed:', cleanupError);
+          console.warn('Old Fil cleanup failed:', cleanupError);
         }
       }
     } catch (err) {
-      alert(`Kunde inte ladda upp PDF: ${err.message}`);
+      alert(`Kunde inte ladda upp Fil: ${err.message}`);
     } finally {
       state.savingCell = null;
       render();
@@ -2318,7 +2714,7 @@ export async function runPlanningApp() {
     const oldPath = normalizePdfPath(row[column.field]);
     if (!oldPath) return;
 
-    const confirmed = window.confirm('Ta bort PDF från raden?');
+    const confirmed = window.confirm('Ta bort fil från raden?');
     if (!confirmed) return;
 
     const key = getCellKey(row, column) || '__pdf__';
@@ -2339,7 +2735,7 @@ export async function runPlanningApp() {
 
       row[column.field] = '';
     } catch (err) {
-      alert(`Kunde inte ta bort PDF: ${err.message}`);
+      alert(`Kunde inte ta bort Fil: ${err.message}`);
     } finally {
       state.savingCell = null;
       render();
@@ -2388,7 +2784,7 @@ export async function runPlanningApp() {
       return createStatusButton(column, text, false, row);
     }
 
-    if (isPdfColumn(column)) {
+    if (isFileColumn(column)) {
       const displayName = getPdfDisplayName(text);
       if (!displayName) {
         const span = document.createElement('span');
@@ -2402,11 +2798,11 @@ export async function runPlanningApp() {
       button.className = 'rutiner-pdf-link';
       button.textContent = displayName;
       button.title = `Öppna ${displayName}`;
-      button.setAttribute('aria-label', `Öppna PDF: ${displayName}`);
+      button.setAttribute('aria-label', `Öppna Fil: ${displayName}`);
       button.addEventListener('click', async (event) => {
         event.preventDefault();
         event.stopPropagation();
-        await openPdfDocument(text);
+        await openPdfDocument(text, column);
       });
       return button;
     }
@@ -2605,13 +3001,13 @@ export async function runPlanningApp() {
 
     const name = document.createElement('div');
     name.className = displayName ? 'rutiner-pdf-field__name' : 'rutiner-pdf-field__name rutiner-pdf-field__name--empty';
-    name.textContent = displayName || 'Ingen PDF vald';
+    name.textContent = displayName || 'Ingen fil vald';
 
     const helper = document.createElement('div');
     helper.className = 'rutiner-pdf-field__helper';
     helper.textContent = displayName
-      ? 'Du kan öppna, byta eller ta bort dokumentet här.'
-      : 'Ladda upp en PDF för denna rutin.';
+      ? 'Du kan öppna, byta eller ta bort filen här.'
+      : (column.type === 'excel' ? 'Ladda upp Excel/CSV-fil.' : 'Ladda upp PDF-fil.');
 
     info.appendChild(name);
     info.appendChild(helper);
@@ -2621,19 +3017,12 @@ export async function runPlanningApp() {
 
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = 'application/pdf,.pdf';
+    fileInput.accept = column.type === 'excel' ? '*/*' : 'application/pdf,.pdf';
     fileInput.style.display = 'none';
 
     fileInput.addEventListener('change', async () => {
       const file = fileInput.files?.[0];
       if (!file) return;
-
-      if (!isPdfFile(file)) {
-        alert('Välj en PDF-fil.');
-        fileInput.value = '';
-        return;
-      }
-
       if (isDraft) {
         setDraftPdfFile(row, column.field, file);
         render();
@@ -2647,7 +3036,7 @@ export async function runPlanningApp() {
     const uploadButton = document.createElement('button');
     uploadButton.type = 'button';
     uploadButton.className = 'secondary-button';
-    uploadButton.textContent = displayName ? 'Byt PDF' : 'Ladda upp PDF';
+    uploadButton.textContent = displayName ? 'Byt fil' : (column.type === 'excel' ? 'Ladda upp Excel' : 'Ladda upp PDF');
     uploadButton.addEventListener('click', () => fileInput.click());
     actions.appendChild(uploadButton);
 
@@ -2655,17 +3044,17 @@ export async function runPlanningApp() {
       const openButton = document.createElement('button');
       openButton.type = 'button';
       openButton.className = 'secondary-button';
-      openButton.textContent = 'Öppna PDF';
+      openButton.textContent = column.type === 'excel' ? 'Öppna Excel' : 'Öppna PDF';
       openButton.addEventListener('click', async () => {
         if (isDraft) return;
-        await openPdfDocument(row[column.field]);
+        await openPdfDocument(row[column.field], column);
       });
       actions.appendChild(openButton);
 
       const removeButton = document.createElement('button');
       removeButton.type = 'button';
       removeButton.className = 'secondary-button secondary-button--danger';
-      removeButton.textContent = 'Ta bort PDF';
+      removeButton.textContent = 'Ta bort fil';
       removeButton.addEventListener('click', async () => {
         if (isDraft) {
           setDraftPdfFile(row, column.field, null);
@@ -2690,7 +3079,7 @@ export async function runPlanningApp() {
   function createDetailField(tableConfig, row, column, options = {}) {
     const isDraft = !!options.isDraft;
 
-    if (isPdfColumn(column)) {
+    if (isFileColumn(column)) {
       return createPdfDetailField(tableConfig, row, column, { isDraft });
     }
 
@@ -2801,6 +3190,7 @@ export async function runPlanningApp() {
     if (tableName === 'UTVECKLING') return 'produktide';
     if (tableName === 'SÄLJINTRO') return 'produkt';
     if (tableName === 'DIG PROD') return 'produktnamn';
+    if (tableName === 'CDM PROJECTS') return 'projektnamn';
     if (tableName === 'MARKNAD') return 'beskrivning';
     if (tableName === 'SÄLJ') return 'beskrivning';
     if (tableName === 'INKÖP') return 'beskrivning';
@@ -2946,6 +3336,12 @@ export async function runPlanningApp() {
         <h2 class="side-panel__title">Manage Links</h2>
         <p class="side-panel__text">Skapa och hantera globala länkar.</p>
       `;
+    } else if (state.settingsView === 'checklists') {
+      heading.innerHTML = `
+        <p class="side-panel__eyebrow">Settings</p>
+        <h2 class="side-panel__title">Checklistor</h2>
+        <p class="side-panel__text">Koppla checklistor till tabellkolumner.</p>
+      `;
     } else {
       heading.innerHTML = `
         <p class="side-panel__eyebrow">Settings</p>
@@ -3022,6 +3418,14 @@ export async function runPlanningApp() {
           disabled: false,
           adminOnly: true,
         }));
+
+        menu.appendChild(createCard({
+          title: 'Checklistor',
+          subtitle: 'Hantera kolumn-checklistor',
+          onClick: openSettingsChecklists,
+          disabled: false,
+          adminOnly: true,
+        }));
       }
 
       menu.appendChild(createCard({
@@ -3036,7 +3440,7 @@ export async function runPlanningApp() {
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=63');
+          const { signOutUser } = await import('./auth.js?v=79');
           await signOutUser();
         },
         disabled: false,
@@ -3056,7 +3460,232 @@ export async function runPlanningApp() {
       backRow.appendChild(backButton);
       body.appendChild(backRow);
 
-      if (state.settingsView === 'links') {
+      if (state.settingsView === 'checklists') {
+        const formCard = document.createElement('section');
+        formCard.className = 'detail-card settings-form';
+
+        const formTitle = document.createElement('h3');
+        formTitle.className = 'detail-card__title';
+        formTitle.textContent = state.settingsDraft.checklistId ? 'Redigera checklist' : 'Ny checklist';
+
+        const tableLabel = document.createElement('label');
+        tableLabel.className = 'detail-field';
+        const tableText = document.createElement('span');
+        tableText.className = 'detail-field__label';
+        tableText.textContent = 'Tabell';
+        const tableSelect = document.createElement('select');
+        tableSelect.className = 'detail-field__control';
+        tableSelect.innerHTML = '<option value="">Välj tabell</option>';
+        getSettingsTableOptions().forEach((name) => {
+          const option = document.createElement('option');
+          option.value = name;
+          option.textContent = name;
+          if (state.settingsDraft.checklistTableName === name) option.selected = true;
+          tableSelect.appendChild(option);
+        });
+        tableSelect.addEventListener('change', () => {
+          state.settingsDraft.checklistTableName = tableSelect.value;
+          state.settingsDraft.checklistColumnField = '';
+          render();
+        });
+        tableLabel.appendChild(tableText);
+        tableLabel.appendChild(tableSelect);
+
+        const columnLabel = document.createElement('label');
+        columnLabel.className = 'detail-field';
+        const columnText = document.createElement('span');
+        columnText.className = 'detail-field__label';
+        columnText.textContent = 'Kolumn';
+        const columnSelect = document.createElement('select');
+        columnSelect.className = 'detail-field__control';
+        columnSelect.innerHTML = '<option value="">Välj kolumn</option>';
+        getSettingsColumnOptions(state.settingsDraft.checklistTableName).forEach((column) => {
+          const option = document.createElement('option');
+          option.value = column.field;
+          option.textContent = column.name;
+          if (state.settingsDraft.checklistColumnField === column.field) option.selected = true;
+          columnSelect.appendChild(option);
+        });
+        columnSelect.addEventListener('change', () => {
+          state.settingsDraft.checklistColumnField = columnSelect.value;
+        });
+        columnLabel.appendChild(columnText);
+        columnLabel.appendChild(columnSelect);
+
+        const titleField = document.createElement('label');
+        titleField.className = 'detail-field';
+        const titleText = document.createElement('span');
+        titleText.className = 'detail-field__label';
+        titleText.textContent = 'Titel';
+        const titleInput = document.createElement('input');
+        titleInput.className = 'detail-field__control';
+        titleInput.type = 'text';
+        titleInput.value = state.settingsDraft.checklistTitle || '';
+        titleInput.addEventListener('input', () => {
+          state.settingsDraft.checklistTitle = titleInput.value;
+        });
+        titleField.appendChild(titleText);
+        titleField.appendChild(titleInput);
+
+        const bodyField = document.createElement('label');
+        bodyField.className = 'detail-field';
+        const bodyText = document.createElement('span');
+        bodyText.className = 'detail-field__label';
+        bodyText.textContent = 'Punkter - en per rad';
+        const bodyInput = document.createElement('textarea');
+        bodyInput.className = 'detail-field__control notes-form__body todo-modal__textarea';
+        bodyInput.rows = 8;
+        bodyInput.value = state.settingsDraft.checklistBody || '';
+        bodyInput.addEventListener('input', () => {
+          state.settingsDraft.checklistBody = bodyInput.value;
+        });
+        bodyField.appendChild(bodyText);
+        bodyField.appendChild(bodyInput);
+
+        const sortField = document.createElement('label');
+        sortField.className = 'detail-field';
+        const sortText = document.createElement('span');
+        sortText.className = 'detail-field__label';
+        sortText.textContent = 'Ordning';
+        const sortInput = document.createElement('input');
+        sortInput.className = 'detail-field__control';
+        sortInput.type = 'number';
+        sortInput.value = state.settingsDraft.checklistSortOrder || '100';
+        sortInput.addEventListener('input', () => {
+          state.settingsDraft.checklistSortOrder = sortInput.value;
+        });
+        sortField.appendChild(sortText);
+        sortField.appendChild(sortInput);
+
+        const activeField = document.createElement('label');
+        activeField.className = 'detail-field';
+        const activeWrap = document.createElement('div');
+        activeWrap.className = 'settings-checkbox-row';
+        const activeInput = document.createElement('input');
+        activeInput.type = 'checkbox';
+        activeInput.checked = !!state.settingsDraft.checklistIsActive;
+        activeInput.addEventListener('change', () => {
+          state.settingsDraft.checklistIsActive = activeInput.checked;
+        });
+        const activeLabel = document.createElement('span');
+        activeLabel.className = 'detail-field__label';
+        activeLabel.textContent = 'Aktiv';
+        activeWrap.appendChild(activeInput);
+        activeWrap.appendChild(activeLabel);
+        activeField.appendChild(activeWrap);
+
+        const footer = document.createElement('div');
+        footer.className = 'side-panel__footer';
+
+        const saveButton = document.createElement('button');
+        saveButton.type = 'button';
+        saveButton.className = 'primary-button';
+        saveButton.textContent = state.settingsLoading ? 'Sparar...' : 'Spara';
+        saveButton.disabled = state.settingsLoading || !isAdmin();
+        saveButton.addEventListener('click', async () => {
+          await saveChecklistFromSettings();
+        });
+
+        const resetButton = document.createElement('button');
+        resetButton.type = 'button';
+        resetButton.className = 'secondary-button';
+        resetButton.textContent = 'Rensa';
+        resetButton.addEventListener('click', () => {
+          resetChecklistDraft();
+          render();
+        });
+
+        footer.appendChild(saveButton);
+        footer.appendChild(resetButton);
+
+        formCard.appendChild(formTitle);
+        formCard.appendChild(tableLabel);
+        formCard.appendChild(columnLabel);
+        formCard.appendChild(titleField);
+        formCard.appendChild(bodyField);
+        formCard.appendChild(sortField);
+        formCard.appendChild(activeField);
+        formCard.appendChild(footer);
+
+        const listCard = document.createElement('section');
+        listCard.className = 'detail-card settings-list';
+
+        const listTitle = document.createElement('h3');
+        listTitle.className = 'detail-card__title';
+        listTitle.textContent = 'Befintliga checklistor';
+        listCard.appendChild(listTitle);
+
+        const rows = state.columnChecklistsList || [];
+        if (!rows.length) {
+          const empty = document.createElement('p');
+          empty.className = 'empty-state';
+          empty.textContent = 'Inga checklistor ännu.';
+          listCard.appendChild(empty);
+        } else {
+          const list = document.createElement('div');
+          list.className = 'settings-list__rows';
+
+          rows.forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'settings-list__row';
+
+            const info = document.createElement('div');
+            info.className = 'settings-list__info';
+
+            const title = document.createElement('div');
+            title.className = 'settings-list__title';
+            title.textContent = item.title || 'Utan titel';
+
+            const subtitle = document.createElement('div');
+            subtitle.className = 'settings-list__meta';
+            subtitle.textContent = `${item.table_name} · ${item.column_field} · ${item.is_active ? 'aktiv' : 'inaktiv'}`;
+
+            info.appendChild(title);
+            info.appendChild(subtitle);
+
+            const actions = document.createElement('div');
+            actions.className = 'settings-list__actions';
+
+            const editButton = document.createElement('button');
+            editButton.type = 'button';
+            editButton.className = 'secondary-button';
+            editButton.textContent = 'Redigera';
+            editButton.disabled = !isAdmin();
+            editButton.addEventListener('click', () => editChecklistFromSettings(item));
+
+            const activeButton = document.createElement('button');
+            activeButton.type = 'button';
+            activeButton.className = 'secondary-button';
+            activeButton.textContent = item.is_active ? 'Inaktivera' : 'Aktivera';
+            activeButton.disabled = !isAdmin() || state.settingsLoading;
+            activeButton.addEventListener('click', async () => {
+              await setChecklistActiveFromSettings(item, !item.is_active);
+            });
+
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.className = 'secondary-button secondary-button--danger';
+            deleteButton.textContent = 'Ta bort';
+            deleteButton.disabled = !isAdmin() || state.settingsLoading;
+            deleteButton.addEventListener('click', async () => {
+              await deleteChecklistFromSettings(item);
+            });
+
+            actions.appendChild(editButton);
+            actions.appendChild(activeButton);
+            actions.appendChild(deleteButton);
+
+            row.appendChild(info);
+            row.appendChild(actions);
+            list.appendChild(row);
+          });
+
+          listCard.appendChild(list);
+        }
+
+        body.appendChild(formCard);
+        body.appendChild(listCard);
+      } else if (state.settingsView === 'links') {
         const formCard = document.createElement('section');
         formCard.className = 'detail-card settings-form';
 
@@ -3735,6 +4364,7 @@ export async function runPlanningApp() {
     createArchivePanel,
     createRowTodoPanel,
     createNotesPanel,
+    createColumnChecklistPanel,
     createDetailPanel,
     getFilteredRows,
     getVisibleColumns,
@@ -3746,6 +4376,7 @@ export async function runPlanningApp() {
     isNotesColumn,
     isTodoColumn,
     createDocumentBadge,
+    createChecklistBadge,
     isVirtualModalTodoRow,
     createOpenButton,
     createNotesButton,
@@ -3774,6 +4405,7 @@ export async function runPlanningApp() {
   );
   await archiveCompletedTodosFromPreviousWeeks();
   await loadDocumentLinks();
+  await loadColumnChecklists();
   await loadLinks();
   await loadPlanningUsers();
   await loadModalTodoRows();

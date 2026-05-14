@@ -3,7 +3,7 @@ import {
   STATUS_ORDER,
   OWNER_TABLES,
   PDF_BUCKET,
-} from './app_constants.js?v=63';
+} from './app_constants.js?v=72';
 
 export function createDataController({ APP_CONFIG, SAMPLE_ROWS = {} }) {
   function getFieldTypeConfig(typeName) {
@@ -92,7 +92,7 @@ export function createDataController({ APP_CONFIG, SAMPLE_ROWS = {} }) {
         normalized[column.field] = normalizeStatusValue(normalized[column.field]);
       }
 
-      if (column.type === 'pdf') {
+      if (column.type === 'pdf' || column.type === 'excel') {
         normalized[column.field] = normalizePdfPath(normalized[column.field]);
       }
     });

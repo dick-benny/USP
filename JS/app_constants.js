@@ -24,6 +24,6 @@ export const UI_TODO_COLUMN = {
 
 export const STATUS_ORDER = ['gray', 'yellow', 'green', 'red'];
 export const TODO_TABLE = 'TODO';
-export const OWNER_TABLES = ['PRE DEV', 'UTVECKLING', 'SÄLJINTRO', 'DIG PROD', 'MARKNAD', 'SÄLJ', 'INKÖP', 'TODO'];
+export const OWNER_TABLES = ['PRE DEV', 'UTVECKLING', 'SÄLJINTRO', 'DIG PROD', 'CDM PROJECTS', 'MARKNAD', 'SÄLJ', 'INKÖP', 'TODO'];
 export const PDF_BUCKET = 'rutiner-pdf';
 export const PDF_PREFIX = 'rutiner';
