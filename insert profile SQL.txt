@@ -7,10 +7,10 @@ insert into public.planning_users (
   is_active
 )
 values (
-  '994df433-3cc9-4835-9e99-00b06c6b0a1c',
-  'david@cappelendimyr.com',
-  'David Holm',
-  'DH',
+  '18817ef0-5441-4602-b751-3f64027a80ab',
+  'elin@cappelendimyr.com',
+  'Elin Ekvall',
+  'EE',
   'user',
   true
 )

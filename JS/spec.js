@@ -121,7 +121,7 @@ window.PlanningSpec = (function () {
     "INKÖP": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
     "MARKNAD": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
     "SÄLJ": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
-    "TODO": [{ kategori: "Allmänt", beskrivning: "", klart_datum: "-- -- -- ", is_done: false }],
+    "TODO": [{ kategori: "Privat", beskrivning: "", klart_datum: "-- -- -- ", is_done: false }],
     "RUTINER": [{ rutin: "", document: "---", is_done: false }]
   };
 

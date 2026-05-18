@@ -3,7 +3,7 @@ import {
   STATUS_ORDER,
   OWNER_TABLES,
   PDF_BUCKET,
-} from './app_constants.js?v=72';
+} from './app_constants.js?v=95';
 
 export function createDataController({ APP_CONFIG, SAMPLE_ROWS = {} }) {
   function getFieldTypeConfig(typeName) {
@@ -15,12 +15,27 @@ export function createDataController({ APP_CONFIG, SAMPLE_ROWS = {} }) {
   }
 
   function getDefaultValue(tableName, column) {
+    const dropdown = APP_CONFIG.dropdowns?.[column.type];
+    const normalizeDropdownDefault = (value) => {
+      if (!dropdown?.options?.length) return value;
+      return dropdown.options.includes(value) ? value : dropdown.options[0];
+    };
+
     const sampleRow = SAMPLE_ROWS?.[tableName]?.[0] || {};
-    if (sampleRow[column.field] !== undefined) return sampleRow[column.field];
-    if (column.default !== undefined) return column.default;
+    if (sampleRow[column.field] !== undefined) {
+      return normalizeDropdownDefault(sampleRow[column.field]);
+    }
+
+    if (column.default !== undefined) {
+      return normalizeDropdownDefault(column.default);
+    }
+
     const fieldType = getFieldTypeConfig(column.type);
-    if (fieldType && fieldType.defaultValue !== undefined) return fieldType.defaultValue;
-    return '';
+    if (fieldType && fieldType.defaultValue !== undefined) {
+      return normalizeDropdownDefault(fieldType.defaultValue);
+    }
+
+    return normalizeDropdownDefault('');
   }
 
   function normalizeStatusValue(value) {

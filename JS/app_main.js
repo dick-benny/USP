@@ -8,11 +8,12 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=79';
-import { createTodoController } from './app_todo.js?v=79';
-import { createRenderController } from './app_render.js?v=79';
-import { createDataController } from './app_data.js?v=79';
-import { createActionController } from './app_actions.js?v=79';
+} from './app_constants.js?v=95';
+import { createTodoController } from './app_todo.js?v=95';
+import { createMessagesController } from './app_messages.js?v=95';
+import { createRenderController } from './app_render.js?v=95';
+import { createDataController } from './app_data.js?v=95';
+import { createActionController } from './app_actions.js?v=95';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -119,6 +120,10 @@ export async function runPlanningApp() {
     columnChecklistsList: [],
     linksList: [],
     linksPanelOpen: false,
+    messagesPanelOpen: false,
+    messagesPanelMode: 'inbox',
+    messagesList: null,
+    messageComposeDraft: null,
     modalTodoRows: [],
     planningUsers: [],
   };
@@ -164,6 +169,70 @@ export async function runPlanningApp() {
     toggleTodoDone,
   });
   const { getActionConfig, runRowAction } = actionController;
+
+  async function navigateToMessageSource(item) {
+    const tableName = String(item?.sourceTable || '').trim();
+    const rowId = String(item?.sourceRowId || '').trim();
+
+    if (!tableName || !rowId) {
+      alert('Radkoppling saknas.');
+      return;
+    }
+
+    const tableConfig = APP_CONFIG.tables?.[tableName];
+    if (!tableConfig?.dbTable) {
+      alert(`Kunde inte hitta vyn ${tableName}.`);
+      return;
+    }
+
+    let row = getRowById(tableName, rowId);
+    if (!row) {
+      try {
+        await loadTableRowsFromData(state, tableName, tableConfig);
+        row = getRowById(tableName, rowId);
+      } catch (err) {
+        console.warn('Could not reload source table for message navigation:', err.message);
+      }
+    }
+
+    if (!row) {
+      alert('Kunde inte hitta kopplad rad.');
+      return;
+    }
+
+    state.activeTableName = tableName;
+    state.detailRowId = row.id;
+    state.messagesPanelOpen = false;
+    state.linksPanelOpen = false;
+    state.settingsPanelOpen = false;
+    state.archivePanelOpen = false;
+    state.notesPanelOpen = false;
+    state.notesRowId = null;
+    state.rowTodoPanelOpen = false;
+    state.rowTodoRowId = null;
+    state.columnChecklistPanelOpen = false;
+    state.columnChecklistActive = null;
+    state.newRowDraft = null;
+    state.editingCell = null;
+
+    render();
+  }
+
+  const messagesController = createMessagesController({
+    supabase,
+    state,
+    getCurrentUserInitials,
+    getCurrentUserId,
+    getRowTitleField,
+    navigateToMessageSource,
+    render,
+  });
+  const {
+    ensureMessagesButton,
+    createMessagesPanel,
+    createMessageButtonForRow,
+    loadMessages,
+  } = messagesController;
 
   function getActiveConfig() {
     return tableEntries.find(([tableName]) => tableName === state.activeTableName) || null;
@@ -2080,22 +2149,8 @@ export async function runPlanningApp() {
   }
 
   function ensureLinksButton() {
-    if (!userArea) return;
-    let linksButton = document.getElementById('linksButton');
-    if (linksButton) return;
-
-    linksButton = document.createElement('button');
-    linksButton.id = 'linksButton';
-    linksButton.type = 'button';
-    linksButton.className = settingsButton?.className || 'topbar__settings';
-    linksButton.textContent = 'LÄNKAR';
-    linksButton.addEventListener('click', openLinksPanel);
-
-    if (settingsButton && settingsButton.parentElement === userArea) {
-      userArea.insertBefore(linksButton, settingsButton);
-    } else {
-      userArea.appendChild(linksButton);
-    }
+    // v93: Links are Settings-only. Remove any old topbar Links button if present.
+    document.querySelectorAll('[data-links-button="true"], .links-button').forEach((button) => button.remove());
   }
 
   function createNav() {
@@ -2125,6 +2180,7 @@ export async function runPlanningApp() {
         state.rowTodoPanelOpen = false;
         state.rowTodoRowId = null;
         state.settingsPanelOpen = false;
+        state.messagesPanelOpen = false;
         state.columnChecklistPanelOpen = false;
         state.columnChecklistActive = null;
 
@@ -3429,6 +3485,14 @@ export async function runPlanningApp() {
       }
 
       menu.appendChild(createCard({
+        title: 'Länkar',
+        subtitle: 'Öppna länkar',
+        onClick: openLinksPanel,
+        disabled: false,
+        adminOnly: false,
+      }));
+
+      menu.appendChild(createCard({
         title: 'Rutiner',
         subtitle: 'Öppna rutiner',
         onClick: openRutinerFromSettings,
@@ -3440,7 +3504,7 @@ export async function runPlanningApp() {
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=79');
+          const { signOutUser } = await import('./auth.js?v=95');
           await signOutUser();
         },
         disabled: false,
@@ -4274,6 +4338,10 @@ export async function runPlanningApp() {
     } else {
       const actions = getActionConfig(tableName);
 
+      if (tableName !== 'RUTINER') {
+        headerActions.appendChild(createMessageButtonForRow(tableName, row));
+      }
+
       if (tableName === 'UTVECKLING') {
         const saljintroButton = document.createElement('button');
         saljintroButton.type = 'button';
@@ -4356,11 +4424,14 @@ export async function runPlanningApp() {
     getActiveConfig,
     openSettingsMenu,
     ensureLinksButton,
+    ensureMessagesButton,
+    userArea,
     createNav,
     getCurrentDraftRow,
     getCurrentDetailRow,
     createSettingsPanel,
     createLinksPanel,
+    createMessagesPanel,
     createArchivePanel,
     createRowTodoPanel,
     createNotesPanel,
@@ -4408,6 +4479,7 @@ export async function runPlanningApp() {
   await loadColumnChecklists();
   await loadLinks();
   await loadPlanningUsers();
+  await loadMessages();
   await loadModalTodoRows();
   if (state.activeTableName) {
     await loadUnreadCountsForTable(state.activeTableName);

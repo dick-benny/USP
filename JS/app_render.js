@@ -7,11 +7,14 @@ export function createRenderController(deps) {
     getActiveConfig,
     openSettingsMenu,
     ensureLinksButton,
+    ensureMessagesButton,
+    userArea,
     createNav,
     getCurrentDraftRow,
     getCurrentDetailRow,
     createSettingsPanel,
     createLinksPanel,
+    createMessagesPanel,
     createArchivePanel,
     createRowTodoPanel,
     createNotesPanel,
@@ -275,6 +278,7 @@ export function createRenderController(deps) {
   }
 
   ensureLinksButton();
+    ensureMessagesButton(userArea, settingsButton);
     createNav();
     app.innerHTML = '';
 
@@ -292,6 +296,8 @@ export function createRenderController(deps) {
       app.appendChild(createSettingsPanel());
     } else if (state.linksPanelOpen) {
       app.appendChild(createLinksPanel());
+    } else if (state.messagesPanelOpen) {
+      app.appendChild(createMessagesPanel());
     } else if (state.archivePanelOpen && tableName !== 'RUTINER') {
       app.appendChild(createArchivePanel());
     } else if (state.rowTodoPanelOpen) {
