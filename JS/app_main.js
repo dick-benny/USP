@@ -8,12 +8,15 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=95';
-import { createTodoController } from './app_todo.js?v=95';
-import { createMessagesController } from './app_messages.js?v=95';
-import { createRenderController } from './app_render.js?v=95';
-import { createDataController } from './app_data.js?v=95';
-import { createActionController } from './app_actions.js?v=95';
+} from './app_constants.js?v=115';
+import { createTodoController } from './app_todo.js?v=115';
+import { createMessagesController } from './app_messages.js?v=115';
+import { createRenderController } from './app_render.js?v=115';
+import { createDataController } from './app_data.js?v=115';
+import { createActionController } from './app_actions.js?v=115';
+import { createFilterController } from './app_filters.js?v=115';
+import { createColumnToolsController } from './app_column_tools.js?v=115';
+import { createExcelPlanController } from './app_excel_plan.js?v=115';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -74,6 +77,7 @@ export async function runPlanningApp() {
     activeTableName: tableEntries[0]?.[0] || null,
     rowsByTable: {},
     filtersByTable: {},
+    todoMineOnly: false,
     editingCell: null,
     savingCell: null,
     detailRowId: null,
@@ -118,6 +122,8 @@ export async function runPlanningApp() {
     },
     documentLinksList: [],
     columnChecklistsList: [],
+    columnChecklistsLoading: false,
+    columnChecklistsError: '',
     linksList: [],
     linksPanelOpen: false,
     messagesPanelOpen: false,
@@ -330,6 +336,8 @@ export async function runPlanningApp() {
   }
 
   function hasRowTodo(tableName) {
+    const hiddenRowTodoTables = ['PRE DEV', 'UTVECKLING', 'SÄLJINTRO'];
+    if (hiddenRowTodoTables.includes(tableName)) return false;
     return !!APP_CONFIG.rowTodoConfig?.[tableName];
   }
 
@@ -338,16 +346,35 @@ export async function runPlanningApp() {
   }
 
   function getVisibleColumns(tableConfig) {
+    const hiddenRowTodoTables = ['PRE DEV', 'UTVECKLING', 'SÄLJINTRO'];
+    const tableName = state.activeTableName;
     const columns = [
-      ...tableConfig.columns.filter((column) => column.field !== 'id' && !column.hiddenInTable),
+      ...tableConfig.columns.filter((column) => column.field !== 'id' && !column.hiddenInTable && column.field !== UI_TODO_COLUMN.field && column.type !== UI_TODO_COLUMN.type),
       UI_OPEN_COLUMN,
       UI_NOTES_COLUMN,
     ];
-    if (hasRowTodo(state.activeTableName)) {
+    if (!hiddenRowTodoTables.includes(tableName) && hasRowTodo(tableName)) {
       columns.push(UI_TODO_COLUMN);
     }
     return columns;
   }
+
+
+  const filterController = createFilterController({
+    state,
+    APP_CONFIG,
+    TODO_TABLE,
+    getVisibleColumns,
+    getCurrentUserInitials,
+    render,
+  });
+  const { ensureFilters, createFilterBar, getFilteredRows } = filterController;
+
+  const excelPlanController = createExcelPlanController({
+    state,
+    normalizeStatusValue,
+  });
+  const { openSalesIntroExcelPlan } = excelPlanController;
 
   function getFieldTypeConfig(typeName) {
     return APP_CONFIG.fieldTypes?.[typeName] || null;
@@ -397,250 +424,19 @@ export async function runPlanningApp() {
     return column?.field === UI_TODO_COLUMN.field;
   }
 
-  function normalizeDocumentLinks(rows) {
-    const linksByTable = {};
-    (rows || []).forEach((item) => {
-      const tableName = String(item.table_name || '').trim();
-      const columnField = String(item.column_field || '').trim();
-      if (!tableName || !columnField) return;
-      if (!linksByTable[tableName]) linksByTable[tableName] = {};
-      linksByTable[tableName][columnField] = item;
-    });
-    return linksByTable;
-  }
-
-  async function loadDocumentLinks() {
-    try {
-      const { data, error } = await supabase
-        .from('planning_document_links')
-        .select('*')
-        .order('table_name', { ascending: true });
-
-      if (error) throw error;
-      const rows = Array.isArray(data) ? data : [];
-      state.documentLinksList = rows;
-      state.documentLinksByTable = normalizeDocumentLinks(rows);
-    } catch (err) {
-      console.warn('Could not load document links:', err.message);
-      state.documentLinksList = [];
-      state.documentLinksByTable = {};
-    }
-  }
-
-  function getDocumentLinkForColumn(tableName, column) {
-    return state.documentLinksByTable?.[tableName]?.[column.field] || null;
-  }
-
-  function normalizeColumnChecklists(rows) {
-    const checklistsByTable = {};
-    (rows || []).forEach((item) => {
-      const tableName = String(item.table_name || '').trim();
-      const columnField = String(item.column_field || '').trim();
-      if (!tableName || !columnField || item.is_active === false) return;
-      if (!checklistsByTable[tableName]) checklistsByTable[tableName] = {};
-      checklistsByTable[tableName][columnField] = item;
-    });
-    return checklistsByTable;
-  }
-
-  async function loadColumnChecklists() {
-    try {
-      const { data, error } = await supabase
-        .from('planning_column_checklists')
-        .select('*')
-        .order('table_name', { ascending: true })
-        .order('column_field', { ascending: true })
-        .order('sort_order', { ascending: true });
-
-      if (error) throw error;
-      const rows = Array.isArray(data) ? data : [];
-      state.columnChecklistsList = rows;
-      state.columnChecklistsByTable = normalizeColumnChecklists(rows);
-    } catch (err) {
-      console.warn('Could not load column checklists:', err.message);
-      state.columnChecklistsList = [];
-      state.columnChecklistsByTable = {};
-    }
-  }
-
-  function getColumnChecklistForColumn(tableName, column) {
-    return state.columnChecklistsByTable?.[tableName]?.[column.field] || null;
-  }
-
-  function openColumnChecklist(tableName, column) {
-    const checklist = getColumnChecklistForColumn(tableName, column);
-    if (!checklist) return;
-
-    state.columnChecklistPanelOpen = true;
-    state.columnChecklistActive = {
-      tableName,
-      columnName: column.name,
-      columnField: column.field,
-      checklist,
-    };
-    state.linksPanelOpen = false;
-    state.settingsPanelOpen = false;
-    state.archivePanelOpen = false;
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    state.rowTodoPanelOpen = false;
-    state.rowTodoRowId = null;
-    state.detailRowId = null;
-    state.newRowDraft = null;
-    render();
-  }
-
-  function closeColumnChecklistPanel() {
-    state.columnChecklistPanelOpen = false;
-    state.columnChecklistActive = null;
-    render();
-  }
-
-  function createChecklistBadge(tableName, column) {
-    const checklist = getColumnChecklistForColumn(tableName, column);
-    if (!checklist) return null;
-
-    const badge = document.createElement('button');
-    badge.type = 'button';
-    badge.className = 'column-checklist-badge';
-    badge.textContent = '✓';
-    badge.title = String(checklist.title || 'Visa checklist').trim() || 'Visa checklist';
-    badge.setAttribute('aria-label', `Visa checklist för ${column.name}`);
-    badge.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      openColumnChecklist(tableName, column);
-    });
-
-    return badge;
-  }
-
-  function getChecklistItems(body) {
-    return String(body || '')
-      .split(/\r?\n/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-
-  function createColumnChecklistPanel() {
-    const active = state.columnChecklistActive;
-    const checklist = active?.checklist;
-    if (!active || !checklist) return null;
-
-    const overlay = document.createElement('div');
-    overlay.className = 'overlay-modal';
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    });
-
-    const dialog = document.createElement('aside');
-    dialog.className = 'side-panel overlay-modal__dialog checklist-panel';
-
-    const header = document.createElement('div');
-    header.className = 'side-panel__header';
-
-    const heading = document.createElement('div');
-    const title = String(checklist.title || active.columnName || 'Checklist').trim();
-    heading.innerHTML = `
-      <p class="side-panel__eyebrow">${active.tableName} · ${active.columnName}</p>
-      <h2 class="side-panel__title">${title}</h2>
-      <p class="side-panel__text">Checklist för kolumnen.</p>
-    `;
-
-    const closeButton = document.createElement('button');
-    closeButton.type = 'button';
-    closeButton.className = 'side-panel__close';
-    closeButton.textContent = 'Stäng';
-    closeButton.addEventListener('click', closeColumnChecklistPanel);
-
-    header.appendChild(heading);
-    header.appendChild(closeButton);
-
-    const body = document.createElement('div');
-    body.className = 'side-panel__body';
-
-    const card = document.createElement('section');
-    card.className = 'detail-card checklist-card';
-
-    const items = getChecklistItems(checklist.body);
-    if (!items.length) {
-      const empty = document.createElement('p');
-      empty.className = 'empty-state';
-      empty.textContent = 'Checklistan saknar punkter ännu.';
-      card.appendChild(empty);
-    } else {
-      const list = document.createElement('ul');
-      list.className = 'checklist-list';
-
-      items.forEach((item) => {
-        const li = document.createElement('li');
-        li.className = 'checklist-list__item';
-
-        const mark = document.createElement('span');
-        mark.className = 'checklist-list__mark';
-        mark.textContent = '✓';
-
-        const text = document.createElement('span');
-        text.className = 'checklist-list__text';
-        text.textContent = item;
-
-        li.appendChild(mark);
-        li.appendChild(text);
-        list.appendChild(li);
-      });
-
-      card.appendChild(list);
-    }
-
-    body.appendChild(card);
-    dialog.appendChild(header);
-    dialog.appendChild(body);
-    overlay.appendChild(dialog);
-    return overlay;
-  }
-
-  function getRutinerDocumentPathByRowId(rutinerRowId) {
-    const rutinerRows = state.rowsByTable['RUTINER'] || [];
-    const match = rutinerRows.find((row) => String(row.id) === String(rutinerRowId));
-    return match?.document || '';
-  }
-
-  async function openLinkedDocument(tableName, column) {
-    const link = getDocumentLinkForColumn(tableName, column);
-    if (!link) return;
-
-    const documentPath = getRutinerDocumentPathByRowId(link.rutiner_row_id);
-    if (!documentPath) {
-      alert('Det kopplade dokumentet kunde inte hittas i RUTINER.');
-      return;
-    }
-
-    await openPdfDocument(documentPath);
-  }
-
-  function createDocumentBadge(tableName, column) {
-    const link = getDocumentLinkForColumn(tableName, column);
-    if (!link) return null;
-
-    const badge = document.createElement('button');
-    badge.type = 'button';
-    badge.className = 'doc-link-badge';
-    badge.textContent = '';
-    badge.className = 'doc-link-dot';
-    badge.title = String(link.label || 'Öppna kopplat dokument').trim() || 'Öppna kopplat dokument';
-    badge.setAttribute('aria-label', `Öppna kopplat dokument för ${column.name}`);
-    badge.addEventListener('click', async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      await openLinkedDocument(tableName, column);
-    });
-
-    return badge;
-  }
-
+  const columnToolsController = createColumnToolsController({
+    supabase,
+    state,
+    openPdfDocument,
+    render,
+  });
+  const {
+    loadDocumentLinks,
+    loadColumnChecklists,
+    createColumnChecklistPanel,
+    createChecklistBadge,
+    createDocumentBadge,
+  } = columnToolsController;
 
 
   function openRutinerFromSettings() {
@@ -709,6 +505,12 @@ export async function runPlanningApp() {
     state.detailRowId = null;
     state.newRowDraft = null;
     render();
+
+    void loadColumnChecklists().then(() => {
+      if (state.settingsPanelOpen && state.settingsView === 'checklists') {
+        render();
+      }
+    });
   }
 
   function openLinksPanel() {
@@ -920,6 +722,8 @@ export async function runPlanningApp() {
     state.settingsDraft.checklistBody = '';
     state.settingsDraft.checklistSortOrder = '100';
     state.settingsDraft.checklistIsActive = true;
+    state.settingsDraft.checklistOriginalTableName = '';
+    state.settingsDraft.checklistOriginalColumnField = '';
   }
 
   function editChecklistFromSettings(item) {
@@ -930,7 +734,13 @@ export async function runPlanningApp() {
     state.settingsDraft.checklistBody = String(item.body || '');
     state.settingsDraft.checklistSortOrder = String(item.sort_order ?? 100);
     state.settingsDraft.checklistIsActive = item.is_active !== false;
+    state.settingsDraft.checklistOriginalTableName = String(item.table_name || '');
+    state.settingsDraft.checklistOriginalColumnField = String(item.column_field || '');
     render();
+
+    window.setTimeout(() => {
+      document.querySelector('.settings-form')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 0);
   }
 
   async function saveChecklistFromSettings() {
@@ -962,11 +772,31 @@ export async function runPlanningApp() {
       };
 
       if (id) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('planning_column_checklists')
           .update(payload)
-          .eq('id', id);
+          .eq('id', id)
+          .select('id')
+          .maybeSingle();
+
         if (error) throw error;
+
+        if (!data?.id) {
+          const originalTableName = String(state.settingsDraft.checklistOriginalTableName || '').trim();
+          const originalColumnField = String(state.settingsDraft.checklistOriginalColumnField || '').trim();
+
+          if (!originalTableName || !originalColumnField) {
+            throw new Error('Kunde inte hitta befintlig checklist att uppdatera.');
+          }
+
+          const { error: fallbackError } = await supabase
+            .from('planning_column_checklists')
+            .update(payload)
+            .eq('table_name', originalTableName)
+            .eq('column_field', originalColumnField);
+
+          if (fallbackError) throw fallbackError;
+        }
       } else {
         const { error } = await supabase
           .from('planning_column_checklists')
@@ -2132,22 +1962,6 @@ export async function runPlanningApp() {
     render();
   }
 
-  function ensureFilters(tableName, tableConfig) {
-    if (!state.filtersByTable[tableName]) {
-      const filters = {};
-    getVisibleColumns(tableConfig).forEach((column) => {
-        if (column.type === 'status') return;
-        const dropdown = APP_CONFIG.dropdowns?.[column.type];
-        if (dropdown?.filterEnabled) {
-          filters[column.field] = 'Alla';
-        }
-      });
-
-      state.filtersByTable[tableName] = filters;
-    }
-    return state.filtersByTable[tableName];
-  }
-
   function ensureLinksButton() {
     // v93: Links are Settings-only. Remove any old topbar Links button if present.
     document.querySelectorAll('[data-links-button="true"], .links-button').forEach((button) => button.remove());
@@ -2258,6 +2072,28 @@ export async function runPlanningApp() {
       wrap.appendChild(archiveButton);
     }
 
+    if (tableName === TODO_TABLE) {
+      const mineButton = document.createElement('button');
+      mineButton.type = 'button';
+      mineButton.className = `secondary-button${state.todoMineOnly ? ' is-active' : ''}`;
+      mineButton.textContent = 'Mina Todo';
+      mineButton.title = 'Visa mina ansvariga och privata todo';
+      mineButton.addEventListener('click', () => {
+        state.todoMineOnly = !state.todoMineOnly;
+        render();
+      });
+      wrap.appendChild(mineButton);
+    }
+
+    if (tableName === 'SÄLJINTRO') {
+      const excelPlanButton = document.createElement('button');
+      excelPlanButton.type = 'button';
+      excelPlanButton.className = 'secondary-button';
+      excelPlanButton.textContent = 'Excel-plan';
+      excelPlanButton.addEventListener('click', openSalesIntroExcelPlan);
+      wrap.appendChild(excelPlanButton);
+    }
+
     const printButton = document.createElement('button');
     printButton.type = 'button';
     printButton.className = 'secondary-button';
@@ -2268,78 +2104,6 @@ export async function runPlanningApp() {
     wrap.appendChild(printButton);
 
     return wrap;
-  }
-
-  function createFilterBar(tableName, tableConfig) {
-    const filters = ensureFilters(tableName, tableConfig);
-    const wrapper = document.createElement('section');
-    wrapper.className = 'filters';
-
-    let hasFilters = false;
-
-    getVisibleColumns(tableConfig).forEach((column) => {
-      if (column.type === 'status') return;
-      const dropdown = APP_CONFIG.dropdowns?.[column.type];
-      if (!dropdown?.filterEnabled) return;
-      hasFilters = true;
-
-      const item = document.createElement('label');
-      item.className = 'filter-item';
-
-      const label = document.createElement('span');
-      label.className = 'filter-item__label';
-      label.textContent = column.name;
-
-      const select = document.createElement('select');
-      select.className = 'filter-item__control';
-
-      dropdown.filterOptions.forEach((option) => {
-        const opt = document.createElement('option');
-        opt.value = option;
-        opt.textContent = option;
-        if ((filters[column.field] || 'Alla') === option) {
-          opt.selected = true;
-        }
-        select.appendChild(opt);
-      });
-
-      select.addEventListener('change', () => {
-        filters[column.field] = select.value;
-        render();
-      });
-
-      item.appendChild(label);
-      item.appendChild(select);
-      wrapper.appendChild(item);
-    });
-
-    if (!hasFilters) {
-      wrapper.classList.add('filters--empty');
-    }
-
-    return wrapper;
-  }
-
-  function getFilteredRows(tableName, tableConfig) {
-    const filters = ensureFilters(tableName, tableConfig);
-    const rows = state.rowsByTable[tableName] || [];
-
-    const currentInitials = getCurrentUserInitials();
-
-    return rows.filter((row) => {
-      if (
-        tableName === 'TODO' &&
-        String(row?.kategori || '') === 'Privat' &&
-        String(row?.owner_initials || '').trim() !== String(currentInitials || '').trim()
-      ) {
-        return false;
-      }
-
-      return       Object.entries(filters).every(([field, value]) => {
-        if (!value || value === 'Alla') return true;
-        return String(row[field] ?? '') === value;
-      });
-    });
   }
 
   function isEditableTextColumn(column) {
@@ -2400,6 +2164,13 @@ export async function runPlanningApp() {
       metafalt: 'gray',
       copy: 'gray',
       packshot: 'gray',
+      kampanj: 'gray',
+      klart: kategori === 'B2B-ready'
+        ? normalizeStatusValue(saljintroRow?.b2b_ready || 'gray')
+        : normalizeStatusValue(saljintroRow?.shopify_ready || 'gray'),
+      klart_datum: kategori === 'B2B-ready'
+        ? (saljintroRow?.b2b_ready_datum || null)
+        : (saljintroRow?.shopify_ready_datum || null),
       owner_initials: ownerInitials,
       is_done: false,
     }));
@@ -2422,6 +2193,128 @@ export async function runPlanningApp() {
     ];
 
     return normalizedRows;
+  }
+
+  async function syncDigProdKlartFromSaljintro(saljintroRow, changedField = '') {
+    const produkt = String(saljintroRow?.produkt || '').trim();
+    if (!produkt) return;
+
+    const changed = String(changedField || '').trim();
+    const shouldSyncB2B = !changed || changed === 'b2b_ready' || changed === 'b2b_ready_datum';
+    const shouldSyncShopify = !changed || changed === 'shopify_ready' || changed === 'shopify_ready_datum';
+
+    const updates = [];
+    if (shouldSyncB2B) {
+      updates.push({
+        kategori: 'B2B-ready',
+        klart: normalizeStatusValue(saljintroRow?.b2b_ready || 'gray'),
+        klart_datum: saljintroRow?.b2b_ready_datum || null,
+      });
+    }
+
+    if (shouldSyncShopify) {
+      updates.push({
+        kategori: 'Shopify-ready',
+        klart: normalizeStatusValue(saljintroRow?.shopify_ready || 'gray'),
+        klart_datum: saljintroRow?.shopify_ready_datum || null,
+      });
+    }
+
+    if (!updates.length) return;
+
+    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
+    if (!digProdEntry) return;
+
+    const [, digProdConfig] = digProdEntry;
+
+    for (const item of updates) {
+      const { data, error } = await supabase
+        .from(digProdConfig.dbTable)
+        .update({ klart: item.klart, klart_datum: item.klart_datum })
+        .eq('produktnamn', produkt)
+        .eq('kategori', item.kategori)
+        .select('*');
+
+      if (error) {
+        throw new Error(error.message || `Kunde inte uppdatera DIG PROD/${item.kategori}.`);
+      }
+
+      const updatedRows = (Array.isArray(data) ? data : [])
+        .map((row) => normalizeRow('DIG PROD', digProdConfig, row));
+
+      if (updatedRows.length) {
+        const updatedById = new Map(updatedRows.map((row) => [String(row.id), row]));
+        state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) =>
+          updatedById.get(String(row.id)) || row
+        );
+      }
+    }
+  }
+
+  async function syncAllDigProdKlartFromSaljintro() {
+    const saljRows = state.rowsByTable['SÄLJINTRO'] || [];
+    const digRows = state.rowsByTable['DIG PROD'] || [];
+
+    if (!saljRows.length || !digRows.length) return;
+
+    const saljByProduct = new Map();
+    saljRows.forEach((row) => {
+      const produkt = String(row?.produkt || '').trim();
+      if (produkt) saljByProduct.set(produkt, row);
+    });
+
+    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
+    if (!digProdEntry) return;
+
+    const [, digProdConfig] = digProdEntry;
+    const updates = [];
+
+    digRows.forEach((row) => {
+      const produktnamn = String(row?.produktnamn || '').trim();
+      const kategori = String(row?.kategori || '').trim();
+      const saljRow = saljByProduct.get(produktnamn);
+      if (!saljRow) return;
+
+      let nextKlart = null;
+      let nextKlartDatum = null;
+
+      if (kategori === 'B2B-ready') {
+        nextKlart = normalizeStatusValue(saljRow.b2b_ready || 'gray');
+        nextKlartDatum = saljRow.b2b_ready_datum || null;
+      } else if (kategori === 'Shopify-ready') {
+        nextKlart = normalizeStatusValue(saljRow.shopify_ready || 'gray');
+        nextKlartDatum = saljRow.shopify_ready_datum || null;
+      }
+
+      if (!nextKlart) return;
+
+      const currentKlart = normalizeStatusValue(row.klart || 'gray');
+      const currentKlartDatum = row.klart_datum || null;
+      if (currentKlart !== nextKlart || String(currentKlartDatum || '') !== String(nextKlartDatum || '')) {
+        updates.push({ row, nextKlart, nextKlartDatum });
+      }
+    });
+
+    if (!updates.length) return;
+
+    for (const item of updates) {
+      const { data, error } = await supabase
+        .from(digProdConfig.dbTable)
+        .update({ klart: item.nextKlart, klart_datum: item.nextKlartDatum })
+        .eq('id', item.row.id)
+        .select('*')
+        .single();
+
+      if (error) {
+        console.warn('Could not sync DIG PROD/Klart on startup:', error.message);
+        continue;
+      }
+
+      const normalized = normalizeRow('DIG PROD', digProdConfig, data);
+      state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) =>
+        String(row.id) === String(normalized.id) ? normalized : row
+      );
+    }
   }
 
   async function createSaljintroFromUtveckling(utvecklingRow) {
@@ -2631,6 +2524,17 @@ export async function runPlanningApp() {
       return false;
     }
 
+    try {
+      if (
+        tableConfig.dbTable === 'saljintro' &&
+        ['b2b_ready', 'b2b_ready_datum', 'shopify_ready', 'shopify_ready_datum'].includes(column.field)
+      ) {
+        await syncDigProdKlartFromSaljintro(row, column.field);
+      }
+    } catch (syncErr) {
+      alert(`Säljintro sparades, men DIG PROD/Klart kunde inte speglas: ${syncErr.message}`);
+    }
+
     render();
     return true;
   }
@@ -2641,7 +2545,20 @@ export async function runPlanningApp() {
     const current = normalizeStatusValue(row[column.field]);
     const currentIndex = STATUS_ORDER.indexOf(current);
     const nextValue = STATUS_ORDER[(currentIndex + 1) % STATUS_ORDER.length];
-    await saveCellValue(tableConfig, row, column, nextValue);
+    const saved = await saveCellValue(tableConfig, row, column, nextValue);
+
+    if (
+      saved &&
+      tableConfig.dbTable === 'saljintro' &&
+      ['b2b_ready', 'shopify_ready'].includes(column.field)
+    ) {
+      try {
+        await syncDigProdKlartFromSaljintro(row, column.field);
+        render();
+      } catch (syncErr) {
+        alert(`Säljintro sparades, men DIG PROD/Klart kunde inte speglas: ${syncErr.message}`);
+      }
+    }
   }
 
   function getStatusLabel(column) {
@@ -3504,7 +3421,7 @@ export async function runPlanningApp() {
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=95');
+          const { signOutUser } = await import('./auth.js?v=115');
           await signOutUser();
         },
         disabled: false,
@@ -3531,6 +3448,9 @@ export async function runPlanningApp() {
         const formTitle = document.createElement('h3');
         formTitle.className = 'detail-card__title';
         formTitle.textContent = state.settingsDraft.checklistId ? 'Redigera checklist' : 'Ny checklist';
+        if (state.settingsDraft.checklistId) {
+          formTitle.classList.add('is-editing');
+        }
 
         const tableLabel = document.createElement('label');
         tableLabel.className = 'detail-field';
@@ -3674,16 +3594,44 @@ export async function runPlanningApp() {
         const listCard = document.createElement('section');
         listCard.className = 'detail-card settings-list';
 
+        const listHeader = document.createElement('div');
+        listHeader.className = 'settings-list__header';
+
         const listTitle = document.createElement('h3');
         listTitle.className = 'detail-card__title';
-        listTitle.textContent = 'Befintliga checklistor';
-        listCard.appendChild(listTitle);
+        listTitle.textContent = `Befintliga checklistor (${(state.columnChecklistsList || []).length})`;
+
+        const refreshButton = document.createElement('button');
+        refreshButton.type = 'button';
+        refreshButton.className = 'secondary-button';
+        refreshButton.textContent = state.columnChecklistsLoading ? 'Laddar...' : 'Uppdatera';
+        refreshButton.disabled = !!state.columnChecklistsLoading;
+        refreshButton.addEventListener('click', async () => {
+          await loadColumnChecklists();
+          render();
+        });
+
+        listHeader.appendChild(listTitle);
+        listHeader.appendChild(refreshButton);
+        listCard.appendChild(listHeader);
+
+        if (state.columnChecklistsError) {
+          const error = document.createElement('p');
+          error.className = 'empty-state';
+          error.textContent = `Kunde inte läsa checklistor: ${state.columnChecklistsError}`;
+          listCard.appendChild(error);
+        }
 
         const rows = state.columnChecklistsList || [];
-        if (!rows.length) {
+        if (state.columnChecklistsLoading) {
+          const loading = document.createElement('p');
+          loading.className = 'empty-state';
+          loading.textContent = 'Laddar checklistor...';
+          listCard.appendChild(loading);
+        } else if (!rows.length) {
           const empty = document.createElement('p');
           empty.className = 'empty-state';
-          empty.textContent = 'Inga checklistor ännu.';
+          empty.textContent = 'Inga checklistor visas. Om checklist finns i DB: kör SQL-filen planning_column_checklists_policy_fix.sql och tryck Uppdatera.';
           listCard.appendChild(empty);
         } else {
           const list = document.createElement('div');
@@ -3714,8 +3662,13 @@ export async function runPlanningApp() {
             editButton.type = 'button';
             editButton.className = 'secondary-button';
             editButton.textContent = 'Redigera';
-            editButton.disabled = !isAdmin();
-            editButton.addEventListener('click', () => editChecklistFromSettings(item));
+            editButton.addEventListener('click', () => {
+              if (!isAdmin()) {
+                alert('Endast admin kan redigera checklistor.');
+                return;
+              }
+              editChecklistFromSettings(item);
+            });
 
             const activeButton = document.createElement('button');
             activeButton.type = 'button';
@@ -3738,6 +3691,15 @@ export async function runPlanningApp() {
             actions.appendChild(editButton);
             actions.appendChild(activeButton);
             actions.appendChild(deleteButton);
+
+            row.classList.add('settings-list__row--clickable');
+            info.addEventListener('click', () => {
+              if (!isAdmin()) {
+                alert('Endast admin kan redigera checklistor.');
+                return;
+              }
+              editChecklistFromSettings(item);
+            });
 
             row.appendChild(info);
             row.appendChild(actions);
@@ -4474,6 +4436,7 @@ export async function runPlanningApp() {
   await Promise.all(
     tableEntries.filter(([, tableConfig]) => !!tableConfig.dbTable).map(([tableName, tableConfig]) => loadTableRowsFromData(state, tableName, tableConfig))
   );
+  await syncAllDigProdKlartFromSaljintro();
   await archiveCompletedTodosFromPreviousWeeks();
   await loadDocumentLinks();
   await loadColumnChecklists();

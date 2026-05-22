@@ -2488,3 +2488,51 @@ button[aria-label="Stäng"]:active {
   visibility: visible !important;
   opacity: 1 !important;
 }
+
+/* v97 TODO quick filter */
+
+.view-actions .secondary-button.is-active {
+  background: var(--green);
+  border-color: var(--green-line);
+  color: var(--green-text);
+}
+
+/* v98 checklist edit state */
+
+.detail-card__title.is-editing::after {
+  content: "Ändrar befintlig";
+  display: inline-flex;
+  margin-left: 10px;
+  padding: 3px 8px;
+  border: 1px solid var(--green-line);
+  border-radius: 999px;
+  background: var(--green);
+  color: var(--green-text);
+  font-size: 11px;
+  font-weight: 800;
+  vertical-align: middle;
+}
+
+/* v99 checklist settings reload */
+
+.settings-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.settings-list__header .detail-card__title {
+  margin: 0;
+}
+
+/* v100 checklist admin visibility */
+
+.settings-list__row--clickable .settings-list__info {
+  cursor: pointer;
+}
+
+.settings-list__row--clickable .settings-list__info:hover .settings-list__title {
+  text-decoration: underline;
+}

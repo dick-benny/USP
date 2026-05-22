@@ -34,7 +34,14 @@ function createFilterSelect({ labelText, value, options, onChange }) {
   return item;
 }
 
-export function createFilterController({ state, APP_CONFIG, getVisibleColumns, render }) {
+export function createFilterController({
+  state,
+  APP_CONFIG,
+  TODO_TABLE = 'TODO',
+  getVisibleColumns,
+  getCurrentUserInitials,
+  render,
+}) {
   function getSaljintroProductOptions() {
     const products = (state.rowsByTable['SÄLJINTRO'] || [])
       .map((row) => String(row?.produkt || '').trim());
@@ -133,20 +140,38 @@ export function createFilterController({ state, APP_CONFIG, getVisibleColumns, r
     return wrapper;
   }
 
+  function shouldShowTodoRow(tableName, row) {
+    if (tableName !== TODO_TABLE) return true;
+
+    const currentInitials = String(getCurrentUserInitials?.() || '').trim();
+    const ownerInitials = String(row?.owner_initials || '').trim();
+    const isPrivateTodo = String(row?.kategori || '') === 'Privat';
+    const isOwnedByMe = ownerInitials === currentInitials;
+
+    if (isPrivateTodo && !isOwnedByMe) return false;
+    if (state.todoMineOnly && !isOwnedByMe && !isPrivateTodo) return false;
+
+    return true;
+  }
+
+  function matchesFilters(tableName, row, filters) {
+    return Object.entries(filters).every(([field, value]) => {
+      if (field === '__projekt_product') {
+        if (!value || value === 'Alla') return true;
+        return getProjektProductFromName(row.projektnamn) === value;
+      }
+
+      if (!value || value === 'Alla') return true;
+      return String(row[field] ?? '') === value;
+    });
+  }
+
   function getFilteredRows(tableName, tableConfig) {
     const filters = ensureFilters(tableName, tableConfig);
     const rows = state.rowsByTable[tableName] || [];
 
     return rows.filter((row) =>
-      Object.entries(filters).every(([field, value]) => {
-        if (field === '__projekt_product') {
-          if (!value || value === 'Alla') return true;
-          return getProjektProductFromName(row.projektnamn) === value;
-        }
-
-        if (!value || value === 'Alla') return true;
-        return String(row[field] ?? '') === value;
-      })
+      shouldShowTodoRow(tableName, row) && matchesFilters(tableName, row, filters)
     );
   }
 
