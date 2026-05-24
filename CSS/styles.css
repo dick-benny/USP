@@ -2536,3 +2536,502 @@ button[aria-label="Stäng"]:active {
 .settings-list__row--clickable .settings-list__info:hover .settings-list__title {
   text-decoration: underline;
 }
+
+/* =========================================================
+   PROJECT VIEW v116
+   Custom inline project/activity planning view.
+   ========================================================= */
+
+.project-view .view-card__header {
+  align-items: flex-start;
+}
+
+.project-table-wrap {
+  padding-top: 6px;
+}
+
+.project-table {
+  min-width: 1320px;
+}
+
+.project-table thead th {
+  top: 0;
+}
+
+.project-row td {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.project-row:hover td,
+.project-activity-row:hover td {
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.project-activity-row td {
+  background: rgba(251, 248, 241, 0.42);
+  border-bottom-color: rgba(222, 211, 189, 0.48);
+}
+
+.project-activity-row td:first-child {
+  padding-left: 48px;
+}
+
+.project-activity-add-row td {
+  padding: 8px 12px 16px 48px;
+  background: rgba(251, 248, 241, 0.36);
+}
+
+.project-title-wrap,
+.project-inline-field,
+.project-docs-field,
+.project-date-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.project-title-wrap {
+  gap: 10px;
+}
+
+.project-expand-button {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--white);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.project-expand-button:hover,
+.project-date-button:hover,
+.project-docs-open:hover {
+  border-color: var(--accent);
+}
+
+.project-owner-prefix {
+  min-width: 34px;
+  height: 28px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.project-inline-input,
+.project-inline-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 6px 8px;
+  outline: none;
+}
+
+.project-inline-input:hover,
+.project-inline-input:focus,
+.project-inline-select:hover,
+.project-inline-select:focus {
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.project-inline-input--textarea {
+  resize: vertical;
+  min-height: 34px;
+  line-height: 1.35;
+}
+
+.project-inline-input--url {
+  font-size: 13px;
+}
+
+.project-inline-select {
+  border-color: var(--line-strong);
+  background: var(--white);
+}
+
+.project-date-button,
+.project-docs-open {
+  min-height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--white);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 6px 10px;
+}
+
+.project-date-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.project-docs-field .project-inline-input {
+  flex: 1 1 auto;
+}
+
+.project-docs-open {
+  flex: 0 0 auto;
+}
+
+.project-inline-field.is-saving,
+.project-date-field.is-saving {
+  opacity: 0.72;
+}
+
+.project-activity-empty-cell {
+  color: var(--muted);
+}
+
+.project-add-activity-button {
+  width: auto;
+}
+
+@media (max-width: 920px) {
+  .project-table {
+    min-width: 1120px;
+  }
+}
+
+/* =========================================================
+   PROJECTS v117 adjustments
+   ========================================================= */
+
+.project-owner-prefix--select {
+  appearance: none;
+  border: 1px solid var(--line-strong);
+  cursor: pointer;
+  text-align: center;
+  text-align-last: center;
+  outline: none;
+}
+
+.project-owner-prefix--select:hover,
+.project-owner-prefix--select:focus {
+  border-color: var(--accent);
+  background: var(--white);
+}
+
+.project-owner-prefix--select.is-saving {
+  opacity: 0.72;
+}
+
+
+/* =========================================================
+   PROJECT VIEW v118 refinements
+   Align project-name header over inline field and give the
+   project-name column more space.
+   ========================================================= */
+
+.project-table th:first-child,
+.project-table td:first-child {
+  width: 56ch;
+}
+
+.project-title-header {
+  padding-left: 88px;
+}
+
+.project-title-cell .project-inline-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.project-title-cell .project-inline-input {
+  min-width: 34ch;
+}
+
+
+/* =========================================================
+   PROJECT VIEW v119 activity hierarchy
+   Activity header row, stronger project/activity contrast,
+   and clearer activity indentation.
+   ========================================================= */
+
+.project-row td {
+  background: rgba(255, 255, 255, 0.72);
+  border-top: 1px solid var(--line-strong);
+  border-bottom-color: var(--line-strong);
+  font-weight: 600;
+}
+
+.project-row .project-inline-input,
+.project-row .project-inline-select,
+.project-row .project-date-button,
+.project-row .project-docs-open {
+  font-weight: 600;
+}
+
+.project-activity-header-row td {
+  padding: 10px 12px 8px;
+  background: rgba(235, 228, 213, 0.72);
+  border-bottom: 1px solid var(--line);
+}
+
+.project-activity-header-row td:first-child {
+  padding-left: 78px;
+}
+
+.project-activity-header-label {
+  display: inline-block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.project-activity-row td {
+  background: rgba(251, 248, 241, 0.78);
+  border-bottom-color: rgba(222, 211, 189, 0.58);
+}
+
+.project-activity-row td:first-child {
+  padding-left: 78px;
+  box-shadow: inset 3px 0 0 rgba(207, 190, 160, 0.72);
+}
+
+.project-activity-add-row td {
+  padding-left: 78px;
+  background: rgba(251, 248, 241, 0.62);
+  box-shadow: inset 3px 0 0 rgba(207, 190, 160, 0.72);
+}
+
+.project-row:hover td {
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.project-activity-header-row:hover td,
+.project-activity-row:hover td,
+.project-activity-add-row:hover td {
+  background: rgba(255, 255, 255, 0.58);
+}
+
+
+/* =========================================================
+   PROJECT VIEW v121 activity add action
+   Move the activity create action into the activity header.
+   ========================================================= */
+
+.project-activity-header-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.project-add-activity-button--header {
+  min-height: 28px;
+  padding: 6px 12px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.project-activity-header-row td:first-child {
+  padding-left: 78px;
+  box-shadow: inset 3px 0 0 rgba(207, 190, 160, 0.72);
+}
+
+/* =========================================================
+   PROJECT VIEW v122 typography refinements
+   Keep project/activity row text normal weight and make category compact.
+   ========================================================= */
+
+.project-row td,
+.project-activity-row td {
+  font-weight: 400;
+}
+
+.project-row .project-inline-input,
+.project-row .project-inline-select,
+.project-row .project-date-button,
+.project-row .project-docs-open,
+.project-activity-row .project-inline-input,
+.project-activity-row .project-date-button {
+  font-weight: 400;
+}
+
+.project-owner-prefix,
+.project-owner-prefix--select,
+.project-expand-button,
+.project-activity-header-label,
+.project-add-activity-button--header {
+  font-weight: 700;
+}
+
+.project-category-select {
+  font-size: 12px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* =========================================================
+   PROJECT VIEW v123 refinements
+   Cleaner expand affordance, document upload field and trash icon.
+   ========================================================= */
+
+.project-view .doc-link-dot {
+  display: none !important;
+}
+
+.project-expand-button {
+  width: 24px !important;
+  height: 30px !important;
+  flex: 0 0 24px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.project-expand-button:hover {
+  background: transparent !important;
+  color: var(--accent);
+}
+
+.project-docs-field {
+  gap: 6px;
+}
+
+.project-docs-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-docs-name--empty {
+  color: var(--muted);
+}
+
+.project-docs-native {
+  display: none;
+}
+
+.project-delete-button {
+  color: var(--danger);
+  border-color: rgba(163, 75, 60, 0.35);
+}
+
+.project-delete-button:hover {
+  border-color: var(--danger);
+  background: rgba(163, 75, 60, 0.08);
+}
+
+.project-title-header {
+  padding-left: 72px;
+}
+
+/* =========================================================
+   v127 - SÄLJINTRO centered status/week inline editing
+   ========================================================= */
+.status-button--week {
+  width: 100% !important;
+  min-height: 34px !important;
+  padding: 6px 8px !important;
+  position: relative;
+}
+
+.status-week-cell {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.status-week-cell__date-trigger {
+  pointer-events: auto;
+  position: relative;
+  border: 1px solid rgba(16, 35, 58, 0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.4em;
+  min-height: 24px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.45);
+  color: currentColor;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.status-week-cell__date-label {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.status-week-cell__date-input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  opacity: 0.001;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  color-scheme: light;
+}
+
+.status-week-cell__date-input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.status-week-cell__date-trigger:hover,
+.status-week-cell__date-trigger:focus-visible {
+  background: rgba(255, 255, 255, 0.72);
+  outline: 1px solid rgba(16, 35, 58, 0.18);
+  outline-offset: 1px;
+}
+
+.status-week-cell__date-trigger--empty {
+  min-width: 2.4em;
+}
+
+.visually-hidden-date-input {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}

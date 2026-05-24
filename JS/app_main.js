@@ -8,15 +8,16 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=115';
-import { createTodoController } from './app_todo.js?v=115';
-import { createMessagesController } from './app_messages.js?v=115';
-import { createRenderController } from './app_render.js?v=115';
-import { createDataController } from './app_data.js?v=115';
-import { createActionController } from './app_actions.js?v=115';
-import { createFilterController } from './app_filters.js?v=115';
-import { createColumnToolsController } from './app_column_tools.js?v=115';
-import { createExcelPlanController } from './app_excel_plan.js?v=115';
+} from './app_constants.js?v=130';
+import { createTodoController } from './app_todo.js?v=130';
+import { createMessagesController } from './app_messages.js?v=130';
+import { createRenderController } from './app_render.js?v=130';
+import { createDataController } from './app_data.js?v=130';
+import { createActionController } from './app_actions.js?v=130';
+import { createFilterController } from './app_filters.js?v=130';
+import { createColumnToolsController } from './app_column_tools.js?v=130';
+import { createExcelPlanController } from './app_excel_plan.js?v=130';
+import { createProjectsController } from './app_projects.js?v=130';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -32,26 +33,16 @@ export async function runPlanningApp() {
 
   const { APP_CONFIG, SAMPLE_ROWS = {} } = spec;
   const tableEntries = Object.entries(APP_CONFIG.tables);
-  const placeholderEntries = [
-    ['CDM PROJECTS', { id: 'cdm_projects', title: 'CDM PROJECTS', placeholder: true }],
-  ];
-
   const digProdIndex = tableEntries.findIndex(([tableName]) => tableName === 'DIG PROD');
   const digProdEntry = digProdIndex >= 0 ? tableEntries.splice(digProdIndex, 1)[0] : null;
-  const cdmProjectsIndex = tableEntries.findIndex(([tableName]) => tableName === 'CDM PROJECTS');
-  const cdmProjectsEntry = cdmProjectsIndex >= 0 ? tableEntries.splice(cdmProjectsIndex, 1)[0] : null;
+  const projektIndex = tableEntries.findIndex(([tableName]) => tableName === 'PROJEKT');
+  const projektEntry = projektIndex >= 0 ? tableEntries.splice(projektIndex, 1)[0] : null;
   const marknadIndex = tableEntries.findIndex(([tableName]) => tableName === 'MARKNAD');
   const marknadEntry = marknadIndex >= 0 ? tableEntries.splice(marknadIndex, 1)[0] : null;
   const saljIndex = tableEntries.findIndex(([tableName]) => tableName === 'SÄLJ');
   const saljEntry = saljIndex >= 0 ? tableEntries.splice(saljIndex, 1)[0] : null;
   const inkopIndex = tableEntries.findIndex(([tableName]) => tableName === 'INKÖP');
-  const inkopEntry = inkopIndex >= 0 ? tableEntries.splice(inkopIndex, 1)[0] : null;  const entriesAfterProjekt = [
-    ...(digProdEntry ? [digProdEntry] : []),
-    ...(marknadEntry ? [marknadEntry] : []),
-    ...(saljEntry ? [saljEntry] : []),
-    ...(inkopEntry ? [inkopEntry] : []),
-    ...placeholderEntries,
-  ];
+  const inkopEntry = inkopIndex >= 0 ? tableEntries.splice(inkopIndex, 1)[0] : null;
 
   const insertIndex = tableEntries.findIndex(
     ([tableName]) => tableName === 'SÄLJINTRO'
@@ -59,7 +50,7 @@ export async function runPlanningApp() {
 
   const orderedEntries = [
     ...(digProdEntry ? [digProdEntry] : []),
-    ...(cdmProjectsEntry ? [cdmProjectsEntry] : []),
+    ...(projektEntry ? [projektEntry] : []),
     ...(inkopEntry ? [inkopEntry] : []),
     ...(marknadEntry ? [marknadEntry] : []),
     ...(saljEntry ? [saljEntry] : []),
@@ -132,6 +123,16 @@ export async function runPlanningApp() {
     messageComposeDraft: null,
     modalTodoRows: [],
     planningUsers: [],
+    projectRows: [],
+    projectActivityRows: [],
+    projectExpandedById: {},
+    projectFilterCategory: 'Alla',
+    projectsLoading: false,
+    projectsSavingCell: null,
+    notesSourceTable: '',
+    notesSourceTitle: '',
+    notesTableLabel: '',
+    notesCurrentRow: null,
   };
 
 
@@ -350,7 +351,7 @@ export async function runPlanningApp() {
     const tableName = state.activeTableName;
     const columns = [
       ...tableConfig.columns.filter((column) => column.field !== 'id' && !column.hiddenInTable && column.field !== UI_TODO_COLUMN.field && column.type !== UI_TODO_COLUMN.type),
-      UI_OPEN_COLUMN,
+      ...(tableName === 'SÄLJINTRO' ? [] : [UI_OPEN_COLUMN]),
       UI_NOTES_COLUMN,
     ];
     if (!hiddenRowTodoTables.includes(tableName) && hasRowTodo(tableName)) {
@@ -375,6 +376,15 @@ export async function runPlanningApp() {
     normalizeStatusValue,
   });
   const { openSalesIntroExcelPlan } = excelPlanController;
+
+  const projectsController = createProjectsController({
+    supabase,
+    state,
+    tableEntries,
+    render,
+    getCurrentUserInitials,
+    openNotesPanel,
+  });
 
   function getFieldTypeConfig(typeName) {
     return APP_CONFIG.fieldTypes?.[typeName] || null;
@@ -1261,6 +1271,7 @@ export async function runPlanningApp() {
     if (tableName === 'UTVECKLING') return 'produktide';
     if (tableName === 'SÄLJINTRO') return 'produkt';
     if (tableName === 'DIG PROD') return 'produktnamn';
+    if (tableName === 'PROJEKT') return 'project_name';
     if (tableName === 'CDM PROJECTS') return 'projektnamn';
     if (tableName === 'MARKNAD') return 'beskrivning';
     if (tableName === 'SÄLJ') return 'beskrivning';
@@ -1271,6 +1282,7 @@ export async function runPlanningApp() {
   }
 
   function getCurrentNotesRow() {
+    if (state.notesCurrentRow) return state.notesCurrentRow;
     if (!state.activeTableName || !state.notesRowId) return null;
     return getRowById(state.activeTableName, state.notesRowId);
   }
@@ -1279,7 +1291,7 @@ export async function runPlanningApp() {
     state.notesDraft = { title: '', body: '' };
   }
 
-  async function loadNotesForRow(tableName, rowId) {
+  async function loadNotesForRow(tableName, rowId, options = {}) {
     state.notesLoading = true;
     render();
 
@@ -1287,45 +1299,54 @@ export async function runPlanningApp() {
       const active = tableEntries.find(([name]) => name === tableName);
       if (!active) return;
       const [, tableConfig] = active;
+      const sourceTable = options.sourceTable || state.notesSourceTable || tableConfig.dbTable;
 
       const { data, error } = await supabase
         .from('planning_notes')
         .select('*')
-        .eq('source_table', tableConfig.dbTable)
+        .eq('source_table', sourceTable)
         .eq('source_row_id', rowId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       const notes = Array.isArray(data) ? data : [];
-      state.notesRowsByKey[getNotesRowKey(tableName, rowId)] = notes;
+      state.notesRowsByKey[getNotesRowKey(options.sourceTable || state.notesSourceTable || tableName, rowId)] = notes;
       await markNotesAsRead(tableName, notes);
       await loadUnreadCountsForTable(tableName);
     } catch (err) {
       alert(`Kunde inte läsa notes: ${err.message}`);
-      state.notesRowsByKey[getNotesRowKey(tableName, rowId)] = [];
+      state.notesRowsByKey[getNotesRowKey(options.sourceTable || state.notesSourceTable || tableName, rowId)] = [];
     } finally {
       state.notesLoading = false;
       render();
     }
   }
 
-  function openNotesPanel(row) {
+  function openNotesPanel(row, options = {}) {
     if (!row?.id) return;
     state.linksPanelOpen = false;
     state.notesPanelOpen = true;
     state.notesRowId = row.id;
+    state.notesSourceTable = options.sourceTable || '';
+    state.notesSourceTitle = options.title || '';
+    state.notesTableLabel = options.tableLabel || '';
+    state.notesCurrentRow = row;
     state.detailRowId = null;
     state.newRowDraft = null;
     state.archivePanelOpen = false;
     state.settingsPanelOpen = false;
     resetNotesDraft();
-    void loadNotesForRow(state.activeTableName, row.id);
+    void loadNotesForRow(state.activeTableName, row.id, options);
     render();
   }
 
   function closeNotesPanel() {
     state.notesPanelOpen = false;
     state.notesRowId = null;
+    state.notesSourceTable = '';
+    state.notesSourceTitle = '';
+    state.notesTableLabel = '';
+    state.notesCurrentRow = null;
     resetNotesDraft();
     render();
   }
@@ -1348,6 +1369,7 @@ export async function runPlanningApp() {
     const active = getActiveConfig();
     if (!active) return;
     const [tableName, tableConfig] = active;
+    const sourceTable = state.notesSourceTable || tableConfig.dbTable;
 
     state.notesLoading = true;
     render();
@@ -1356,7 +1378,7 @@ export async function runPlanningApp() {
       const { error } = await supabase
         .from('planning_notes')
         .insert({
-          source_table: tableConfig.dbTable,
+          source_table: sourceTable,
           source_row_id: row.id,
           title,
           body,
@@ -1366,7 +1388,7 @@ export async function runPlanningApp() {
       if (error) throw error;
 
       resetNotesDraft();
-      await loadNotesForRow(tableName, row.id);
+      await loadNotesForRow(tableName, row.id, { sourceTable });
       await loadUnreadCountsForTable(tableName);
       return;
     } catch (err) {
@@ -1588,7 +1610,7 @@ export async function runPlanningApp() {
     const heading = document.createElement('div');
     heading.className = 'todo-modal__heading';
     heading.innerHTML = `
-      <p class="side-panel__eyebrow">${tableName}</p>
+      <p class="side-panel__eyebrow">${tableLabel}</p>
       <h2 class="side-panel__title">ToDo</h2>
       <p class="side-panel__text">${rowTitle}</p>
     `;
@@ -1775,6 +1797,34 @@ export async function runPlanningApp() {
     const date = new Date(raw);
     if (Number.isNaN(date.getTime())) return raw;
     return new Intl.DateTimeFormat('sv-SE').format(date);
+  }
+
+  function getISOWeekNumber(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  }
+
+  function formatWeekFromDateValue(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw || raw === '--' || raw === '-- -- --') return '';
+
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+
+    return `V${String(getISOWeekNumber(date)).padStart(2, '0')}`;
+  }
+
+  function getDateInputValue(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw || raw === '--' || raw === '-- -- --') return '';
+
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return raw.slice(0, 10);
+
+    return date.toISOString().slice(0, 10);
   }
 
   function formatDateTimeValue(value) {
@@ -2018,6 +2068,26 @@ export async function runPlanningApp() {
     }, 0);
   }
 
+  async function createInlineNewRow(tableName, tableConfig) {
+    const draft = {};
+    tableConfig.columns.forEach((column) => {
+      if (column.field === 'id') return;
+      draft[column.field] = getDefaultValue(tableName, column);
+    });
+
+    if (isOwnerEnabledTable(tableName)) {
+      draft.owner_initials = getCurrentUserInitials();
+    }
+
+    if (tableName === 'MARKNAD' || tableName === 'SÄLJ' || tableName === 'INKÖP') {
+      draft.klart_datum = new Date().toISOString().slice(0, 10);
+    }
+
+    draft.is_done = false;
+
+    await saveNewRow(tableName, tableConfig, normalizeRow(tableName, tableConfig, draft));
+  }
+
   function createTopActions(tableName, tableConfig) {
     const wrap = document.createElement('div');
     wrap.className = 'view-actions';
@@ -2028,7 +2098,12 @@ export async function runPlanningApp() {
       newButton.className = 'secondary-button';
       newButton.textContent = '+ Ny rad';
 
-      newButton.addEventListener('click', () => {
+      newButton.addEventListener('click', async () => {
+        if (tableName === 'SÄLJINTRO') {
+          await createInlineNewRow(tableName, tableConfig);
+          return;
+        }
+
         const draft = {};
         tableConfig.columns.forEach((column) => {
           if (column.field === 'id') return;
@@ -2107,12 +2182,18 @@ export async function runPlanningApp() {
   }
 
   function isEditableTextColumn(column) {
-    return column.type === 'text' && !isOpenColumn(column);
+    return ['text', 'veckonummer', 'kvartal'].includes(column.type) && !isOpenColumn(column);
   }
 
   function isEditableDropdownColumn(column) {
     const dropdown = APP_CONFIG.dropdowns?.[column.type];
     return !!dropdown?.options?.length && !isOpenColumn(column);
+  }
+
+  function normalizeDropdownCellValue(column, value) {
+    if (column?.type === 'dropdown_saljintro_vecka') return formatWeekValue(value);
+    if (column?.type === 'dropdown_saljintro_kvartal') return formatQuarterValue(value);
+    return String(value ?? '');
   }
 
   function getCellKey(row, column) {
@@ -2343,6 +2424,7 @@ export async function runPlanningApp() {
       shopify_ready: 'gray',
       shopify_ready_datum: null,
       b2b_intro: '--',
+      lev_vecka: '--',
       drop_vecka: '--',
       owner_initials: utvecklingRow.owner_initials || getCurrentUserInitials(),
       is_done: false,
@@ -2462,6 +2544,7 @@ export async function runPlanningApp() {
     state.newRowDraft = null;
     state.detailRowId = null;
     render();
+    return finalRow;
   }
 
   async function saveCellValue(tableConfig, row, column, nextValue) {
@@ -2561,6 +2644,88 @@ export async function runPlanningApp() {
     }
   }
 
+  async function saveStatusDateCell(tableConfig, row, column, nextDateValue) {
+    const dateField = String(column?.renderFromField || '').trim();
+    if (!dateField || !row?.id) return;
+
+    const nextDate = String(nextDateValue || '').trim();
+    const previousDate = row[dateField] ?? '';
+    if (String(previousDate || '').slice(0, 10) === nextDate) return;
+
+    state.savingCell = getCellKey(row, column);
+    row[dateField] = nextDate;
+    render();
+
+    const { error } = await supabase
+      .from(tableConfig.dbTable)
+      .update({ [dateField]: nextDate || null })
+      .eq('id', row.id);
+
+    state.savingCell = null;
+
+    if (error) {
+      row[dateField] = previousDate;
+      alert(`Kunde inte spara datum: ${error.message}`);
+      render();
+      return;
+    }
+
+    try {
+      if (
+        tableConfig.dbTable === 'saljintro' &&
+        ['b2b_ready_datum', 'shopify_ready_datum'].includes(dateField)
+      ) {
+        await syncDigProdKlartFromSaljintro(row, dateField);
+      }
+    } catch (syncErr) {
+      alert(`Säljintro sparades, men DIG PROD/Klart kunde inte speglas: ${syncErr.message}`);
+    }
+
+    render();
+  }
+
+  async function editStatusDateCell(tableConfig, row, column) {
+    const dateField = String(column?.renderFromField || '').trim();
+    if (!dateField || !row?.id) return;
+
+    const input = document.createElement('input');
+    input.type = 'date';
+    input.className = 'visually-hidden-date-input';
+    input.value = getDateInputValue(row[dateField]);
+
+    let handled = false;
+
+    const cleanup = () => {
+      window.setTimeout(() => {
+        if (input.parentNode) input.parentNode.removeChild(input);
+      }, 0);
+    };
+
+    const saveDate = async () => {
+      if (handled) return;
+      handled = true;
+      const nextDate = String(input.value || '').trim();
+      cleanup();
+      await saveStatusDateCell(tableConfig, row, column, nextDate);
+    };
+
+    input.addEventListener('change', saveDate);
+    input.addEventListener('blur', cleanup);
+
+    document.body.appendChild(input);
+    input.focus({ preventScroll: true });
+
+    if (typeof input.showPicker === 'function') {
+      try {
+        input.showPicker();
+      } catch (err) {
+        input.click();
+      }
+    } else {
+      input.click();
+    }
+  }
+
   function getStatusLabel(column) {
     return column.statusLabel || column.name || 'Status';
   }
@@ -2571,6 +2736,46 @@ export async function runPlanningApp() {
 
 
   function createStatusButton(column, value, isDetail = false, row = null) {
+    const renderedValue = column.renderFromField && row
+      ? String(row?.[column.renderFromField] || '').trim()
+      : '';
+
+    if (state.activeTableName === 'SÄLJINTRO' && column.renderFromField) {
+      const statusShell = document.createElement('span');
+      statusShell.className = `${getStatusClass(value)} status-button--week${isDetail ? ' status-button--detail' : ''}`;
+      statusShell.setAttribute('role', 'button');
+      statusShell.setAttribute('tabindex', '0');
+      statusShell.title = `${column.name}: klicka utanför veckan för att byta status, klicka på veckan för datum`;
+      statusShell.setAttribute('aria-label', `${column.name}: byt status (${normalizeStatusValue(value)}), datum ${formatWeekFromDateValue(renderedValue) || 'saknas'}`);
+
+      const wrap = document.createElement('span');
+      wrap.className = 'status-week-cell';
+
+      const trigger = document.createElement('span');
+      trigger.className = renderedValue
+        ? 'status-week-cell__date-trigger'
+        : 'status-week-cell__date-trigger status-week-cell__date-trigger--empty';
+      trigger.title = renderedValue ? 'Ändra datum' : 'Välj datum';
+      trigger.setAttribute('aria-label', `${column.name}: ${renderedValue ? 'ändra datum' : 'välj datum'}`);
+
+      const label = document.createElement('span');
+      label.className = 'status-week-cell__date-label';
+      label.textContent = formatWeekFromDateValue(renderedValue) || '📅';
+
+      const dateInput = document.createElement('input');
+      dateInput.type = 'date';
+      dateInput.className = 'status-week-cell__date-input';
+      dateInput.value = getDateInputValue(renderedValue);
+      dateInput.setAttribute('aria-label', `${column.name}: ${renderedValue ? 'ändra datum' : 'välj datum'}`);
+      dateInput.title = renderedValue ? 'Ändra datum' : 'Välj datum';
+
+      trigger.appendChild(label);
+      trigger.appendChild(dateInput);
+      wrap.appendChild(trigger);
+      statusShell.appendChild(wrap);
+      return statusShell;
+    }
+
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `${getStatusClass(value)}${isDetail ? ' status-button--detail' : ''}`;
@@ -2578,11 +2783,6 @@ export async function runPlanningApp() {
 
     const label = document.createElement('span');
     label.className = 'status-button__label';
-
-    const renderedValue = column.renderFromField && row
-      ? String(row?.[column.renderFromField] || '').trim()
-      : '';
-
     label.textContent = renderedValue || getStatusLabel(column);
 
     if (!column.hideStatusLabel || renderedValue) {
@@ -2814,7 +3014,8 @@ export async function runPlanningApp() {
     if (isEditableDropdownColumn(column)) {
       const chip = document.createElement('span');
       chip.className = 'cell-chip';
-      chip.textContent = text || '—';
+      const displayValue = normalizeDropdownCellValue(column, text);
+      chip.textContent = displayValue || '—';
       return maybeWrapOwnerContent(chip);
     }
 
@@ -2914,11 +3115,13 @@ export async function runPlanningApp() {
     const select = document.createElement('select');
     select.className = 'cell-editor cell-editor--select';
 
+    const currentValue = normalizeDropdownCellValue(column, row[column.field]);
+
     dropdown.options.forEach((option) => {
       const opt = document.createElement('option');
       opt.value = option;
       opt.textContent = option;
-      if (String(row[column.field] ?? '') === option) {
+      if (currentValue === option) {
         opt.selected = true;
       }
       select.appendChild(opt);
@@ -3163,6 +3366,7 @@ export async function runPlanningApp() {
     if (tableName === 'UTVECKLING') return 'produktide';
     if (tableName === 'SÄLJINTRO') return 'produkt';
     if (tableName === 'DIG PROD') return 'produktnamn';
+    if (tableName === 'PROJEKT') return 'project_name';
     if (tableName === 'CDM PROJECTS') return 'projektnamn';
     if (tableName === 'MARKNAD') return 'beskrivning';
     if (tableName === 'SÄLJ') return 'beskrivning';
@@ -3421,7 +3625,7 @@ export async function runPlanningApp() {
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=115');
+          const { signOutUser } = await import('./auth.js?v=130');
           await signOutUser();
         },
         disabled: false,
@@ -4068,10 +4272,12 @@ export async function runPlanningApp() {
   function createNotesPanel() {
     const tableName = state.activeTableName;
     const row = getCurrentNotesRow();
-    const rowKey = row ? getNotesRowKey(tableName, row.id) : '';
+    const sourceTable = state.notesSourceTable || tableName;
+    const rowKey = row ? getNotesRowKey(sourceTable, row.id) : '';
     const notes = state.notesRowsByKey[rowKey] || [];
     const titleField = getRowTitleField(tableName);
-    const rowTitle = row ? (row[titleField] || 'Rad') : 'Rad';
+    const rowTitle = state.notesSourceTitle || (row ? (row[titleField] || row.project_name || row.activity_name || 'Rad') : 'Rad');
+    const tableLabel = state.notesTableLabel || tableName;
 
     const overlay = document.createElement('div');
     overlay.className = 'overlay-modal';
@@ -4403,6 +4609,7 @@ export async function runPlanningApp() {
     getVisibleColumns,
     createTopActions,
     createFilterBar,
+    createCustomView: (tableName) => tableName === 'PROJEKT' ? projectsController.createView() : null,
     getAlignment,
     isStatusColumn,
     isOpenColumn,
@@ -4421,6 +4628,8 @@ export async function runPlanningApp() {
     createEditableDropdownControl,
     createStaticCellContent,
     toggleStatusCell,
+    editStatusDateCell,
+    saveStatusDateCell,
     toggleTodoDone,
     startEditing,
   });
@@ -4434,7 +4643,7 @@ export async function runPlanningApp() {
   });
 
   await Promise.all(
-    tableEntries.filter(([, tableConfig]) => !!tableConfig.dbTable).map(([tableName, tableConfig]) => loadTableRowsFromData(state, tableName, tableConfig))
+    tableEntries.filter(([, tableConfig]) => !!tableConfig.dbTable && !tableConfig.customView).map(([tableName, tableConfig]) => loadTableRowsFromData(state, tableName, tableConfig))
   );
   await syncAllDigProdKlartFromSaljintro();
   await archiveCompletedTodosFromPreviousWeeks();
@@ -4444,6 +4653,7 @@ export async function runPlanningApp() {
   await loadPlanningUsers();
   await loadMessages();
   await loadModalTodoRows();
+  await projectsController.loadProjects();
   if (state.activeTableName) {
     await loadUnreadCountsForTable(state.activeTableName);
   }

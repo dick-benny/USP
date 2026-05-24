@@ -24,6 +24,7 @@ export function createRenderController(deps) {
     getVisibleColumns,
     createTopActions,
     createFilterBar,
+    createCustomView,
     getAlignment,
     isStatusColumn,
     isOpenColumn,
@@ -42,6 +43,8 @@ export function createRenderController(deps) {
     createEditableDropdownControl,
     createStaticCellContent,
     toggleStatusCell,
+    editStatusDateCell,
+    saveStatusDateCell,
     toggleTodoDone,
     startEditing,
   } = deps;
@@ -223,11 +226,46 @@ export function createRenderController(deps) {
           td.appendChild(createStaticCellContent(row, column));
           if (statusToggle) {
             const statusButton = td.querySelector('.status-button');
+            const dateTrigger = td.querySelector('.status-week-cell__date-trigger');
+            const dateInput = td.querySelector('.status-week-cell__date-input');
+
+            const dateHandler = async (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              await editStatusDateCell?.(tableConfig, row, column);
+            };
+
             const toggleHandler = async (event) => {
               event.preventDefault();
               event.stopPropagation();
               await toggleStatusCell(tableConfig, row, column);
             };
+
+            if (dateInput) {
+              dateInput.addEventListener('click', (event) => {
+                event.stopPropagation();
+              });
+              dateInput.addEventListener('mousedown', (event) => {
+                event.stopPropagation();
+              });
+              dateInput.addEventListener('change', async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                await saveStatusDateCell?.(tableConfig, row, column, dateInput.value);
+              });
+            } else if (dateTrigger) {
+              dateTrigger.addEventListener('click', dateHandler);
+              dateTrigger.addEventListener('keydown', async (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                await dateHandler(event);
+              });
+            }
+
+            if (dateTrigger) {
+              dateTrigger.addEventListener('click', (event) => {
+                event.stopPropagation();
+              });
+            }
 
             if (statusButton) {
               statusButton.addEventListener('click', toggleHandler);
@@ -287,7 +325,12 @@ export function createRenderController(deps) {
       return;
     }
 
-    app.appendChild(createTable(tableName, tableConfig));
+    const customView = typeof createCustomView === 'function' ? createCustomView(tableName, tableConfig) : null;
+    if (customView) {
+      app.appendChild(customView);
+    } else {
+      app.appendChild(createTable(tableName, tableConfig));
+    }
 
     const draftRow = getCurrentDraftRow();
     const row = getCurrentDetailRow();
