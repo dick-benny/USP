@@ -97,6 +97,12 @@ window.PlanningSpec = (function () {
         { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "100%", mods: { align: "left", displayMode: "text", readonly: false } },
         { name: "Klart", field: "klart_datum", type: "date", width: "15ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" }
       ]},
+      "STATISTICS": {
+        id: "statistics",
+        title: "STATISTICS",
+        customView: "statistics",
+        columns: []
+      },
       "TODO": { id: "todo", dbTable: "todo", title: "TODO", columns: [
         { name: "Kategori", field: "kategori", type: "dropdown_todo_kategori", width: "17ch", mods: { align: "left", displayMode: "select", readonly: false } },
         { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "100%", mods: { align: "left", displayMode: "text", readonly: false } },
@@ -117,6 +123,7 @@ window.PlanningSpec = (function () {
     "INKÖP": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
     "MARKNAD": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
     "SÄLJ": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
+    "STATISTICS": [],
     "TODO": [{ kategori: "Privat", beskrivning: "", klart_datum: "-- -- -- ", is_done: false }],
     "RUTINER": [{ rutin: "", document: "---", is_done: false }]
   };

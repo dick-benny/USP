@@ -18,6 +18,52 @@
     timeout: 10000, // 10 seconds
   };
 
+  const CHART_JS_URL = "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js";
+  let chartJsPromise = null;
+
+  function ensureChartJs() {
+    if (typeof window.Chart !== "undefined") {
+      return Promise.resolve(true);
+    }
+
+    if (chartJsPromise) {
+      return chartJsPromise;
+    }
+
+    chartJsPromise = new Promise((resolve) => {
+      let settled = false;
+      let timeoutId = null;
+      const finish = (loaded) => {
+        if (settled) return;
+        settled = true;
+        if (timeoutId) window.clearTimeout(timeoutId);
+        resolve(loaded);
+      };
+
+      const existingScript = document.querySelector('script[data-usp-chartjs="true"]');
+      timeoutId = window.setTimeout(() => finish(false), API_CONFIG.timeout);
+
+      if (existingScript) {
+        existingScript.addEventListener("load", () => finish(typeof window.Chart !== "undefined"), { once: true });
+        existingScript.addEventListener("error", () => finish(false), { once: true });
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = CHART_JS_URL;
+      script.async = true;
+      script.dataset.uspChartjs = "true";
+      script.onload = () => finish(typeof window.Chart !== "undefined");
+      script.onerror = () => {
+        console.warn("[Statistics] Could not load Chart.js");
+        finish(false);
+      };
+      document.head.appendChild(script);
+    });
+
+    return chartJsPromise;
+  }
+
   // ---------------------------
   // API Call Handler
   // ---------------------------
@@ -496,6 +542,7 @@
       // Process the orders data
       const processedData = processOrdersData(apiResult.data);
       const { drafts, orders, series } = processedData;
+      await ensureChartJs();
 
       // COMBINED CHART at the top
       viewElement.appendChild(el("div", { style: "margin-top:20px;" }, [

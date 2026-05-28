@@ -18,6 +18,7 @@ import { createFilterController } from './app_filters.js?v=130';
 import { createColumnToolsController } from './app_column_tools.js?v=130';
 import { createExcelPlanController } from './app_excel_plan.js?v=130';
 import { createProjectsController } from './app_projects.js?v=130';
+import './app_statistics.js?v=131';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -4584,6 +4585,23 @@ export async function runPlanningApp() {
     return overlay;
   }
 
+  function createStatisticsView() {
+    const shell = document.createElement('section');
+    shell.className = 'statistics-view';
+
+    const renderStatistics = window.USP?.Statistics?.render || window.renderStatisticsView;
+    if (typeof renderStatistics !== 'function') {
+      const message = document.createElement('p');
+      message.className = 'empty-state';
+      message.textContent = 'Kunde inte ladda statistikvyn.';
+      shell.appendChild(message);
+      return shell;
+    }
+
+    void renderStatistics(state, shell);
+    return shell;
+  }
+
   const renderController = createRenderController({
     app,
     settingsButton,
@@ -4609,7 +4627,11 @@ export async function runPlanningApp() {
     getVisibleColumns,
     createTopActions,
     createFilterBar,
-    createCustomView: (tableName) => tableName === 'PROJEKT' ? projectsController.createView() : null,
+    createCustomView: (tableName) => {
+      if (tableName === 'PROJEKT') return projectsController.createView();
+      if (tableName === 'STATISTICS') return createStatisticsView();
+      return null;
+    },
     getAlignment,
     isStatusColumn,
     isOpenColumn,
