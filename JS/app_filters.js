@@ -1,3 +1,7 @@
+function getDropdownOptionLabel(value) {
+  return String(value ?? '').toLocaleUpperCase('sv-SE');
+}
+
 function getUniqueSortedValues(values) {
   return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b, 'sv'));
 }
@@ -5,7 +9,7 @@ function getUniqueSortedValues(values) {
 function createSelectOption(value, selectedValue) {
   const opt = document.createElement('option');
   opt.value = value;
-  opt.textContent = value;
+  opt.textContent = getDropdownOptionLabel(value);
   if ((selectedValue || 'Alla') === value) opt.selected = true;
   return opt;
 }
@@ -34,14 +38,7 @@ function createFilterSelect({ labelText, value, options, onChange }) {
   return item;
 }
 
-export function createFilterController({
-  state,
-  APP_CONFIG,
-  TODO_TABLE = 'TODO',
-  getVisibleColumns,
-  getCurrentUserInitials,
-  render,
-}) {
+export function createFilterController({ state, APP_CONFIG, getVisibleColumns, render }) {
   function getSaljintroProductOptions() {
     const products = (state.rowsByTable['SÄLJINTRO'] || [])
       .map((row) => String(row?.produkt || '').trim());
@@ -140,38 +137,20 @@ export function createFilterController({
     return wrapper;
   }
 
-  function shouldShowTodoRow(tableName, row) {
-    if (tableName !== TODO_TABLE) return true;
-
-    const currentInitials = String(getCurrentUserInitials?.() || '').trim();
-    const ownerInitials = String(row?.owner_initials || '').trim();
-    const isPrivateTodo = String(row?.kategori || '') === 'Privat';
-    const isOwnedByMe = ownerInitials === currentInitials;
-
-    if (isPrivateTodo && !isOwnedByMe) return false;
-    if (state.todoMineOnly && !isOwnedByMe && !isPrivateTodo) return false;
-
-    return true;
-  }
-
-  function matchesFilters(tableName, row, filters) {
-    return Object.entries(filters).every(([field, value]) => {
-      if (field === '__projekt_product') {
-        if (!value || value === 'Alla') return true;
-        return getProjektProductFromName(row.projektnamn) === value;
-      }
-
-      if (!value || value === 'Alla') return true;
-      return String(row[field] ?? '') === value;
-    });
-  }
-
   function getFilteredRows(tableName, tableConfig) {
     const filters = ensureFilters(tableName, tableConfig);
     const rows = state.rowsByTable[tableName] || [];
 
     return rows.filter((row) =>
-      shouldShowTodoRow(tableName, row) && matchesFilters(tableName, row, filters)
+      Object.entries(filters).every(([field, value]) => {
+        if (field === '__projekt_product') {
+          if (!value || value === 'Alla') return true;
+          return getProjektProductFromName(row.projektnamn) === value;
+        }
+
+        if (!value || value === 'Alla') return true;
+        return String(row[field] ?? '') === value;
+      })
     );
   }
 

@@ -99,7 +99,7 @@ window.PlanningSpec = (function () {
       ]},
       "STATISTICS": {
         id: "statistics",
-        title: "STATISTICS",
+        title: "FSG",
         customView: "statistics",
         columns: []
       },

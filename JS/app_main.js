@@ -8,17 +8,17 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=130';
-import { createTodoController } from './app_todo.js?v=130';
-import { createMessagesController } from './app_messages.js?v=130';
-import { createRenderController } from './app_render.js?v=130';
-import { createDataController } from './app_data.js?v=130';
-import { createActionController } from './app_actions.js?v=130';
-import { createFilterController } from './app_filters.js?v=130';
-import { createColumnToolsController } from './app_column_tools.js?v=130';
-import { createExcelPlanController } from './app_excel_plan.js?v=130';
-import { createProjectsController } from './app_projects.js?v=130';
-import './app_statistics.js?v=131';
+} from './app_constants.js?v=133';
+import { createTodoController } from './app_todo.js?v=133';
+import { createMessagesController } from './app_messages.js?v=133';
+import { createRenderController } from './app_render.js?v=133';
+import { createDataController } from './app_data.js?v=133';
+import { createActionController } from './app_actions.js?v=133';
+import { createFilterController } from './app_filters.js?v=133';
+import { createColumnToolsController } from './app_column_tools.js?v=133';
+import { createExcelPlanController } from './app_excel_plan.js?v=133';
+import { createProjectsController } from './app_projects.js?v=133';
+import './app_statistics.js?v=133';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -1672,7 +1672,7 @@ export async function runPlanningApp() {
     categories.forEach((value) => {
       const option = document.createElement('option');
       option.value = value;
-      option.textContent = value;
+      option.textContent = getDropdownOptionLabel(value);
       if ((state.rowTodoDraft.kategori || 'Alla') === value) option.selected = true;
       categorySelect.appendChild(option);
     });
@@ -2018,16 +2018,23 @@ export async function runPlanningApp() {
     document.querySelectorAll('[data-links-button="true"], .links-button').forEach((button) => button.remove());
   }
 
+  function getTableDisplayName(tableName, tableConfig = null) {
+    const title = String(tableConfig?.title || '').trim();
+    if (title) return title;
+    if (tableName === 'STATISTICS') return 'FSG';
+    return tableName;
+  }
+
   function createNav() {
     nav.innerHTML = '';
 
     tableEntries
       .filter(([tableName]) => tableName !== 'RUTINER')
-      .forEach(([tableName]) => {
+      .forEach(([tableName, tableConfig]) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'table-nav__link';
-      button.textContent = tableName;
+      button.textContent = getTableDisplayName(tableName, tableConfig);
 
       if (tableName === state.activeTableName) {
         button.classList.add('is-active');
@@ -2059,7 +2066,8 @@ export async function runPlanningApp() {
 
   function printActiveView(tableName) {
     const previousTitle = document.title;
-    document.title = `${tableName} - TODO Planning`;
+    const active = tableEntries.find(([name]) => name === tableName);
+    document.title = `${getTableDisplayName(tableName, active?.[1])} - TODO Planning`;
 
     window.setTimeout(() => {
       window.print();
@@ -2189,6 +2197,10 @@ export async function runPlanningApp() {
   function isEditableDropdownColumn(column) {
     const dropdown = APP_CONFIG.dropdowns?.[column.type];
     return !!dropdown?.options?.length && !isOpenColumn(column);
+  }
+
+  function getDropdownOptionLabel(value) {
+    return String(value ?? '').toLocaleUpperCase('sv-SE');
   }
 
   function normalizeDropdownCellValue(column, value) {
@@ -3121,7 +3133,7 @@ export async function runPlanningApp() {
     dropdown.options.forEach((option) => {
       const opt = document.createElement('option');
       opt.value = option;
-      opt.textContent = option;
+      opt.textContent = getDropdownOptionLabel(option);
       if (currentValue === option) {
         opt.selected = true;
       }
@@ -3292,7 +3304,7 @@ export async function runPlanningApp() {
       ['--', ...Array.from({ length: 53 }, (_, index) => `v${String(index + 1).padStart(2, '0')}`)].forEach((option) => {
         const opt = document.createElement('option');
         opt.value = option;
-        opt.textContent = option;
+        opt.textContent = getDropdownOptionLabel(option);
         if (formatWeekValue(row[column.field]) === option) {
           opt.selected = true;
         }
@@ -3304,7 +3316,7 @@ export async function runPlanningApp() {
       ['--', 'Q1', 'Q2', 'Q3', 'Q4'].forEach((option) => {
         const opt = document.createElement('option');
         opt.value = option;
-        opt.textContent = option;
+        opt.textContent = getDropdownOptionLabel(option);
         if (formatQuarterValue(row[column.field]) === option) {
           opt.selected = true;
         }
@@ -3316,7 +3328,7 @@ export async function runPlanningApp() {
       dropdown.options.forEach((option) => {
         const opt = document.createElement('option');
         opt.value = option;
-        opt.textContent = option;
+        opt.textContent = getDropdownOptionLabel(option);
         if (String(row[column.field] ?? '') === option) {
           opt.selected = true;
         }
@@ -3626,7 +3638,7 @@ export async function runPlanningApp() {
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=130');
+          const { signOutUser } = await import('./auth.js?v=133');
           await signOutUser();
         },
         disabled: false,

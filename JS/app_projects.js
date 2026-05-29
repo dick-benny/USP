@@ -1,4 +1,4 @@
-import { PDF_BUCKET } from './app_constants.js?v=130';
+import { PDF_BUCKET } from './app_constants.js?v=133';
 
 const PROJECT_TABLE = 'planning_projects';
 const ACTIVITY_TABLE = 'planning_project_activities';
@@ -7,6 +7,10 @@ const CATEGORY_ALL = 'Alla';
 
 function safeText(value) {
   return String(value ?? '').trim();
+}
+
+function getDropdownOptionLabel(value) {
+  return String(value ?? '').toLocaleUpperCase('sv-SE');
 }
 
 function normalizeDate(value) {
@@ -471,7 +475,7 @@ export function createProjectsController({
     getCategories().filter((item) => item !== CATEGORY_ALL).forEach((category) => {
       const option = document.createElement('option');
       option.value = category;
-      option.textContent = category;
+      option.textContent = getDropdownOptionLabel(category);
       if (safeText(row.category) === category) option.selected = true;
       select.appendChild(option);
     });
@@ -835,7 +839,7 @@ export function createProjectsController({
     getCategories().forEach((category) => {
       const option = document.createElement('option');
       option.value = category;
-      option.textContent = category;
+      option.textContent = getDropdownOptionLabel(category);
       if ((state.projectFilterCategory || CATEGORY_ALL) === category) option.selected = true;
       select.appendChild(option);
     });
