@@ -8,17 +8,17 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=133';
-import { createTodoController } from './app_todo.js?v=133';
-import { createMessagesController } from './app_messages.js?v=133';
-import { createRenderController } from './app_render.js?v=133';
-import { createDataController } from './app_data.js?v=133';
-import { createActionController } from './app_actions.js?v=133';
-import { createFilterController } from './app_filters.js?v=133';
-import { createColumnToolsController } from './app_column_tools.js?v=133';
-import { createExcelPlanController } from './app_excel_plan.js?v=133';
-import { createProjectsController } from './app_projects.js?v=133';
-import './app_statistics.js?v=133';
+} from './app_constants.js?v=150';
+import { createTodoController } from './app_todo.js?v=150';
+import { createMessagesController } from './app_messages.js?v=150';
+import { createRenderController } from './app_render.js?v=150';
+import { createDataController } from './app_data.js?v=150';
+import { createActionController } from './app_actions.js?v=150';
+import { createFilterController } from './app_filters.js?v=150';
+import { createColumnToolsController } from './app_column_tools.js?v=150';
+import { createExcelPlanController } from './app_excel_plan.js?v=150';
+import { createProjectsController } from './app_projects.js?v=150';
+import './app_statistics.js?v=150';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -160,7 +160,7 @@ export async function runPlanningApp() {
     normalizeRow,
     render,
   });
-  const { archiveCompletedTodosFromPreviousWeeks, toggleTodoDone } = todoController;
+  const { archiveCompletedTodosFromPreviousWeeks, archiveGreenOperationalRowsFromPreviousWeeks, toggleTodoDone } = todoController;
 
   const actionController = createActionController({
     supabase,
@@ -348,19 +348,22 @@ export async function runPlanningApp() {
   }
 
   function getVisibleColumns(tableConfig) {
-    const hiddenRowTodoTables = ['PRE DEV', 'UTVECKLING', 'SÄLJINTRO'];
+    const hiddenRowTodoTables = ['PRE DEV', 'UTVECKLING', 'SÄLJINTRO', 'DIG PROD'];
     const tableName = state.activeTableName;
+    const inlineOnlyTables = ['SÄLJINTRO', 'UTVECKLING', 'PRE DEV', 'DIG PROD'];
+    const inlineActionTables = ['PRE DEV', 'UTVECKLING'];
     const columns = [
       ...tableConfig.columns.filter((column) => column.field !== 'id' && !column.hiddenInTable && column.field !== UI_TODO_COLUMN.field && column.type !== UI_TODO_COLUMN.type),
-      ...(tableName === 'SÄLJINTRO' ? [] : [UI_OPEN_COLUMN]),
-      UI_NOTES_COLUMN,
+      ...(inlineOnlyTables.includes(tableName) ? [] : [UI_OPEN_COLUMN, UI_NOTES_COLUMN]),
     ];
+    if (inlineActionTables.includes(tableName)) {
+      columns.push(getInlineActionsColumn());
+    }
     if (!hiddenRowTodoTables.includes(tableName) && hasRowTodo(tableName)) {
       columns.push(UI_TODO_COLUMN);
     }
     return columns;
   }
-
 
   const filterController = createFilterController({
     state,
@@ -433,6 +436,20 @@ export async function runPlanningApp() {
 
   function isTodoColumn(column) {
     return column?.field === UI_TODO_COLUMN.field;
+  }
+
+  function isActionsColumn(column) {
+    return column?.field === '__actions__';
+  }
+
+  function getInlineActionsColumn() {
+    return {
+      name: 'Åtgärder',
+      field: '__actions__',
+      type: 'ui_actions',
+      width: '26ch',
+      mods: { align: 'center', readonly: true },
+    };
   }
 
   const columnToolsController = createColumnToolsController({
@@ -2077,12 +2094,14 @@ export async function runPlanningApp() {
     }, 0);
   }
 
-  async function createInlineNewRow(tableName, tableConfig) {
+  async function createInlineNewRow(tableName, tableConfig, overrides = {}) {
     const draft = {};
     tableConfig.columns.forEach((column) => {
       if (column.field === 'id') return;
       draft[column.field] = getDefaultValue(tableName, column);
     });
+
+    Object.assign(draft, overrides);
 
     if (isOwnerEnabledTable(tableName)) {
       draft.owner_initials = getCurrentUserInitials();
@@ -2097,18 +2116,64 @@ export async function runPlanningApp() {
     await saveNewRow(tableName, tableConfig, normalizeRow(tableName, tableConfig, draft));
   }
 
+  function getDesignCategoryOptions() {
+    const dropdown = APP_CONFIG.dropdowns?.dropdown_dev_kategori;
+    return Array.isArray(dropdown?.options) ? dropdown.options : [];
+  }
+
+  function createDesignNewRowCategorySelect() {
+    const select = document.createElement('select');
+    select.className = 'filter-item__control';
+    select.setAttribute('aria-label', 'Kategori för ny Design-rad');
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'VÄLJ KATEGORI';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    select.appendChild(placeholder);
+
+    getDesignCategoryOptions().forEach((value) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = getDropdownOptionLabel(value);
+      select.appendChild(option);
+    });
+
+    return select;
+  }
+
   function createTopActions(tableName, tableConfig) {
     const wrap = document.createElement('div');
     wrap.className = 'view-actions';
 
-    if (tableName !== 'DIG PROD') {
-      const newButton = document.createElement('button');
-      newButton.type = 'button';
-      newButton.className = 'secondary-button';
-      newButton.textContent = '+ Ny rad';
+    const designCategorySelect = tableName === 'UTVECKLING'
+      ? createDesignNewRowCategorySelect()
+      : null;
 
-      newButton.addEventListener('click', async () => {
-        if (tableName === 'SÄLJINTRO') {
+    if (designCategorySelect) {
+      wrap.appendChild(designCategorySelect);
+    }
+
+    const newButton = document.createElement('button');
+    newButton.type = 'button';
+    newButton.className = 'secondary-button';
+    newButton.textContent = '+ Ny rad';
+
+    newButton.addEventListener('click', async () => {
+        if (tableName === 'UTVECKLING') {
+          const kategori = String(designCategorySelect?.value || '').trim();
+          if (!kategori) {
+            alert('Välj kategori innan ny Design-rad skapas.');
+            designCategorySelect?.focus();
+            return;
+          }
+          await createInlineNewRow(tableName, tableConfig, { kategori });
+          if (designCategorySelect) designCategorySelect.value = '';
+          return;
+        }
+
+        if (tableName === 'SÄLJINTRO' || tableName === 'PRE DEV' || tableName === 'DIG PROD') {
           await createInlineNewRow(tableName, tableConfig);
           return;
         }
@@ -2144,8 +2209,7 @@ export async function runPlanningApp() {
         render();
       });
 
-      wrap.appendChild(newButton);
-    }
+    wrap.appendChild(newButton);
 
     if (tableName !== 'RUTINER') {
       const archiveButton = document.createElement('button');
@@ -2190,6 +2254,10 @@ export async function runPlanningApp() {
     return wrap;
   }
 
+  function isMultilineTextColumn(column) {
+    return column?.type === 'text' && (column?.mods?.displayMode === 'textarea' || column?.mods?.multiline === true || column?.multiline === true);
+  }
+
   function isEditableTextColumn(column) {
     return ['text', 'veckonummer', 'kvartal'].includes(column.type) && !isOpenColumn(column);
   }
@@ -2203,9 +2271,19 @@ export async function runPlanningApp() {
     return String(value ?? '').toLocaleUpperCase('sv-SE');
   }
 
+  function normalizeSupplierDropdownValue(value) {
+    const raw = String(value ?? '').trim();
+    const normalized = raw.toLocaleLowerCase('sv-SE');
+    if (normalized === 'anis' || normalized === 'anisa') return 'Anisa';
+    if (normalized === 'dream home') return 'Dream Home';
+    if (normalized === 'iera living') return 'Iera Living';
+    return raw;
+  }
+
   function normalizeDropdownCellValue(column, value) {
     if (column?.type === 'dropdown_saljintro_vecka') return formatWeekValue(value);
     if (column?.type === 'dropdown_saljintro_kvartal') return formatQuarterValue(value);
+    if (column?.type === 'dropdown_dev_syfte' || column?.type === 'dropdown_pre_dev_kategori') return normalizeSupplierDropdownValue(value);
     return String(value ?? '');
   }
 
@@ -2414,7 +2492,7 @@ export async function runPlanningApp() {
   async function createSaljintroFromUtveckling(utvecklingRow) {
     const produkt = String(utvecklingRow?.produktide || '').trim();
     if (!produkt) {
-      alert('Produktnamn saknas i UTVECKLING-raden.');
+      alert('Produktnamn saknas i Design-raden.');
       return;
     }
 
@@ -2570,6 +2648,7 @@ export async function runPlanningApp() {
 
     let normalizedNextValue = nextValue;
     if (column.type === 'status') normalizedNextValue = normalizeStatusValue(nextValue);
+    if (isEditableDropdownColumn(column)) normalizedNextValue = normalizeDropdownCellValue(column, nextValue);
     if (isFileColumn(column)) normalizedNextValue = normalizePdfPath(nextValue);
     const dbNextValue = column.type === 'date'
       ? (String(normalizedNextValue || '').trim() || null)
@@ -2657,8 +2736,8 @@ export async function runPlanningApp() {
     }
   }
 
-  async function saveStatusDateCell(tableConfig, row, column, nextDateValue) {
-    const dateField = String(column?.renderFromField || '').trim();
+  async function saveStatusDateCell(tableConfig, row, column, nextDateValue, targetDateField = null) {
+    const dateField = String(targetDateField || column?.renderFromField || '').trim();
     if (!dateField || !row?.id) return;
 
     const nextDate = String(nextDateValue || '').trim();
@@ -2752,39 +2831,65 @@ export async function runPlanningApp() {
     const renderedValue = column.renderFromField && row
       ? String(row?.[column.renderFromField] || '').trim()
       : '';
+    const renderedToValue = column.renderToField && row
+      ? String(row?.[column.renderToField] || '').trim()
+      : '';
 
-    if (state.activeTableName === 'SÄLJINTRO' && column.renderFromField) {
+    if (column.renderFromField && (column.dateDisplayMode === 'week' || column.dateDisplayMode === 'weekRange' || state.activeTableName === 'SÄLJINTRO')) {
       const statusShell = document.createElement('span');
-      statusShell.className = `${getStatusClass(value)} status-button--week${isDetail ? ' status-button--detail' : ''}`;
+      const isRange = !!column.renderToField;
+      statusShell.className = `${getStatusClass(value)} status-button--week${isRange ? ' status-button--week-range' : ''}${isDetail ? ' status-button--detail' : ''}`;
       statusShell.setAttribute('role', 'button');
       statusShell.setAttribute('tabindex', '0');
-      statusShell.title = `${column.name}: klicka utanför veckan för att byta status, klicka på veckan för datum`;
-      statusShell.setAttribute('aria-label', `${column.name}: byt status (${normalizeStatusValue(value)}), datum ${formatWeekFromDateValue(renderedValue) || 'saknas'}`);
+      statusShell.title = isRange
+        ? `${column.name}: klicka i mitten för att byta status, klicka vänster/höger vecka för datum`
+        : `${column.name}: klicka utanför veckan för att byta status, klicka på veckan för datum`;
+
+      const fromLabel = formatWeekFromDateValue(renderedValue) || '📅';
+      const toLabel = formatWeekFromDateValue(renderedToValue) || '📅';
+      statusShell.setAttribute('aria-label', isRange
+        ? `${column.name}: byt status (${normalizeStatusValue(value)}), från ${fromLabel}, till ${toLabel}`
+        : `${column.name}: byt status (${normalizeStatusValue(value)}), datum ${fromLabel}`
+      );
 
       const wrap = document.createElement('span');
-      wrap.className = 'status-week-cell';
+      wrap.className = isRange ? 'status-week-cell status-week-cell--range' : 'status-week-cell';
 
-      const trigger = document.createElement('span');
-      trigger.className = renderedValue
-        ? 'status-week-cell__date-trigger'
-        : 'status-week-cell__date-trigger status-week-cell__date-trigger--empty';
-      trigger.title = renderedValue ? 'Ändra datum' : 'Välj datum';
-      trigger.setAttribute('aria-label', `${column.name}: ${renderedValue ? 'ändra datum' : 'välj datum'}`);
+      const createDateTrigger = (dateValue, dateField, sideLabel) => {
+        const trigger = document.createElement('span');
+        trigger.className = dateValue
+          ? 'status-week-cell__date-trigger'
+          : 'status-week-cell__date-trigger status-week-cell__date-trigger--empty';
+        if (isRange) trigger.classList.add(`status-week-cell__date-trigger--${sideLabel}`);
+        trigger.title = dateValue ? `Ändra ${sideLabel === 'from' ? 'från' : 'till'}-datum` : `Välj ${sideLabel === 'from' ? 'från' : 'till'}-datum`;
+        trigger.setAttribute('aria-label', `${column.name}: ${dateValue ? 'ändra' : 'välj'} ${sideLabel === 'from' ? 'från' : 'till'}-datum`);
 
-      const label = document.createElement('span');
-      label.className = 'status-week-cell__date-label';
-      label.textContent = formatWeekFromDateValue(renderedValue) || '📅';
+        const label = document.createElement('span');
+        label.className = 'status-week-cell__date-label';
+        label.textContent = formatWeekFromDateValue(dateValue) || '📅';
 
-      const dateInput = document.createElement('input');
-      dateInput.type = 'date';
-      dateInput.className = 'status-week-cell__date-input';
-      dateInput.value = getDateInputValue(renderedValue);
-      dateInput.setAttribute('aria-label', `${column.name}: ${renderedValue ? 'ändra datum' : 'välj datum'}`);
-      dateInput.title = renderedValue ? 'Ändra datum' : 'Välj datum';
+        const dateInput = document.createElement('input');
+        dateInput.type = 'date';
+        dateInput.className = 'status-week-cell__date-input';
+        dateInput.value = getDateInputValue(dateValue);
+        dateInput.dataset.statusDateField = dateField;
+        dateInput.setAttribute('aria-label', `${column.name}: ${dateValue ? 'ändra' : 'välj'} ${sideLabel === 'from' ? 'från' : 'till'}-datum`);
+        dateInput.title = dateValue ? 'Ändra datum' : 'Välj datum';
 
-      trigger.appendChild(label);
-      trigger.appendChild(dateInput);
-      wrap.appendChild(trigger);
+        trigger.appendChild(label);
+        trigger.appendChild(dateInput);
+        return trigger;
+      };
+
+      wrap.appendChild(createDateTrigger(renderedValue, column.renderFromField, 'from'));
+      if (isRange) {
+        const rangeSeparator = document.createElement('span');
+        rangeSeparator.className = 'status-week-cell__range-separator';
+        rangeSeparator.textContent = '–';
+        wrap.appendChild(rangeSeparator);
+        wrap.appendChild(createDateTrigger(renderedToValue, column.renderToField, 'to'));
+      }
+
       statusShell.appendChild(wrap);
       return statusShell;
     }
@@ -2951,6 +3056,69 @@ export async function runPlanningApp() {
     );
   }
 
+  function createInlineRowActions(tableName, tableConfig, row) {
+    const wrap = document.createElement('div');
+    wrap.className = 'row-actions row-actions--inline';
+
+    if (!row?.id || isVirtualModalTodoRow(row)) return wrap;
+
+    const makeButton = ({ label, title, className = 'row-actions__button', action }) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = className;
+      button.textContent = label;
+      if (title) button.title = title;
+      button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await action();
+      });
+      return button;
+    };
+
+    if (tableName === 'PRE DEV') {
+      wrap.appendChild(makeButton({
+        label: 'Arkiv',
+        title: 'Lägg raden i Arkiv',
+        action: async () => runRowAction(tableName, tableConfig, row, 'archive'),
+      }));
+      wrap.appendChild(makeButton({
+        label: 'Design',
+        title: 'Skapa rad i Design och lägg denna rad i Arkiv',
+        action: async () => runRowAction(tableName, tableConfig, row, 'promote_pre_dev'),
+      }));
+      wrap.appendChild(makeButton({
+        label: '🗑',
+        title: 'Ta bort raden',
+        className: 'row-actions__button row-actions__button--danger',
+        action: async () => runRowAction(tableName, tableConfig, row, 'delete'),
+      }));
+      return wrap;
+    }
+
+    if (tableName === 'UTVECKLING') {
+      wrap.appendChild(makeButton({
+        label: 'Arkiv',
+        title: 'Lägg raden i Arkiv',
+        action: async () => runRowAction(tableName, tableConfig, row, 'archive'),
+      }));
+      wrap.appendChild(makeButton({
+        label: 'Säljintro',
+        title: 'Skapa rad i Säljintro och lägg denna rad i Arkiv',
+        action: async () => createSaljintroFromUtveckling(row),
+      }));
+      wrap.appendChild(makeButton({
+        label: '🗑',
+        title: 'Ta bort raden',
+        className: 'row-actions__button row-actions__button--danger',
+        action: async () => runRowAction(tableName, tableConfig, row, 'delete'),
+      }));
+      return wrap;
+    }
+
+    return wrap;
+  }
+
   function createStaticCellContent(row, column) {
     const maybeWrapOwnerContent = (node) => {
       if (shouldShowOwnerBadge(state.activeTableName, row, column)) {
@@ -2961,6 +3129,12 @@ export async function runPlanningApp() {
 
     if (isOpenColumn(column)) {
       return createOpenButton(row);
+    }
+
+    if (isActionsColumn(column)) {
+      const active = getActiveConfig();
+      const [, tableConfig] = active || [];
+      return createInlineRowActions(state.activeTableName, tableConfig, row);
     }
 
     const rawValue = row[column.field];
@@ -3033,7 +3207,9 @@ export async function runPlanningApp() {
     }
 
     const span = document.createElement('span');
-    span.className = text ? 'cell-text' : 'cell-text cell-text--muted';
+    let className = text ? 'cell-text' : 'cell-text cell-text--muted';
+    if (isMultilineTextColumn(column)) className += ' cell-text--multiline';
+    span.className = className;
     span.textContent = text || '—';
     return maybeWrapOwnerContent(span);
   }
@@ -3094,9 +3270,10 @@ export async function runPlanningApp() {
   }
 
   function createEditableTextControl(tableConfig, row, column) {
-    const input = document.createElement('input');
-    input.className = 'cell-editor';
-    input.type = 'text';
+    const isMultiline = isMultilineTextColumn(column);
+    const input = document.createElement(isMultiline ? 'textarea' : 'input');
+    input.className = isMultiline ? 'cell-editor cell-editor--textarea' : 'cell-editor';
+    if (!isMultiline) input.type = 'text';
     input.value = row[column.field] ?? '';
 
     const commit = async () => {
@@ -3104,12 +3281,22 @@ export async function runPlanningApp() {
     };
 
     input.addEventListener('keydown', async (event) => {
-      if (event.key === 'Enter') {
+      if (event.key === 'Escape') {
         event.preventDefault();
-        await commit();
-      } else if (event.key === 'Escape') {
         state.editingCell = null;
         render();
+        return;
+      }
+
+      if (!isMultiline && event.key === 'Enter') {
+        event.preventDefault();
+        await commit();
+        return;
+      }
+
+      if (isMultiline && event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        await commit();
       }
     });
 
@@ -3129,26 +3316,31 @@ export async function runPlanningApp() {
     select.className = 'cell-editor cell-editor--select';
 
     const currentValue = normalizeDropdownCellValue(column, row[column.field]);
+    let committing = false;
 
     dropdown.options.forEach((option) => {
       const opt = document.createElement('option');
       opt.value = option;
       opt.textContent = getDropdownOptionLabel(option);
-      if (currentValue === option) {
+      if (currentValue === normalizeDropdownCellValue(column, option)) {
         opt.selected = true;
       }
       select.appendChild(opt);
     });
 
+    select.value = currentValue;
+
     const commit = async () => {
+      if (committing) return;
+      committing = true;
       await saveCellValue(tableConfig, row, column, select.value);
+      committing = false;
     };
 
     select.addEventListener('change', commit);
-    select.addEventListener('blur', () => {
-      if (state.editingCell) {
-        state.editingCell = null;
-        render();
+    select.addEventListener('blur', async () => {
+      if (state.editingCell && !committing) {
+        await commit();
       }
     });
     select.addEventListener('keydown', async (event) => {
@@ -3325,11 +3517,12 @@ export async function runPlanningApp() {
     } else if (dropdown?.options?.length) {
       control = document.createElement('select');
       control.className = 'detail-field__control';
+      const currentDropdownValue = normalizeDropdownCellValue(column, row[column.field]);
       dropdown.options.forEach((option) => {
         const opt = document.createElement('option');
         opt.value = option;
         opt.textContent = getDropdownOptionLabel(option);
-        if (String(row[column.field] ?? '') === option) {
+        if (currentDropdownValue === option) {
           opt.selected = true;
         }
         control.appendChild(opt);
@@ -3395,6 +3588,21 @@ export async function runPlanningApp() {
     return `Skapade ny rad i ${targetTable}${targetRowId ? ` (#${targetRowId})` : ''}`;
   }
 
+  function formatArchiveWeekKey(item) {
+    const raw = String(item?.week_key || '').trim();
+    if (raw) {
+      const match = raw.match(/^(\d{4})[- ]?W?(\d{1,2})$/i);
+      if (match) return `${match[1]}-W${String(match[2]).padStart(2, '0')}`;
+      return raw;
+    }
+
+    const payload = item?.payload_json || {};
+    const fallbackValue = payload.klart_datum || item?.archived_at || payload.updated_at || payload.created_at;
+    const date = new Date(fallbackValue);
+    if (Number.isNaN(date.getTime())) return '';
+    return `${date.getUTCFullYear()}-W${String(getISOWeekNumber(date)).padStart(2, '0')}`;
+  }
+
   function createArchivePanel() {
     const tableName = state.activeTableName;
     const rows = state.archiveRowsByTable[tableName] || [];
@@ -3453,9 +3661,31 @@ export async function runPlanningApp() {
         card.className = 'detail-card';
 
         const payload = item.payload_json || {};
+        const titleText = String(payload[titleField] || 'Arkiverad rad').trim();
+
+        if (tableName === 'TODO') {
+          const row = document.createElement('div');
+          row.className = 'archive-todo-row';
+
+          const title = document.createElement('span');
+          title.className = 'archive-todo-row__title';
+          title.textContent = titleText;
+
+          const week = document.createElement('span');
+          week.className = 'archive-todo-row__week';
+          const weekKey = formatArchiveWeekKey(item);
+          week.textContent = weekKey ? `Vecka: ${weekKey}` : 'Vecka: --';
+
+          row.appendChild(title);
+          row.appendChild(week);
+          card.appendChild(row);
+          list.appendChild(card);
+          return;
+        }
+
         const title = document.createElement('h3');
         title.className = 'detail-card__title';
-        title.textContent = payload[titleField] || 'Arkiverad rad';
+        title.textContent = titleText;
 
         const archived = document.createElement('p');
         archived.className = 'detail-card__text';
@@ -3475,13 +3705,6 @@ export async function runPlanningApp() {
           transition.className = 'detail-card__text';
           transition.textContent = transitionText;
           card.appendChild(transition);
-        }
-
-        if (tableName === 'TODO' && item.week_key) {
-          const week = document.createElement('p');
-          week.className = 'detail-card__text';
-          week.textContent = `Vecka: ${item.week_key}`;
-          card.appendChild(week);
         }
 
         list.appendChild(card);
@@ -3638,7 +3861,7 @@ export async function runPlanningApp() {
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=133');
+          const { signOutUser } = await import('./auth.js?v=150');
           await signOutUser();
         },
         disabled: false,
@@ -4680,7 +4903,18 @@ export async function runPlanningApp() {
     tableEntries.filter(([, tableConfig]) => !!tableConfig.dbTable && !tableConfig.customView).map(([tableName, tableConfig]) => loadTableRowsFromData(state, tableName, tableConfig))
   );
   await syncAllDigProdKlartFromSaljintro();
-  await archiveCompletedTodosFromPreviousWeeks();
+  async function runWeeklyArchiveCleanup() {
+    const archivedTodoRows = await archiveCompletedTodosFromPreviousWeeks();
+    const archivedOperationalRows = await archiveGreenOperationalRowsFromPreviousWeeks();
+    return archivedTodoRows || archivedOperationalRows;
+  }
+
+  await runWeeklyArchiveCleanup();
+  window.setInterval(() => {
+    void runWeeklyArchiveCleanup().then((archived) => {
+      if (archived) render();
+    });
+  }, 30 * 60 * 1000);
   await loadDocumentLinks();
   await loadColumnChecklists();
   await loadLinks();

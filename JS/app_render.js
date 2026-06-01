@@ -226,8 +226,8 @@ export function createRenderController(deps) {
           td.appendChild(createStaticCellContent(row, column));
           if (statusToggle) {
             const statusButton = td.querySelector('.status-button');
-            const dateTrigger = td.querySelector('.status-week-cell__date-trigger');
-            const dateInput = td.querySelector('.status-week-cell__date-input');
+            const dateTriggers = Array.from(td.querySelectorAll('.status-week-cell__date-trigger'));
+            const dateInputs = Array.from(td.querySelectorAll('.status-week-cell__date-input'));
 
             const dateHandler = async (event) => {
               event.preventDefault();
@@ -241,31 +241,45 @@ export function createRenderController(deps) {
               await toggleStatusCell(tableConfig, row, column);
             };
 
-            if (dateInput) {
-              dateInput.addEventListener('click', (event) => {
-                event.stopPropagation();
+            if (dateInputs.length) {
+              dateInputs.forEach((dateInput) => {
+                dateInput.addEventListener('click', (event) => {
+                  event.stopPropagation();
+                });
+                dateInput.addEventListener('mousedown', (event) => {
+                  event.stopPropagation();
+                });
+                dateInput.addEventListener('pointerdown', (event) => {
+                  event.stopPropagation();
+                });
+                dateInput.addEventListener('change', async (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const targetDateField = dateInput.dataset.statusDateField || null;
+                  await saveStatusDateCell?.(tableConfig, row, column, dateInput.value, targetDateField);
+                });
               });
-              dateInput.addEventListener('mousedown', (event) => {
-                event.stopPropagation();
-              });
-              dateInput.addEventListener('change', async (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                await saveStatusDateCell?.(tableConfig, row, column, dateInput.value);
-              });
-            } else if (dateTrigger) {
-              dateTrigger.addEventListener('click', dateHandler);
-              dateTrigger.addEventListener('keydown', async (event) => {
-                if (event.key !== 'Enter' && event.key !== ' ') return;
-                await dateHandler(event);
+            } else if (dateTriggers.length) {
+              dateTriggers.forEach((dateTrigger) => {
+                dateTrigger.addEventListener('click', dateHandler);
+                dateTrigger.addEventListener('keydown', async (event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                  await dateHandler(event);
+                });
               });
             }
 
-            if (dateTrigger) {
+            dateTriggers.forEach((dateTrigger) => {
               dateTrigger.addEventListener('click', (event) => {
                 event.stopPropagation();
               });
-            }
+              dateTrigger.addEventListener('mousedown', (event) => {
+                event.stopPropagation();
+              });
+              dateTrigger.addEventListener('pointerdown', (event) => {
+                event.stopPropagation();
+              });
+            });
 
             if (statusButton) {
               statusButton.addEventListener('click', toggleHandler);
