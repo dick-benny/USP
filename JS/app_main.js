@@ -8,17 +8,17 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=150';
-import { createTodoController } from './app_todo.js?v=150';
-import { createMessagesController } from './app_messages.js?v=150';
-import { createRenderController } from './app_render.js?v=150';
-import { createDataController } from './app_data.js?v=150';
-import { createActionController } from './app_actions.js?v=150';
-import { createFilterController } from './app_filters.js?v=150';
-import { createColumnToolsController } from './app_column_tools.js?v=150';
-import { createExcelPlanController } from './app_excel_plan.js?v=150';
-import { createProjectsController } from './app_projects.js?v=150';
-import './app_statistics.js?v=150';
+} from './app_constants.js?v=165';
+import { createTodoController } from './app_todo.js?v=165';
+import { createMessagesController } from './app_messages.js?v=165';
+import { createRenderController } from './app_render.js?v=165';
+import { createDataController } from './app_data.js?v=165';
+import { createActionController } from './app_actions.js?v=165';
+import { createFilterController } from './app_filters.js?v=165';
+import { createColumnToolsController } from './app_column_tools.js?v=165';
+import { createExcelPlanController } from './app_excel_plan.js?v=165';
+import { createProjectsController } from './app_projects.js?v=165';
+import './app_statistics.js?v=165';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -290,7 +290,7 @@ export async function runPlanningApp() {
     const value = String(projectName || '').trim();
     if (!value) return '';
 
-    const autoProjectSuffixes = [' - Media', ' - B2B-ready', ' - Shopify-ready'];
+    const autoProjectSuffixes = [' - Media', ' - B2B-intro', ' - B2C-intro'];
     const suffix = autoProjectSuffixes.find((item) => value.endsWith(item));
 
     if (!suffix) return '';
@@ -350,8 +350,8 @@ export async function runPlanningApp() {
   function getVisibleColumns(tableConfig) {
     const hiddenRowTodoTables = ['PRE DEV', 'UTVECKLING', 'SÄLJINTRO', 'DIG PROD'];
     const tableName = state.activeTableName;
-    const inlineOnlyTables = ['SÄLJINTRO', 'UTVECKLING', 'PRE DEV', 'DIG PROD'];
-    const inlineActionTables = ['PRE DEV', 'UTVECKLING'];
+    const inlineOnlyTables = ['SÄLJINTRO', 'UTVECKLING', 'PRE DEV', 'DIG PROD', 'INKÖP', 'MARKNAD', 'SÄLJ'];
+    const inlineActionTables = ['PRE DEV', 'UTVECKLING', 'SÄLJINTRO', 'INKÖP', 'MARKNAD', 'SÄLJ'];
     const columns = [
       ...tableConfig.columns.filter((column) => column.field !== 'id' && !column.hiddenInTable && column.field !== UI_TODO_COLUMN.field && column.type !== UI_TODO_COLUMN.type),
       ...(inlineOnlyTables.includes(tableName) ? [] : [UI_OPEN_COLUMN, UI_NOTES_COLUMN]),
@@ -1868,12 +1868,36 @@ export async function runPlanningApp() {
     return `v${String(week).padStart(2, '0')}`;
   }
 
+  function getDigProdKlartWeekValue(row) {
+    const produkt = String(row?.produktnamn || '').trim();
+    const kategori = String(row?.kategori || '').trim();
+    if (!produkt || !kategori) return '--';
+
+    const saljRow = (state.rowsByTable['SÄLJINTRO'] || []).find((item) =>
+      String(item?.produkt || '').trim() === produkt
+    );
+
+    if (!saljRow) return '--';
+    if (kategori === 'B2B-intro' || kategori === 'B2B-ready') return formatWeekValue(saljRow.b2b_intro);
+    if (kategori === 'B2C-intro' || kategori === 'B2C-ready' || kategori === 'Shopify-ready') return formatWeekValue(saljRow.lev_vecka);
+    return '--';
+  }
+
+  function getCurrentShortYear() {
+    return String(new Date().getFullYear()).slice(-2);
+  }
+
   function formatQuarterValue(value) {
     const raw = String(value ?? '').trim();
     if (!raw || raw === '--') return '--';
+    const fullMatch = raw.match(/(\d{2,4})\s*[-/]?\s*Q([1-4])/i);
+    if (fullMatch) {
+      const year = fullMatch[1].slice(-2);
+      return `${year}-Q${fullMatch[2]}`;
+    }
     const match = raw.match(/Q([1-4])/i) || raw.match(/([1-4])$/);
     if (!match) return raw;
-    return `Q${match[1]}`;
+    return `${getCurrentShortYear()}-Q${match[1]}`;
   }
 
   function ensureRowMeta(row) {
@@ -2121,19 +2145,19 @@ export async function runPlanningApp() {
     return Array.isArray(dropdown?.options) ? dropdown.options : [];
   }
 
-  function createDesignNewRowCategorySelect() {
+  function createCategorySelect({ options, ariaLabel, placeholderText }) {
     const select = document.createElement('select');
     select.className = 'filter-item__control';
-    select.setAttribute('aria-label', 'Kategori för ny Design-rad');
+    select.setAttribute('aria-label', ariaLabel);
 
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = 'VÄLJ KATEGORI';
+    placeholder.textContent = placeholderText;
     placeholder.disabled = true;
     placeholder.selected = true;
     select.appendChild(placeholder);
 
-    getDesignCategoryOptions().forEach((value) => {
+    (options || []).forEach((value) => {
       const option = document.createElement('option');
       option.value = value;
       option.textContent = getDropdownOptionLabel(value);
@@ -2143,6 +2167,40 @@ export async function runPlanningApp() {
     return select;
   }
 
+  function createDesignNewRowCategorySelect() {
+    return createCategorySelect({
+      options: getDesignCategoryOptions(),
+      ariaLabel: 'Kategori för ny Design-rad',
+      placeholderText: 'VÄLJ KATEGORI',
+    });
+  }
+
+  function getSaljintroCategoryOptions() {
+    const dropdown = APP_CONFIG.dropdowns?.dropdown_product_kategori;
+    return Array.isArray(dropdown?.options) ? dropdown.options : [];
+  }
+
+  function createSaljintroNewRowCategorySelect() {
+    return createCategorySelect({
+      options: getSaljintroCategoryOptions(),
+      ariaLabel: 'Kategori för ny Säljintro-rad',
+      placeholderText: 'VÄLJ KATEGORI',
+    });
+  }
+
+  function getDigProdCategoryOptions() {
+    const dropdown = APP_CONFIG.dropdowns?.dropdown_dig_prod_kategori;
+    return Array.isArray(dropdown?.options) ? dropdown.options : [];
+  }
+
+  function createDigProdNewRowCategorySelect() {
+    return createCategorySelect({
+      options: getDigProdCategoryOptions(),
+      ariaLabel: 'Kategori för ny DIG PROD-rad',
+      placeholderText: 'VÄLJ KATEGORI',
+    });
+  }
+
   function createTopActions(tableName, tableConfig) {
     const wrap = document.createElement('div');
     wrap.className = 'view-actions';
@@ -2150,9 +2208,43 @@ export async function runPlanningApp() {
     const designCategorySelect = tableName === 'UTVECKLING'
       ? createDesignNewRowCategorySelect()
       : null;
+    const saljintroCategorySelect = tableName === 'SÄLJINTRO'
+      ? createSaljintroNewRowCategorySelect()
+      : null;
+    const digProdCategorySelect = null;
 
     if (designCategorySelect) {
       wrap.appendChild(designCategorySelect);
+    }
+
+    if (saljintroCategorySelect) {
+      wrap.appendChild(saljintroCategorySelect);
+    }
+
+    if (digProdCategorySelect) {
+      wrap.appendChild(digProdCategorySelect);
+    }
+
+    if (tableName === 'DIG PROD') {
+      if (tableName !== 'RUTINER') {
+        const archiveButton = document.createElement('button');
+        archiveButton.type = 'button';
+        archiveButton.className = 'secondary-button';
+        archiveButton.textContent = 'Arkiv';
+        archiveButton.addEventListener('click', openArchivePanel);
+        wrap.appendChild(archiveButton);
+      }
+
+      const printButton = document.createElement('button');
+      printButton.type = 'button';
+      printButton.className = 'secondary-button';
+      printButton.textContent = 'Print';
+      printButton.addEventListener('click', () => {
+        printActiveView(tableName);
+      });
+      wrap.appendChild(printButton);
+
+      return wrap;
     }
 
     const newButton = document.createElement('button');
@@ -2173,7 +2265,36 @@ export async function runPlanningApp() {
           return;
         }
 
-        if (tableName === 'SÄLJINTRO' || tableName === 'PRE DEV' || tableName === 'DIG PROD') {
+        if (tableName === 'SÄLJINTRO') {
+          const kategori = String(saljintroCategorySelect?.value || '').trim();
+          if (!kategori) {
+            alert('Välj kategori innan ny Säljintro-rad skapas.');
+            saljintroCategorySelect?.focus();
+            return;
+          }
+          await createInlineNewRow(tableName, tableConfig, { kategori });
+          if (saljintroCategorySelect) saljintroCategorySelect.value = '';
+          return;
+        }
+
+        if (tableName === 'DIG PROD') {
+          const kategori = String(digProdCategorySelect?.value || '').trim();
+          if (!kategori) {
+            alert('Välj kategori innan ny DIG PROD-rad skapas.');
+            digProdCategorySelect?.focus();
+            return;
+          }
+          await createInlineNewRow(tableName, tableConfig, { kategori });
+          if (digProdCategorySelect) digProdCategorySelect.value = '';
+          return;
+        }
+
+        if (tableName === 'PRE DEV') {
+          await createInlineNewRow(tableName, tableConfig);
+          return;
+        }
+
+        if (tableName === 'MARKNAD' || tableName === 'SÄLJ' || tableName === 'INKÖP') {
           await createInlineNewRow(tableName, tableConfig);
           return;
         }
@@ -2232,7 +2353,6 @@ export async function runPlanningApp() {
       });
       wrap.appendChild(mineButton);
     }
-
     if (tableName === 'SÄLJINTRO') {
       const excelPlanButton = document.createElement('button');
       excelPlanButton.type = 'button';
@@ -2259,12 +2379,12 @@ export async function runPlanningApp() {
   }
 
   function isEditableTextColumn(column) {
-    return ['text', 'veckonummer', 'kvartal'].includes(column.type) && !isOpenColumn(column);
+    return ['text', 'veckonummer', 'kvartal'].includes(column.type) && !isOpenColumn(column) && column?.mods?.readonly !== true;
   }
 
   function isEditableDropdownColumn(column) {
     const dropdown = APP_CONFIG.dropdowns?.[column.type];
-    return !!dropdown?.options?.length && !isOpenColumn(column);
+    return !!dropdown?.options?.length && !isOpenColumn(column) && column?.mods?.readonly !== true;
   }
 
   function getDropdownOptionLabel(value) {
@@ -2329,20 +2449,20 @@ export async function runPlanningApp() {
     const [, digProdConfig] = digProdEntry;
     const ownerInitials = saljintroRow.owner_initials || getCurrentUserInitials();
 
-    const payload = ['B2B-ready', 'Shopify-ready'].map((kategori) => ({
+    const beskrivning = String(saljintroRow?.beskrivning_status || '').trim();
+
+    const payload = ['B2B-intro', 'B2C-intro'].map((kategori) => ({
       produktnamn: produkt,
       kategori,
+      beskrivning,
       p_info: 'gray',
+      ai_seo: 'gray',
       metafalt: 'gray',
       copy: 'gray',
       packshot: 'gray',
       kampanj: 'gray',
-      klart: kategori === 'B2B-ready'
-        ? normalizeStatusValue(saljintroRow?.b2b_ready || 'gray')
-        : normalizeStatusValue(saljintroRow?.shopify_ready || 'gray'),
-      klart_datum: kategori === 'B2B-ready'
-        ? (saljintroRow?.b2b_ready_datum || null)
-        : (saljintroRow?.shopify_ready_datum || null),
+      klart: 'gray',
+      klart_datum: null,
       owner_initials: ownerInitials,
       is_done: false,
     }));
@@ -2367,67 +2487,299 @@ export async function runPlanningApp() {
     return normalizedRows;
   }
 
-  async function syncDigProdKlartFromSaljintro(saljintroRow, changedField = '') {
-    const produkt = String(saljintroRow?.produkt || '').trim();
-    if (!produkt) return;
+  function getSaljintroReadyFieldsForDigProdCategory(kategori) {
+    const normalized = String(kategori || '').trim();
+    if (normalized === 'B2B-intro' || normalized === 'B2B-ready') {
+      return { statusField: 'b2b_ready', dateField: null };
+    }
+    if (normalized === 'B2C-intro' || normalized === 'B2C-ready' || normalized === 'Shopify-ready') {
+      return { statusField: 'shopify_ready', dateField: null };
+    }
+    return null;
+  }
 
-    const changed = String(changedField || '').trim();
-    const shouldSyncB2B = !changed || changed === 'b2b_ready' || changed === 'b2b_ready_datum';
-    const shouldSyncShopify = !changed || changed === 'shopify_ready' || changed === 'shopify_ready_datum';
+  async function syncSaljintroReadyFromDigProd(digProdRow) {
+    const produkt = String(digProdRow?.produktnamn || '').trim();
+    const fields = getSaljintroReadyFieldsForDigProdCategory(digProdRow?.kategori);
+    if (!produkt || !fields) return;
 
-    const updates = [];
-    if (shouldSyncB2B) {
-      updates.push({
-        kategori: 'B2B-ready',
-        klart: normalizeStatusValue(saljintroRow?.b2b_ready || 'gray'),
-        klart_datum: saljintroRow?.b2b_ready_datum || null,
-      });
+    const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
+    if (!saljintroEntry) return;
+
+    const [, saljintroConfig] = saljintroEntry;
+    const nextStatus = normalizeStatusValue(digProdRow?.klart || 'gray');
+
+    const payload = { [fields.statusField]: nextStatus };
+
+    const { data, error } = await supabase
+      .from(saljintroConfig.dbTable)
+      .update(payload)
+      .eq('produkt', produkt)
+      .select('*');
+
+    if (error) {
+      throw new Error(error.message || `Kunde inte spegla ${digProdRow?.kategori} till SÄLJINTRO.`);
     }
 
-    if (shouldSyncShopify) {
-      updates.push({
-        kategori: 'Shopify-ready',
-        klart: normalizeStatusValue(saljintroRow?.shopify_ready || 'gray'),
-        klart_datum: saljintroRow?.shopify_ready_datum || null,
-      });
-    }
+    const updatedRows = (Array.isArray(data) ? data : [])
+      .map((row) => normalizeRow('SÄLJINTRO', saljintroConfig, row));
 
-    if (!updates.length) return;
+    if (!updatedRows.length) return;
+
+    const updatedById = new Map(updatedRows.map((row) => [String(row.id), row]));
+    state.rowsByTable['SÄLJINTRO'] = (state.rowsByTable['SÄLJINTRO'] || []).map((row) =>
+      updatedById.get(String(row.id)) || row
+    );
+  }
+
+  async function syncDigProdProductNameFromSaljintro(previousProductName, nextProductName) {
+    const previous = String(previousProductName || '').trim();
+    const next = String(nextProductName || '').trim();
+    if (!previous || !next || previous === next) return;
 
     const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
     if (!digProdEntry) return;
 
     const [, digProdConfig] = digProdEntry;
+    const { data, error } = await supabase
+      .from(digProdConfig.dbTable)
+      .update({ produktnamn: next })
+      .eq('produktnamn', previous)
+      .select('*');
 
-    for (const item of updates) {
-      const { data, error } = await supabase
-        .from(digProdConfig.dbTable)
-        .update({ klart: item.klart, klart_datum: item.klart_datum })
-        .eq('produktnamn', produkt)
-        .eq('kategori', item.kategori)
-        .select('*');
+    if (error) {
+      throw new Error(error.message || 'Kunde inte uppdatera Produktnamn i DIG PROD.');
+    }
+
+    const updatedRows = (Array.isArray(data) ? data : [])
+      .map((row) => normalizeRow('DIG PROD', digProdConfig, row));
+
+    if (!updatedRows.length) return;
+
+    const updatedById = new Map(updatedRows.map((row) => [String(row.id), row]));
+    state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) =>
+      updatedById.get(String(row.id)) || row
+    );
+  }
+
+
+  async function syncDigProdDescriptionFromSaljintro(saljintroRow) {
+    const produkt = String(saljintroRow?.produkt || '').trim();
+    if (!produkt) return;
+
+    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
+    if (!digProdEntry) return;
+
+    const [, digProdConfig] = digProdEntry;
+    const nextDescription = String(saljintroRow?.beskrivning_status || '').trim();
+
+    const { data, error } = await supabase
+      .from(digProdConfig.dbTable)
+      .update({ beskrivning: nextDescription })
+      .eq('produktnamn', produkt)
+      .in('kategori', ['B2B-intro', 'B2C-intro', 'B2B-ready', 'B2C-ready', 'Shopify-ready'])
+      .select('*');
+
+    if (error) {
+      throw new Error(error.message || 'Kunde inte uppdatera Beskrivning i DIG PROD.');
+    }
+
+    const updatedRows = (Array.isArray(data) ? data : [])
+      .map((row) => normalizeRow('DIG PROD', digProdConfig, row));
+
+    if (!updatedRows.length) return;
+
+    const updatedById = new Map(updatedRows.map((row) => [String(row.id), row]));
+    state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) =>
+      updatedById.get(String(row.id)) || row
+    );
+  }
+
+
+  function getDigProdRowsForSaljintroRow(saljintroRow) {
+    const produkt = String(saljintroRow?.produkt || '').trim();
+    if (!produkt) return [];
+
+    return (state.rowsByTable['DIG PROD'] || []).filter((row) => {
+      const produktnamn = String(row?.produktnamn || '').trim();
+      const kategori = String(row?.kategori || '').trim();
+      return produktnamn === produkt && (kategori === 'B2B-intro' || kategori === 'B2B-ready' || kategori === 'B2C-intro' || kategori === 'B2C-ready' || kategori === 'Shopify-ready');
+    });
+  }
+
+  async function archiveDigProdRowsForSaljintroRow(saljintroRow, archiveReason = 'saljintro_archived') {
+    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
+    if (!digProdEntry) return [];
+
+    const [, digProdConfig] = digProdEntry;
+    const rowsToArchive = getDigProdRowsForSaljintroRow(saljintroRow);
+    const archivedIds = [];
+
+    for (const digRow of rowsToArchive) {
+      if (!digRow?.id) continue;
+      const { error } = await supabase.rpc('planning_archive_row', {
+        p_source_table: digProdConfig.dbTable,
+        p_row_id: digRow.id,
+        p_mark_done: true,
+        p_archive_reason: archiveReason,
+        p_note: `Arkiverad automatiskt från SÄLJINTRO: ${saljintroRow?.produkt || ''}`,
+      });
 
       if (error) {
-        throw new Error(error.message || `Kunde inte uppdatera DIG PROD/${item.kategori}.`);
+        throw new Error(error.message || `Kunde inte arkivera DIG PROD-rad ${digRow.id}.`);
       }
 
-      const updatedRows = (Array.isArray(data) ? data : [])
-        .map((row) => normalizeRow('DIG PROD', digProdConfig, row));
+      archivedIds.push(digRow.id);
+    }
 
-      if (updatedRows.length) {
-        const updatedById = new Map(updatedRows.map((row) => [String(row.id), row]));
-        state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) =>
-          updatedById.get(String(row.id)) || row
-        );
+    if (archivedIds.length) {
+      state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || [])
+        .filter((row) => !archivedIds.includes(row.id));
+    }
+
+    return archivedIds;
+  }
+
+  async function archiveSaljintroRowWithDigProd(row) {
+    const confirmed = window.confirm('Lägg Säljintro-raden i Arkiv och arkivera kopplade DIG PROD-rader?');
+    if (!confirmed) return;
+
+    const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
+    if (!saljintroEntry || !row?.id) return;
+
+    const [, saljintroConfig] = saljintroEntry;
+    const key = getCellKey(row, getInlineActionsColumn()) || `saljintro-actions-${row.id}`;
+    state.savingCell = key;
+    render();
+
+    try {
+      await archiveDigProdRowsForSaljintroRow(row, 'saljintro_archived');
+
+      const { error } = await supabase.rpc('planning_archive_row', {
+        p_source_table: saljintroConfig.dbTable,
+        p_row_id: row.id,
+        p_mark_done: true,
+        p_archive_reason: 'archived',
+        p_note: null,
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Kunde inte arkivera Säljintro-raden.');
       }
+
+      state.rowsByTable['SÄLJINTRO'] = (state.rowsByTable['SÄLJINTRO'] || [])
+        .filter((item) => item.id !== row.id);
+
+      if (state.detailRowId === row.id) state.detailRowId = null;
+
+      if (state.archivePanelOpen) {
+        void loadArchiveRows('SÄLJINTRO');
+      }
+    } catch (err) {
+      alert(`Kunde inte arkivera Säljintro-raden: ${err.message}`);
+    } finally {
+      state.savingCell = null;
+      render();
     }
   }
 
-  async function syncAllDigProdKlartFromSaljintro() {
+  async function deleteRelatedRecordsForSource(sourceTable, sourceRowId) {
+    if (!sourceTable || !sourceRowId) return;
+
+    const { data: notesData, error: notesReadError } = await supabase
+      .from('planning_notes')
+      .select('id')
+      .eq('source_table', sourceTable)
+      .eq('source_row_id', sourceRowId);
+
+    if (notesReadError) {
+      throw new Error(`Kunde inte läsa kopplade notes: ${notesReadError.message}`);
+    }
+
+    const noteIds = (Array.isArray(notesData) ? notesData : [])
+      .map((item) => item.id)
+      .filter(Boolean);
+
+    if (noteIds.length) {
+      const { error: noteReadsError } = await supabase
+        .from('planning_note_reads')
+        .delete()
+        .in('note_id', noteIds);
+
+      if (noteReadsError) {
+        throw new Error(`Kunde inte ta bort note-läsningar: ${noteReadsError.message}`);
+      }
+    }
+
+    const { error: notesError } = await supabase
+      .from('planning_notes')
+      .delete()
+      .eq('source_table', sourceTable)
+      .eq('source_row_id', sourceRowId);
+
+    if (notesError) {
+      throw new Error(`Kunde inte ta bort notes: ${notesError.message}`);
+    }
+
+    const { error: todosError } = await supabase
+      .from('planning_row_todos')
+      .delete()
+      .eq('source_table', sourceTable)
+      .eq('source_row_id', sourceRowId);
+
+    if (todosError) {
+      throw new Error(`Kunde inte ta bort ToDos: ${todosError.message}`);
+    }
+  }
+
+  async function deleteSaljintroRowWithDigProdArchive(row) {
+    const confirmed = window.confirm('Ta bort Säljintro-raden permanent och arkivera kopplade DIG PROD-rader?');
+    if (!confirmed) return;
+
+    const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
+    if (!saljintroEntry || !row?.id) return;
+
+    const [, saljintroConfig] = saljintroEntry;
+    const key = getCellKey(row, getInlineActionsColumn()) || `saljintro-actions-${row.id}`;
+    state.savingCell = key;
+    render();
+
+    try {
+      await archiveDigProdRowsForSaljintroRow(row, 'saljintro_deleted');
+      await deleteRelatedRecordsForSource(saljintroConfig.dbTable, row.id);
+
+      const { error } = await supabase
+        .from(saljintroConfig.dbTable)
+        .delete()
+        .eq('id', row.id);
+
+      if (error) {
+        throw new Error(error.message || 'Kunde inte ta bort Säljintro-raden.');
+      }
+
+      await loadModalTodoRows();
+
+      state.rowsByTable['SÄLJINTRO'] = (state.rowsByTable['SÄLJINTRO'] || [])
+        .filter((item) => item.id !== row.id);
+
+      if (state.detailRowId === row.id) state.detailRowId = null;
+    } catch (err) {
+      alert(`Kunde inte ta bort Säljintro-raden: ${err.message}`);
+    } finally {
+      state.savingCell = null;
+      state.editingCell = null;
+      render();
+    }
+  }
+
+  async function syncAllSaljintroReadyFromDigProd() {
     const saljRows = state.rowsByTable['SÄLJINTRO'] || [];
     const digRows = state.rowsByTable['DIG PROD'] || [];
-
     if (!saljRows.length || !digRows.length) return;
+
+    const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
+    if (!saljintroEntry) return;
+    const [, saljintroConfig] = saljintroEntry;
 
     const saljByProduct = new Map();
     saljRows.forEach((row) => {
@@ -2435,57 +2787,75 @@ export async function runPlanningApp() {
       if (produkt) saljByProduct.set(produkt, row);
     });
 
-    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
-    if (!digProdEntry) return;
-
-    const [, digProdConfig] = digProdEntry;
     const updates = [];
+    digRows.forEach((digRow) => {
+      const produkt = String(digRow?.produktnamn || '').trim();
+      const fields = getSaljintroReadyFieldsForDigProdCategory(digRow?.kategori);
+      if (!produkt || !fields) return;
+      const saljRow = saljByProduct.get(produkt);
+      if (!saljRow?.id) return;
 
-    digRows.forEach((row) => {
-      const produktnamn = String(row?.produktnamn || '').trim();
-      const kategori = String(row?.kategori || '').trim();
-      const saljRow = saljByProduct.get(produktnamn);
-      if (!saljRow) return;
+      const nextStatus = normalizeStatusValue(digRow?.klart || 'gray');
+      const currentStatus = normalizeStatusValue(saljRow?.[fields.statusField] || 'gray');
 
-      let nextKlart = null;
-      let nextKlartDatum = null;
-
-      if (kategori === 'B2B-ready') {
-        nextKlart = normalizeStatusValue(saljRow.b2b_ready || 'gray');
-        nextKlartDatum = saljRow.b2b_ready_datum || null;
-      } else if (kategori === 'Shopify-ready') {
-        nextKlart = normalizeStatusValue(saljRow.shopify_ready || 'gray');
-        nextKlartDatum = saljRow.shopify_ready_datum || null;
-      }
-
-      if (!nextKlart) return;
-
-      const currentKlart = normalizeStatusValue(row.klart || 'gray');
-      const currentKlartDatum = row.klart_datum || null;
-      if (currentKlart !== nextKlart || String(currentKlartDatum || '') !== String(nextKlartDatum || '')) {
-        updates.push({ row, nextKlart, nextKlartDatum });
+      if (currentStatus !== nextStatus) {
+        updates.push({ saljRow, fields, nextStatus });
       }
     });
 
     if (!updates.length) return;
 
     for (const item of updates) {
+      const payload = { [item.fields.statusField]: item.nextStatus };
+
       const { data, error } = await supabase
-        .from(digProdConfig.dbTable)
-        .update({ klart: item.nextKlart, klart_datum: item.nextKlartDatum })
-        .eq('id', item.row.id)
+        .from(saljintroConfig.dbTable)
+        .update(payload)
+        .eq('id', item.saljRow.id)
         .select('*')
         .single();
 
       if (error) {
-        console.warn('Could not sync DIG PROD/Klart on startup:', error.message);
+        console.warn('Could not sync SÄLJINTRO ready status from DIG PROD:', error.message);
         continue;
       }
 
-      const normalized = normalizeRow('DIG PROD', digProdConfig, data);
-      state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) =>
+      const normalized = normalizeRow('SÄLJINTRO', saljintroConfig, data);
+      state.rowsByTable['SÄLJINTRO'] = (state.rowsByTable['SÄLJINTRO'] || []).map((row) =>
         String(row.id) === String(normalized.id) ? normalized : row
       );
+    }
+  }
+
+
+  async function archiveUtvecklingRowAfterSaljintro(utvecklingRow) {
+    if (!utvecklingRow?.id) return;
+
+    const utvecklingEntry = tableEntries.find(([name]) => name === 'UTVECKLING');
+    const [, utvecklingConfig] = utvecklingEntry || [];
+    const sourceTable = utvecklingConfig?.dbTable || 'utveckling';
+
+    const { error } = await supabase.rpc('planning_archive_row', {
+      p_source_table: sourceTable,
+      p_row_id: utvecklingRow.id,
+      p_mark_done: true,
+      p_archive_reason: 'promoted_to_saljintro',
+      p_note: 'Skapad i SÄLJINTRO från Design.',
+    });
+
+    if (error) {
+      throw new Error(error.message || 'Kunde inte arkivera Design-raden.');
+    }
+
+    state.rowsByTable['UTVECKLING'] = (state.rowsByTable['UTVECKLING'] || [])
+      .filter((item) => String(item.id) !== String(utvecklingRow.id));
+
+    if (state.detailRowId && String(state.detailRowId) === String(utvecklingRow.id)) {
+      state.detailRowId = null;
+    }
+
+    if (state.archivePanelOpen && state.activeTableName === 'UTVECKLING') {
+      void loadArchiveRows('UTVECKLING');
     }
   }
 
@@ -2506,14 +2876,17 @@ export async function runPlanningApp() {
 
     const payload = {
       produkt,
+      beskrivning_status: utvecklingRow.beskrivning || '',
       kategori: utvecklingRow.kategori || 'matta',
       koll_q: '--',
       po_beslut: 'gray',
       po_beslut_datum: null,
       b2b_ready: 'gray',
       b2b_ready_datum: null,
+      b2b_ready_slut_datum: null,
       shopify_ready: 'gray',
       shopify_ready_datum: null,
+      shopify_ready_slut_datum: null,
       b2b_intro: '--',
       lev_vecka: '--',
       drop_vecka: '--',
@@ -2548,9 +2921,9 @@ export async function runPlanningApp() {
     ];
 
     try {
-      await archiveRow('UTVECKLING', APP_CONFIG.tables['UTVECKLING'], utvecklingRow);
+      await archiveUtvecklingRowAfterSaljintro(utvecklingRow);
     } catch (err) {
-      alert(`SÄLJINTRO skapades men raden kunde inte arkiveras: ${err.message}`);
+      alert(`SÄLJINTRO skapades men Design-raden kunde inte arkiveras: ${err.message}`);
     }
 
     state.savingCell = null;
@@ -2699,15 +3072,20 @@ export async function runPlanningApp() {
       return false;
     }
 
-    try {
-      if (
-        tableConfig.dbTable === 'saljintro' &&
-        ['b2b_ready', 'b2b_ready_datum', 'shopify_ready', 'shopify_ready_datum'].includes(column.field)
-      ) {
-        await syncDigProdKlartFromSaljintro(row, column.field);
+    if (tableConfig.dbTable === 'saljintro' && column.field === 'produkt') {
+      try {
+        await syncDigProdProductNameFromSaljintro(currentValue, normalizedNextValue);
+      } catch (syncErr) {
+        alert(`SÄLJINTRO sparades, men DIG PROD kunde inte uppdateras: ${syncErr.message}`);
       }
-    } catch (syncErr) {
-      alert(`Säljintro sparades, men DIG PROD/Klart kunde inte speglas: ${syncErr.message}`);
+    }
+
+    if (tableConfig.dbTable === 'saljintro' && column.field === 'beskrivning_status') {
+      try {
+        await syncDigProdDescriptionFromSaljintro(row);
+      } catch (syncErr) {
+        alert(`SÄLJINTRO sparades, men DIG PROD-beskrivning kunde inte uppdateras: ${syncErr.message}`);
+      }
     }
 
     render();
@@ -2722,16 +3100,12 @@ export async function runPlanningApp() {
     const nextValue = STATUS_ORDER[(currentIndex + 1) % STATUS_ORDER.length];
     const saved = await saveCellValue(tableConfig, row, column, nextValue);
 
-    if (
-      saved &&
-      tableConfig.dbTable === 'saljintro' &&
-      ['b2b_ready', 'shopify_ready'].includes(column.field)
-    ) {
+    if (saved && tableConfig.dbTable === 'dig_prod' && column.field === 'klart') {
       try {
-        await syncDigProdKlartFromSaljintro(row, column.field);
+        await syncSaljintroReadyFromDigProd(row);
         render();
       } catch (syncErr) {
-        alert(`Säljintro sparades, men DIG PROD/Klart kunde inte speglas: ${syncErr.message}`);
+        alert(`DIG PROD sparades, men SÄLJINTRO kunde inte speglas: ${syncErr.message}`);
       }
     }
   }
@@ -2762,15 +3136,33 @@ export async function runPlanningApp() {
       return;
     }
 
-    try {
-      if (
-        tableConfig.dbTable === 'saljintro' &&
-        ['b2b_ready_datum', 'shopify_ready_datum'].includes(dateField)
-      ) {
-        await syncDigProdKlartFromSaljintro(row, dateField);
-      }
-    } catch (syncErr) {
-      alert(`Säljintro sparades, men DIG PROD/Klart kunde inte speglas: ${syncErr.message}`);
+    render();
+  }
+
+  async function saveStatusWeekValue(tableConfig, row, column, nextWeekValue, targetWeekField = null) {
+    const weekField = String(targetWeekField || column?.weekValueField || '').trim();
+    if (!weekField || !row?.id) return;
+
+    const nextWeek = formatWeekValue(nextWeekValue);
+    const previousWeek = row[weekField] ?? '';
+    if (formatWeekValue(previousWeek) === nextWeek) return;
+
+    state.savingCell = getCellKey(row, column);
+    row[weekField] = nextWeek;
+    render();
+
+    const { error } = await supabase
+      .from(tableConfig.dbTable)
+      .update({ [weekField]: nextWeek || '--' })
+      .eq('id', row.id);
+
+    state.savingCell = null;
+
+    if (error) {
+      row[weekField] = previousWeek;
+      alert(`Kunde inte spara vecka: ${error.message}`);
+      render();
+      return;
     }
 
     render();
@@ -2834,6 +3226,91 @@ export async function runPlanningApp() {
     const renderedToValue = column.renderToField && row
       ? String(row?.[column.renderToField] || '').trim()
       : '';
+
+    if (column.weekFromSaljintro && row) {
+      const statusShell = document.createElement('span');
+      statusShell.className = `${getStatusClass(value)} status-button--week status-button--week-value${isDetail ? ' status-button--detail' : ''}`;
+      statusShell.setAttribute('role', 'button');
+      statusShell.setAttribute('tabindex', '0');
+      statusShell.title = `${column.name}: klicka för att byta status, vecka speglas från SÄLJINTRO`;
+
+      const weekLabel = getDigProdKlartWeekValue(row);
+      const displayLabel = weekLabel && weekLabel !== '--' ? weekLabel.toUpperCase() : '--';
+      statusShell.setAttribute('aria-label', `${column.name}: ${displayLabel}, status ${normalizeStatusValue(value)}`);
+
+      const wrap = document.createElement('span');
+      wrap.className = 'status-week-cell status-week-cell--single-readonly';
+
+      const label = document.createElement('span');
+      label.className = 'status-week-cell__readonly-label';
+      label.textContent = displayLabel;
+      wrap.appendChild(label);
+      statusShell.appendChild(wrap);
+      return statusShell;
+    }
+
+    if (column.weekValueField && row) {
+      const statusShell = document.createElement('span');
+      statusShell.className = `${getStatusClass(value)} status-button--week status-button--week-value${isDetail ? ' status-button--detail' : ''}`;
+      statusShell.setAttribute('role', 'button');
+      statusShell.setAttribute('tabindex', '0');
+      statusShell.title = column.lockManualStatus
+        ? `${column.name}: status speglas från DIG PROD, vecka från ${column.weekValueField}`
+        : `${column.name}: klicka för att byta status`;
+
+      const rawWeek = row?.[column.weekValueField];
+      const weekLabel = formatWeekValue(rawWeek);
+      const displayLabel = weekLabel && weekLabel !== '--' ? weekLabel.toUpperCase() : '--';
+      statusShell.setAttribute('aria-label', `${column.name}: ${displayLabel}, status ${normalizeStatusValue(value)}`);
+
+      const wrap = document.createElement('span');
+      wrap.className = column.weekValueEditable
+        ? 'status-week-cell status-week-cell--single-editable'
+        : 'status-week-cell status-week-cell--single-readonly';
+
+      if (column.weekValueEditable) {
+        const select = document.createElement('select');
+        select.className = 'status-week-cell__week-select';
+        select.dataset.statusWeekField = column.weekValueField;
+        select.setAttribute('aria-label', `${column.name}: välj vecka`);
+        select.title = `${column.name}: välj vecka`;
+        select.style.border = '0';
+        select.style.borderRadius = '999px';
+        select.style.background = 'rgba(255,255,255,0.45)';
+        select.style.color = 'currentColor';
+        select.style.font = 'inherit';
+        select.style.fontSize = '12px';
+        select.style.fontWeight = '700';
+        select.style.textAlign = 'center';
+        select.style.textAlignLast = 'center';
+        select.style.minWidth = '4.5em';
+        select.style.padding = '2px 4px';
+        select.style.cursor = 'pointer';
+
+        const dropdownName = column.weekValueDropdown || 'dropdown_saljintro_vecka';
+        const options = APP_CONFIG.dropdowns?.[dropdownName]?.options || ['--'];
+        const normalizedWeek = formatWeekValue(rawWeek);
+        const values = options.includes(normalizedWeek) ? options : [normalizedWeek, ...options];
+
+        values.forEach((optionValue) => {
+          const option = document.createElement('option');
+          option.value = optionValue;
+          option.textContent = String(optionValue || '--').toLocaleUpperCase('sv-SE');
+          if (optionValue === normalizedWeek) option.selected = true;
+          select.appendChild(option);
+        });
+
+        wrap.appendChild(select);
+      } else {
+        const label = document.createElement('span');
+        label.className = 'status-week-cell__readonly-label';
+        label.textContent = displayLabel;
+        wrap.appendChild(label);
+      }
+
+      statusShell.appendChild(wrap);
+      return statusShell;
+    }
 
     if (column.renderFromField && (column.dateDisplayMode === 'week' || column.dateDisplayMode === 'weekRange' || state.activeTableName === 'SÄLJINTRO')) {
       const statusShell = document.createElement('span');
@@ -3116,6 +3593,33 @@ export async function runPlanningApp() {
       return wrap;
     }
 
+
+
+    if (tableName === 'INKÖP' || tableName === 'MARKNAD' || tableName === 'SÄLJ') {
+      wrap.appendChild(makeButton({
+        label: '🗑',
+        title: 'Ta bort raden',
+        className: 'row-actions__button row-actions__button--danger',
+        action: async () => runRowAction(tableName, tableConfig, row, 'delete'),
+      }));
+      return wrap;
+    }
+
+
+    if (tableName === 'SÄLJINTRO') {
+      wrap.appendChild(makeButton({
+        label: 'Arkiv',
+        title: 'Lägg Säljintro-raden i Arkiv och arkivera kopplade DIG PROD-rader',
+        action: async () => archiveSaljintroRowWithDigProd(row),
+      }));
+      wrap.appendChild(makeButton({
+        label: '🗑',
+        title: 'Ta bort Säljintro-raden och arkivera kopplade DIG PROD-rader',
+        className: 'row-actions__button row-actions__button--danger',
+        action: async () => deleteSaljintroRowWithDigProdArchive(row),
+      }));
+      return wrap;
+    }
     return wrap;
   }
 
@@ -3861,7 +4365,7 @@ export async function runPlanningApp() {
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=150');
+          const { signOutUser } = await import('./auth.js?v=165');
           await signOutUser();
         },
         disabled: false,
@@ -4887,6 +5391,7 @@ export async function runPlanningApp() {
     toggleStatusCell,
     editStatusDateCell,
     saveStatusDateCell,
+    saveStatusWeekValue,
     toggleTodoDone,
     startEditing,
   });
@@ -4902,7 +5407,7 @@ export async function runPlanningApp() {
   await Promise.all(
     tableEntries.filter(([, tableConfig]) => !!tableConfig.dbTable && !tableConfig.customView).map(([tableName, tableConfig]) => loadTableRowsFromData(state, tableName, tableConfig))
   );
-  await syncAllDigProdKlartFromSaljintro();
+  await syncAllSaljintroReadyFromDigProd();
   async function runWeeklyArchiveCleanup() {
     const archivedTodoRows = await archiveCompletedTodosFromPreviousWeeks();
     const archivedOperationalRows = await archiveGreenOperationalRowsFromPreviousWeeks();

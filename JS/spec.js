@@ -14,13 +14,13 @@ window.PlanningSpec = (function () {
       excel: { defaultValue: null, defaultAlign: "center", defaultDisplayMode: "button", defaultEditorMode: "button_only" }
     },
     dropdowns: {
-      dropdown_dig_prod_kategori: { options: ["B2B-ready", "Shopify-ready"], filterEnabled: true, filterOptions: ["Alla", "B2B-ready", "Shopify-ready"] },
+      dropdown_dig_prod_kategori: { options: ["B2B-intro", "B2C-intro"], filterEnabled: true, filterOptions: ["Alla", "B2B-intro", "B2C-intro"] },
       dropdown_product_kategori: { options: ["matta", "colonnade", "tapestry", "SoftAss", "packaging"], filterEnabled: true, filterOptions: ["Alla", "matta", "colonnade", "tapestry", "SoftAss", "packaging"] },
       dropdown_dev_kategori: { options: ["matta", "colonnade", "tapestry", "softAss", "packaging"], filterEnabled: true, filterOptions: ["Alla", "matta", "colonnade", "tapestry", "softAss", "packaging"] },
       dropdown_dev_syfte: { options: ["Anisa", "Dream Home", "Iera Living"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living"] },
       dropdown_pre_dev_kategori: { options: ["Anisa", "Dream Home", "Iera Living"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living"] },
       dropdown_todo_kategori: { options: ["Privat", "Todo Planning", "Info", "Shopify", "Butler"], filterEnabled: true, filterOptions: ["Alla", "Privat", "Todo Planning", "Info", "Shopify", "Butler"] },
-      dropdown_saljintro_kvartal: { options: ["--", "Q1", "Q2", "Q3", "Q4"], filterEnabled: false },
+      dropdown_saljintro_kvartal: { options: ["--", "26-Q1", "26-Q2", "26-Q3", "26-Q4"], filterEnabled: false },
       dropdown_saljintro_vecka: { options: ["--", "v01", "v02", "v03", "v04", "v05", "v06", "v07", "v08", "v09", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48", "v49", "v50", "v51", "v52", "v53"], filterEnabled: false }
     },
     rowTodoConfig: {
@@ -32,8 +32,7 @@ window.PlanningSpec = (function () {
         { name: "Beskrivning", field: "beskrivning", type: "text", width: "34ch", mods: { align: "left", displayMode: "textarea", readonly: false } },
         { name: "Sample", field: "sample_test", type: "status", width: STATUS_WIDTH, renderFromField: "sample_test_datum", renderToField: "sample_test_slut_datum", dateDisplayMode: "weekRange", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } },
         { name: "Sample datum", field: "sample_test_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
-        { name: "Sample slut", field: "sample_test_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
-        { name: "Utvärdering", field: "utvardering", type: "text", width: "34ch", mods: { align: "left", displayMode: "textarea", readonly: false }, default: "" }
+        { name: "Sample slut", field: "sample_test_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" }
       ]},
       "UTVECKLING": { id: "utveckling", dbTable: "utveckling", title: "Design", columns: [
         { name: "Namn", field: "produktide", type: "text", key: true, width: PRIMARY_TITLE_WIDTH, mods: { align: "left", displayMode: "text", readonly: false } },
@@ -49,36 +48,34 @@ window.PlanningSpec = (function () {
       ]},
       "SÄLJINTRO": { id: "saljintro", dbTable: "saljintro", title: "SÄLJINTRO", columns: [
         { name: "Produkt", field: "produkt", type: "text", key: true, width: PRIMARY_TITLE_WIDTH, mods: { align: "left", displayMode: "text", readonly: false } },
-        { name: "Kategori", field: "kategori", type: "dropdown_product_kategori", width: "17ch", mods: { align: "left", displayMode: "select", readonly: false } },
-        { name: "Koll. Q", field: "koll_q", type: "dropdown_saljintro_kvartal", width: "8ch", mods: { align: "center", displayMode: "select", readonly: false }, default: "--" },
-        { name: "PO Sample", field: "po_beslut", type: "status", width: STATUS_WIDTH, renderFromField: "po_beslut_datum", renderToField: "po_beslut_slut_datum", dateDisplayMode: "weekRange", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } },
+        { name: "Beskrivning/Status", field: "beskrivning_status", type: "text", width: "32ch", multiline: true, mods: { align: "left", displayMode: "textarea", readonly: false } },
+        { name: "Kategori", field: "kategori", type: "dropdown_product_kategori", width: "17ch", hiddenInTable: true, mods: { align: "left", displayMode: "select", readonly: false } },
+        { name: "Koll. Q", field: "koll_q", type: "dropdown_saljintro_kvartal", width: "10ch", mods: { align: "center", displayMode: "select", readonly: false }, default: "--" },
+        { name: "Sample lev", field: "po_beslut", type: "status", width: STATUS_WIDTH, renderFromField: "po_beslut_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } },
         { name: "PO Sample slut", field: "po_beslut_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "PO datum", field: "po_beslut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
-        { name: "PO Lager", field: "po_lager", type: "status", width: STATUS_WIDTH, renderFromField: "po_lager_datum", renderToField: "po_lager_slut_datum", dateDisplayMode: "weekRange", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
+        { name: "B2B-intro vecka", field: "b2b_intro", type: "dropdown_saljintro_vecka", width: "10ch", hiddenInTable: true, mods: { align: "center", displayMode: "select", readonly: false }, default: "--" },
+        { name: "B2B-intro", field: "b2b_ready", type: "status", width: STATUS_WIDTH, weekValueField: "b2b_intro", weekValueEditable: true, weekValueDropdown: "dropdown_saljintro_vecka", dateDisplayMode: "weekValue", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
+        { name: "Lager Lev", field: "po_lager", type: "status", width: STATUS_WIDTH, renderFromField: "po_lager_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "PO Lager datum", field: "po_lager_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "PO Lager slut", field: "po_lager_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
-       
-        { name: "B2B-ready", field: "b2b_ready", type: "status", width: STATUS_WIDTH, renderFromField: "b2b_ready_datum", renderToField: "b2b_ready_slut_datum", dateDisplayMode: "weekRange", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } },
-        { name: "B2B-ready datum", field: "b2b_ready_datum", type: "date", width: "15ch", hiddenInTable: true, autoStatusField: "b2b_ready", autoStatusValue: "yellow", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
-        { name: "B2B-ready slut", field: "b2b_ready_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
-        { name: "B2B-intro", field: "b2b_intro", type: "dropdown_saljintro_vecka", width: "10ch", mods: { align: "center", displayMode: "select", readonly: false }, default: "--" },
-	{ name: "Shopify-ready", field: "shopify_ready", type: "status", width: STATUS_WIDTH, renderFromField: "shopify_ready_datum", renderToField: "shopify_ready_slut_datum", dateDisplayMode: "weekRange", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "Shopify-ready datum", field: "shopify_ready_datum", type: "date", width: "15ch", hiddenInTable: true, autoStatusField: "shopify_ready", autoStatusValue: "yellow", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
-        { name: "Shopify-ready slut", field: "shopify_ready_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "LEV", field: "lev_vecka", type: "dropdown_saljintro_vecka", width: "10ch", mods: { align: "center", displayMode: "select", readonly: false }, default: "--" },
-        { name: "Drop", field: "drop_vecka", type: "dropdown_saljintro_vecka", width: "10ch", mods: { align: "center", displayMode: "select", readonly: false }, default: "--" }
+        { name: "B2C-intro", field: "shopify_ready", type: "status", width: STATUS_WIDTH, weekValueField: "lev_vecka", dateDisplayMode: "weekValue", statusLabel: " ", hideStatusLabel: true, lockManualStatus: true, mods: { align: "center", readonly: true }, default: "gray" },
+        { name: "B2C-ready datum", field: "shopify_ready_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: true }, default: "" },
+        { name: "B2C-ready slut", field: "shopify_ready_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: true }, default: "" }
       ]},
 
       "DIG PROD": { id: "dig_prod", dbTable: "dig_prod", title: "DIG PROD", columns: [
-        { name: "Produktnamn", field: "produktnamn", type: "text", key: true, width: "32ch", mods: { align: "left", displayMode: "text", readonly: false } },
-        { name: "Kategori", field: "kategori", type: "dropdown_dig_prod_kategori", width: "17ch", defaultFilter: "B2B-ready", mods: { align: "left", displayMode: "select", readonly: false } },
+        { name: "Produktnamn", field: "produktnamn", type: "text", key: true, width: "32ch", mods: { align: "left", displayMode: "text", readonly: true } },
+        { name: "Kategori", field: "kategori", type: "dropdown_dig_prod_kategori", width: "17ch", hiddenInTable: true, defaultFilter: "B2B-intro", mods: { align: "left", displayMode: "select", readonly: false } },
         { name: "Beskrivning", field: "beskrivning", type: "text", width: "34ch", mods: { align: "left", displayMode: "textarea", readonly: false } },
         { name: "P-info", field: "p_info", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "Metafält", field: "metafalt", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
+        { name: "AI-SEO", field: "ai_seo", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
+        { name: "Custom", field: "metafalt", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Copy", field: "copy", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Packshot", field: "packshot", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Kampanj", field: "kampanj", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "Klart", field: "klart", type: "status", width: "9ch", renderFromField: "klart_datum", statusLabel: " ", hideStatusLabel: true, lockManualStatus: true, mods: { align: "center", readonly: true }, default: "gray" },
+        { name: "Klart", field: "klart", type: "status", width: "9ch", weekFromSaljintro: true, dateDisplayMode: "weekValue", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Klart datum", field: "klart_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: true }, default: "" }
       ]},
       "PROJEKT": {
@@ -93,17 +90,17 @@ window.PlanningSpec = (function () {
 
       "INKÖP": { id: "inkop", dbTable: "inkop", title: "INKÖP", columns: [
         { name: "Status", field: "status", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "100%", mods: { align: "left", displayMode: "text", readonly: false } },
+        { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "42ch", multiline: true, mods: { align: "left", displayMode: "textarea", readonly: false } },
         { name: "Klart", field: "klart_datum", type: "date", width: "15ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" }
       ]},
       "MARKNAD": { id: "marknad", dbTable: "marknad", title: "MARKNAD", columns: [
         { name: "Status", field: "status", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "100%", mods: { align: "left", displayMode: "text", readonly: false } },
+        { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "42ch", multiline: true, mods: { align: "left", displayMode: "textarea", readonly: false } },
         { name: "Klart", field: "klart_datum", type: "date", width: "15ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" }
       ]},
       "SÄLJ": { id: "salj", dbTable: "salj", title: "SÄLJ", columns: [
         { name: "Status", field: "status", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "100%", mods: { align: "left", displayMode: "text", readonly: false } },
+        { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "42ch", multiline: true, mods: { align: "left", displayMode: "textarea", readonly: false } },
         { name: "Klart", field: "klart_datum", type: "date", width: "15ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" }
       ]},
       "STATISTICS": {
@@ -114,7 +111,7 @@ window.PlanningSpec = (function () {
       },
       "TODO": { id: "todo", dbTable: "todo", title: "TODO", columns: [
         { name: "Kategori", field: "kategori", type: "dropdown_todo_kategori", width: "17ch", mods: { align: "left", displayMode: "select", readonly: false } },
-        { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "100%", mods: { align: "left", displayMode: "text", readonly: false } },
+        { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "42ch", multiline: true, mods: { align: "left", displayMode: "textarea", readonly: false } },
         { name: "Klart", field: "klart_datum", type: "date", width: "15ch", mods: { overdue: true, align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "-- -- -- " }
       ]},
       "RUTINER": { id: "rutiner", dbTable: "rutiner", title: "RUTINER", columns: [
@@ -127,8 +124,8 @@ window.PlanningSpec = (function () {
   const SAMPLE_ROWS = {
     "PRE DEV": [{ utv_ide: "", kategori: "Anisa", beskrivning: "", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", utvardering: "", is_done: false }],
     "UTVECKLING": [{ produktide: "", kategori: "matta", syfte: "Anisa", beskrivning: "", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", stort_sample: "gray", q_test: "gray", prissattning: "gray", is_done: false }],
-    "SÄLJINTRO": [{ produkt: "", kategori: "matta", koll_q: "--", po_beslut: "gray", po_beslut_datum: "", po_beslut_slut_datum: "", po_lager: "gray", po_lager_datum: "", po_lager_slut_datum: "", b2b_ready: "gray", b2b_ready_datum: "", b2b_ready_slut_datum: "", shopify_ready: "gray", shopify_ready_datum: "", shopify_ready_slut_datum: "", b2b_intro: "--", lev_vecka: "--", drop_vecka: "--", is_done: false }],
-    "DIG PROD": [{ produktnamn: "", kategori: "B2B-ready", beskrivning: "", p_info: "gray", metafalt: "gray", copy: "gray", packshot: "gray", is_done: false }],
+    "SÄLJINTRO": [{ produkt: "", beskrivning_status: "", kategori: "matta", koll_q: "--", po_beslut: "gray", po_beslut_datum: "", po_beslut_slut_datum: "", po_lager: "gray", po_lager_datum: "", po_lager_slut_datum: "", b2b_ready: "gray", b2b_ready_datum: "", b2b_ready_slut_datum: "", shopify_ready: "gray", shopify_ready_datum: "", shopify_ready_slut_datum: "", b2b_intro: "--", lev_vecka: "--", is_done: false }],
+    "DIG PROD": [{ produktnamn: "", kategori: "B2B-intro", beskrivning: "", p_info: "gray", ai_seo: "gray", metafalt: "gray", copy: "gray", packshot: "gray", is_done: false }],
     "INKÖP": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
     "MARKNAD": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
     "SÄLJ": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],

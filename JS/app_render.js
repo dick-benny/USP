@@ -45,6 +45,7 @@ export function createRenderController(deps) {
     toggleStatusCell,
     editStatusDateCell,
     saveStatusDateCell,
+    saveStatusWeekValue,
     toggleTodoDone,
     startEditing,
   } = deps;
@@ -228,6 +229,7 @@ export function createRenderController(deps) {
             const statusButton = td.querySelector('.status-button');
             const dateTriggers = Array.from(td.querySelectorAll('.status-week-cell__date-trigger'));
             const dateInputs = Array.from(td.querySelectorAll('.status-week-cell__date-input'));
+            const weekSelects = Array.from(td.querySelectorAll('.status-week-cell__week-select'));
 
             const dateHandler = async (event) => {
               event.preventDefault();
@@ -240,6 +242,27 @@ export function createRenderController(deps) {
               event.stopPropagation();
               await toggleStatusCell(tableConfig, row, column);
             };
+
+
+            if (weekSelects.length) {
+              weekSelects.forEach((weekSelect) => {
+                weekSelect.addEventListener('click', (event) => {
+                  event.stopPropagation();
+                });
+                weekSelect.addEventListener('mousedown', (event) => {
+                  event.stopPropagation();
+                });
+                weekSelect.addEventListener('pointerdown', (event) => {
+                  event.stopPropagation();
+                });
+                weekSelect.addEventListener('change', async (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const targetWeekField = weekSelect.dataset.statusWeekField || null;
+                  await saveStatusWeekValue?.(tableConfig, row, column, weekSelect.value, targetWeekField);
+                });
+              });
+            }
 
             if (dateInputs.length) {
               dateInputs.forEach((dateInput) => {

@@ -57,7 +57,7 @@ export function createFilterController({
     const value = String(projectName || '').trim();
     if (!value) return '';
 
-    const autoProjectSuffixes = [' - Media', ' - B2B-ready', ' - Shopify-ready'];
+    const autoProjectSuffixes = [' - Media', ' - B2B-ready', ' - B2C-ready'];
     const suffix = autoProjectSuffixes.find((item) => value.endsWith(item));
 
     if (!suffix) return '';
