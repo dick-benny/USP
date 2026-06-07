@@ -8,17 +8,17 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=165';
-import { createTodoController } from './app_todo.js?v=165';
-import { createMessagesController } from './app_messages.js?v=165';
-import { createRenderController } from './app_render.js?v=165';
-import { createDataController } from './app_data.js?v=165';
-import { createActionController } from './app_actions.js?v=165';
-import { createFilterController } from './app_filters.js?v=165';
-import { createColumnToolsController } from './app_column_tools.js?v=165';
-import { createExcelPlanController } from './app_excel_plan.js?v=165';
-import { createProjectsController } from './app_projects.js?v=165';
-import './app_statistics.js?v=165';
+} from './app_constants.js?v=176';
+import { createTodoController } from './app_todo.js?v=176';
+import { createMessagesController } from './app_messages.js?v=176';
+import { createRenderController } from './app_render.js?v=176';
+import { createDataController } from './app_data.js?v=176';
+import { createActionController } from './app_actions.js?v=176';
+import { createFilterController } from './app_filters.js?v=176';
+import { createColumnToolsController } from './app_column_tools.js?v=176';
+import { createExcelPlanController } from './app_excel_plan.js?v=176';
+import { createProjectsController } from './app_projects.js?v=176';
+import './app_statistics.js?v=176';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -69,6 +69,7 @@ export async function runPlanningApp() {
     activeTableName: tableEntries[0]?.[0] || null,
     rowsByTable: {},
     filtersByTable: {},
+    sortByTable: {},
     todoMineOnly: false,
     editingCell: null,
     savingCell: null,
@@ -373,7 +374,7 @@ export async function runPlanningApp() {
     getCurrentUserInitials,
     render,
   });
-  const { ensureFilters, createFilterBar, getFilteredRows } = filterController;
+  const { ensureFilters, createFilterBar, getFilteredRows: getFilteredRowsBase } = filterController;
 
   const excelPlanController = createExcelPlanController({
     state,
@@ -1868,19 +1869,226 @@ export async function runPlanningApp() {
     return `v${String(week).padStart(2, '0')}`;
   }
 
-  function getDigProdKlartWeekValue(row) {
-    const produkt = String(row?.produktnamn || '').trim();
-    const kategori = String(row?.kategori || '').trim();
-    if (!produkt || !kategori) return '--';
+  function normalizeDigProdIntroCategory(kategori) {
+    const value = String(kategori || '').trim();
+    const key = normalizeProductLinkKey(value);
+    if (key === 'B2BREADY' || key === 'B2BINTRO') return 'B2B-intro';
+    if (key === 'B2CREADY' || key === 'B2CINTRO' || key === 'SHOPIFYREADY') return 'B2C-intro';
+    return value;
+  }
 
-    const saljRow = (state.rowsByTable['SÄLJINTRO'] || []).find((item) =>
-      String(item?.produkt || '').trim() === produkt
-    );
+  function findSaljintroRowForProductName(productName) {
+    const produkt = String(productName || '').trim();
+    if (!produkt) return null;
+
+    const saljRows = state.rowsByTable['SÄLJINTRO'] || [];
+    const exact = saljRows.find((item) => String(item?.produkt || '').trim() === produkt);
+    if (exact) return exact;
+
+    const normalizedProduct = normalizeProductLinkKey(produkt);
+    const normalizedExact = saljRows.find((item) => normalizeProductLinkKey(item?.produkt) === normalizedProduct);
+    if (normalizedExact) return normalizedExact;
+
+    const candidates = saljRows
+      .filter((item) => isLikelySameProductName(produkt, item?.produkt))
+      .map((item) => ({
+        item,
+        distance: getStringDistance(normalizedProduct, normalizeProductLinkKey(item?.produkt)),
+      }))
+      .sort((a, b) => a.distance - b.distance);
+
+    return candidates[0]?.item || null;
+  }
+
+  function getSaljintroRowForDigProdRow(row) {
+    return findSaljintroRowForProductName(row?.produktnamn);
+  }
+
+  function getDigProdKlartWeekValue(row) {
+    const kategori = normalizeDigProdIntroCategory(row?.kategori);
+    const saljRow = getSaljintroRowForDigProdRow(row);
 
     if (!saljRow) return '--';
-    if (kategori === 'B2B-intro' || kategori === 'B2B-ready') return formatWeekValue(saljRow.b2b_intro);
-    if (kategori === 'B2C-intro' || kategori === 'B2C-ready' || kategori === 'Shopify-ready') return formatWeekValue(saljRow.lev_vecka);
+    if (kategori === 'B2B-intro') return formatWeekFromDateValue(saljRow.po_beslut_slut_datum) || '--';
+    if (kategori === 'B2C-intro') return formatWeekFromDateValue(saljRow.po_lager_slut_datum) || '--';
     return '--';
+  }
+
+
+  function normalizeProductLinkKey(value) {
+    return String(value || '')
+      .trim()
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9]/g, '');
+  }
+
+  function getStringDistance(a, b) {
+    const left = String(a || '');
+    const right = String(b || '');
+    if (left === right) return 0;
+    if (!left.length) return right.length;
+    if (!right.length) return left.length;
+
+    const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+    const current = Array(right.length + 1).fill(0);
+
+    for (let i = 1; i <= left.length; i += 1) {
+      current[0] = i;
+      for (let j = 1; j <= right.length; j += 1) {
+        const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+        current[j] = Math.min(
+          previous[j] + 1,
+          current[j - 1] + 1,
+          previous[j - 1] + cost
+        );
+      }
+      for (let j = 0; j <= right.length; j += 1) previous[j] = current[j];
+    }
+
+    return previous[right.length];
+  }
+
+  function isLikelySameProductName(leftName, rightName) {
+    const left = normalizeProductLinkKey(leftName);
+    const right = normalizeProductLinkKey(rightName);
+    if (!left || !right) return false;
+    if (left === right) return true;
+
+    const distance = getStringDistance(left, right);
+    const maxLength = Math.max(left.length, right.length);
+    if (maxLength < 8) return false;
+
+    return distance <= 2 || distance / maxLength <= 0.10;
+  }
+
+  function findDigProdMatchForSaljintro({ saljRow, targetCategory, usedDigProdIds }) {
+    const product = String(saljRow?.produkt || '').trim();
+    if (!product) return null;
+
+    const digRows = state.rowsByTable['DIG PROD'] || [];
+    const exact = digRows.find((row) => {
+      if (usedDigProdIds.has(String(row.id))) return false;
+      const category = normalizeDigProdIntroCategory(row?.kategori);
+      return category === targetCategory && String(row?.produktnamn || '').trim() === product;
+    });
+    if (exact) return exact;
+
+    const candidates = digRows
+      .filter((row) => {
+        if (usedDigProdIds.has(String(row.id))) return false;
+        const category = normalizeDigProdIntroCategory(row?.kategori);
+        if (category !== targetCategory) return false;
+        return isLikelySameProductName(product, row?.produktnamn);
+      })
+      .map((row) => ({
+        row,
+        distance: getStringDistance(normalizeProductLinkKey(product), normalizeProductLinkKey(row?.produktnamn)),
+      }))
+      .sort((a, b) => a.distance - b.distance);
+
+    return candidates[0]?.row || null;
+  }
+
+  async function repairDigProdLinksFromSaljintro() {
+    const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
+    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
+    if (!saljintroEntry || !digProdEntry) return false;
+
+    const [, digProdConfig] = digProdEntry;
+    const saljRows = state.rowsByTable['SÄLJINTRO'] || [];
+    const categories = ['B2B-intro', 'B2C-intro'];
+    const usedDigProdIds = new Set();
+    let changed = false;
+
+    const applyUpdatedRows = (rows) => {
+      const normalizedRows = (Array.isArray(rows) ? rows : [])
+        .map((row) => normalizeRow('DIG PROD', digProdConfig, row));
+      if (!normalizedRows.length) return;
+
+      const updatedById = new Map(normalizedRows.map((row) => [String(row.id), row]));
+      state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) =>
+        updatedById.get(String(row.id)) || row
+      );
+    };
+
+    for (const saljRow of saljRows) {
+      const product = String(saljRow?.produkt || '').trim();
+      if (!product) continue;
+
+      for (const targetCategory of categories) {
+        const match = findDigProdMatchForSaljintro({ saljRow, targetCategory, usedDigProdIds });
+        const description = String(saljRow?.beskrivning_status || '').trim();
+
+        if (match?.id) {
+          usedDigProdIds.add(String(match.id));
+          const needsProductRepair = String(match.produktnamn || '').trim() !== product;
+          const needsCategoryRepair = normalizeDigProdIntroCategory(match.kategori) !== String(match.kategori || '').trim();
+          const needsDescriptionRepair = description && String(match.beskrivning || '').trim() !== description;
+
+          if (!needsProductRepair && !needsCategoryRepair && !needsDescriptionRepair) continue;
+
+          const payload = {
+            produktnamn: product,
+            kategori: targetCategory,
+          };
+          if (description) payload.beskrivning = description;
+
+          const { data, error } = await supabase
+            .from(digProdConfig.dbTable)
+            .update(payload)
+            .eq('id', match.id)
+            .select('*');
+
+          if (error) {
+            console.warn('Could not repair DIG PROD link:', error.message);
+            continue;
+          }
+
+          applyUpdatedRows(data);
+          changed = true;
+          continue;
+        }
+
+        const payload = {
+          produktnamn: product,
+          kategori: targetCategory,
+          beskrivning: description,
+          p_info: 'gray',
+          ai_seo: 'gray',
+          metafalt: 'gray',
+          copy: 'gray',
+          packshot: 'gray',
+          kampanj: 'gray',
+          klart: 'gray',
+          klart_datum: null,
+          owner_initials: saljRow.owner_initials || getCurrentUserInitials(),
+          is_done: false,
+        };
+
+        const { data, error } = await supabase
+          .from(digProdConfig.dbTable)
+          .insert(payload)
+          .select('*');
+
+        if (error) {
+          console.warn('Could not recreate DIG PROD row:', error.message);
+          continue;
+        }
+
+        const normalizedRows = (Array.isArray(data) ? data : [])
+          .map((row) => normalizeRow('DIG PROD', digProdConfig, row));
+        state.rowsByTable['DIG PROD'] = [
+          ...normalizedRows,
+          ...(state.rowsByTable['DIG PROD'] || []),
+        ];
+        normalizedRows.forEach((row) => usedDigProdIds.add(String(row.id)));
+        changed = true;
+      }
+    }
+
+    return changed;
   }
 
   function getCurrentShortYear() {
@@ -2545,6 +2753,7 @@ export async function runPlanningApp() {
       .from(digProdConfig.dbTable)
       .update({ produktnamn: next })
       .eq('produktnamn', previous)
+      .in('kategori', ['B2B-intro', 'B2C-intro', 'B2B-ready', 'B2C-ready', 'Shopify-ready'])
       .select('*');
 
     if (error) {
@@ -2554,12 +2763,19 @@ export async function runPlanningApp() {
     const updatedRows = (Array.isArray(data) ? data : [])
       .map((row) => normalizeRow('DIG PROD', digProdConfig, row));
 
-    if (!updatedRows.length) return;
+    if (updatedRows.length) {
+      const updatedById = new Map(updatedRows.map((row) => [String(row.id), row]));
+      state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) =>
+        updatedById.get(String(row.id)) || row
+      );
+    }
 
-    const updatedById = new Map(updatedRows.map((row) => [String(row.id), row]));
-    state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) =>
-      updatedById.get(String(row.id)) || row
-    );
+    state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) => {
+      if (String(row?.produktnamn || '').trim() !== previous) return row;
+      const kategori = normalizeDigProdIntroCategory(row?.kategori);
+      if (kategori !== 'B2B-intro' && kategori !== 'B2C-intro') return row;
+      return { ...row, produktnamn: next };
+    });
   }
 
 
@@ -2596,15 +2812,46 @@ export async function runPlanningApp() {
   }
 
 
+  function isDigProdIntroCategory(kategori) {
+    const normalized = normalizeDigProdIntroCategory(kategori);
+    return normalized === 'B2B-intro' || normalized === 'B2C-intro';
+  }
+
   function getDigProdRowsForSaljintroRow(saljintroRow) {
     const produkt = String(saljintroRow?.produkt || '').trim();
     if (!produkt) return [];
 
     return (state.rowsByTable['DIG PROD'] || []).filter((row) => {
-      const produktnamn = String(row?.produktnamn || '').trim();
-      const kategori = String(row?.kategori || '').trim();
-      return produktnamn === produkt && (kategori === 'B2B-intro' || kategori === 'B2B-ready' || kategori === 'B2C-intro' || kategori === 'B2C-ready' || kategori === 'Shopify-ready');
+      if (!isDigProdIntroCategory(row?.kategori)) return false;
+      return isLikelySameProductName(produkt, row?.produktnamn);
     });
+  }
+
+  async function archiveDigProdRowFromSaljintro(digProdConfig, digRow, saljintroRow, archiveReason) {
+    const archivePayload = {
+      source_table: digProdConfig.dbTable,
+      source_row_id: digRow.id,
+      payload_json: digRow,
+      archive_reason: archiveReason,
+      note: `Arkiverad automatiskt från SÄLJINTRO: ${saljintroRow?.produkt || ''}`,
+    };
+
+    const { error: insertError } = await supabase
+      .from('planning_archive')
+      .insert(archivePayload);
+
+    if (insertError) {
+      throw new Error(insertError.message || `Kunde inte lägga DIG PROD-rad ${digRow.id} i Arkiv.`);
+    }
+
+    const { error: deleteError } = await supabase
+      .from(digProdConfig.dbTable)
+      .delete()
+      .eq('id', digRow.id);
+
+    if (deleteError) {
+      throw new Error(deleteError.message || `Kunde inte ta bort DIG PROD-rad ${digRow.id} efter arkivering.`);
+    }
   }
 
   async function archiveDigProdRowsForSaljintroRow(saljintroRow, archiveReason = 'saljintro_archived') {
@@ -2617,24 +2864,14 @@ export async function runPlanningApp() {
 
     for (const digRow of rowsToArchive) {
       if (!digRow?.id) continue;
-      const { error } = await supabase.rpc('planning_archive_row', {
-        p_source_table: digProdConfig.dbTable,
-        p_row_id: digRow.id,
-        p_mark_done: true,
-        p_archive_reason: archiveReason,
-        p_note: `Arkiverad automatiskt från SÄLJINTRO: ${saljintroRow?.produkt || ''}`,
-      });
-
-      if (error) {
-        throw new Error(error.message || `Kunde inte arkivera DIG PROD-rad ${digRow.id}.`);
-      }
-
+      await archiveDigProdRowFromSaljintro(digProdConfig, digRow, saljintroRow, archiveReason);
       archivedIds.push(digRow.id);
     }
 
     if (archivedIds.length) {
+      const archivedIdSet = new Set(archivedIds.map((id) => String(id)));
       state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || [])
-        .filter((row) => !archivedIds.includes(row.id));
+        .filter((row) => !archivedIdSet.has(String(row.id)));
     }
 
     return archivedIds;
@@ -2888,7 +3125,6 @@ export async function runPlanningApp() {
       shopify_ready_datum: null,
       shopify_ready_slut_datum: null,
       b2b_intro: '--',
-      lev_vecka: '--',
       drop_vecka: '--',
       owner_initials: utvecklingRow.owner_initials || getCurrentUserInitials(),
       is_done: false,
@@ -3136,6 +3372,19 @@ export async function runPlanningApp() {
       return;
     }
 
+    if (tableConfig.dbTable === 'saljintro' && (dateField === 'po_beslut_slut_datum' || dateField === 'po_lager_slut_datum')) {
+      // Modell A: DIG PROD/Klart lagrar inte eget datum.
+      // Veckan speglas från SÄLJINTRO vid rendering, men vi säkerställer samtidigt
+      // att DIG PROD-radernas produkt-/kategorikoppling är reparerad innan render.
+      try {
+        await repairDigProdLinksFromSaljintro();
+      } catch (syncErr) {
+        console.warn('Could not ensure DIG PROD links after SÄLJINTRO date change:', syncErr.message);
+      }
+      render();
+      return;
+    }
+
     render();
   }
 
@@ -3235,6 +3484,31 @@ export async function runPlanningApp() {
       statusShell.title = `${column.name}: klicka för att byta status, vecka speglas från SÄLJINTRO`;
 
       const weekLabel = getDigProdKlartWeekValue(row);
+      const displayLabel = weekLabel && weekLabel !== '--' ? weekLabel.toUpperCase() : '--';
+      statusShell.setAttribute('aria-label', `${column.name}: ${displayLabel}, status ${normalizeStatusValue(value)}`);
+
+      const wrap = document.createElement('span');
+      wrap.className = 'status-week-cell status-week-cell--single-readonly';
+
+      const label = document.createElement('span');
+      label.className = 'status-week-cell__readonly-label';
+      label.textContent = displayLabel;
+      wrap.appendChild(label);
+      statusShell.appendChild(wrap);
+      return statusShell;
+    }
+
+    if (column.dateDisplayMode === 'weekReadonly' && column.renderFromField && row) {
+      const statusShell = document.createElement('span');
+      statusShell.className = `${getStatusClass(value)} status-button--week status-button--week-value${isDetail ? ' status-button--detail' : ''}`;
+      statusShell.setAttribute('role', 'button');
+      statusShell.setAttribute('tabindex', '0');
+      statusShell.title = column.lockManualStatus
+        ? `${column.name}: vecka speglas från ${column.renderFromField}, status speglas från DIG PROD`
+        : `${column.name}: klicka för att byta status, vecka speglas från ${column.renderFromField}`;
+
+      const dateValue = String(row?.[column.renderFromField] || '').trim();
+      const weekLabel = formatWeekFromDateValue(dateValue) || '--';
       const displayLabel = weekLabel && weekLabel !== '--' ? weekLabel.toUpperCase() : '--';
       statusShell.setAttribute('aria-label', `${column.name}: ${displayLabel}, status ${normalizeStatusValue(value)}`);
 
@@ -4365,7 +4639,7 @@ export async function runPlanningApp() {
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=165');
+          const { signOutUser } = await import('./auth.js?v=176');
           await signOutUser();
         },
         disabled: false,
@@ -5341,6 +5615,167 @@ export async function runPlanningApp() {
     return shell;
   }
 
+
+  const SORTABLE_VIRTUAL_TYPES = new Set(['ui_open', 'ui_notes', 'ui_todo', 'ui_actions']);
+
+  function isSortableColumn(column) {
+    if (!column || !column.field) return false;
+    if (String(column.field).startsWith('__')) return false;
+    if (SORTABLE_VIRTUAL_TYPES.has(column.type)) return false;
+    if (column.sortable === false) return false;
+    return true;
+  }
+
+  function getSortState(tableName) {
+    return state.sortByTable?.[tableName] || null;
+  }
+
+  function cycleSort(tableName, column) {
+    if (!isSortableColumn(column)) return;
+    if (!state.sortByTable) state.sortByTable = {};
+
+    const current = state.sortByTable[tableName];
+    if (!current || current.field !== column.field) {
+      state.sortByTable[tableName] = { field: column.field, direction: 'asc' };
+    } else if (current.direction === 'asc') {
+      state.sortByTable[tableName] = { field: column.field, direction: 'desc' };
+    } else {
+      delete state.sortByTable[tableName];
+    }
+
+    render();
+  }
+
+  function normalizeSortText(value) {
+    return String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  function parseSortDate(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw || raw === '--' || raw === '-- -- --') return null;
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? null : date.getTime();
+  }
+
+  function parseSortWeek(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw || raw === '--') return null;
+    const yearWeek = raw.match(/^(\d{2,4})[- ]?w?\s*v?(\d{1,2})$/i);
+    if (yearWeek) {
+      const year = Number(yearWeek[1].length === 2 ? `20${yearWeek[1]}` : yearWeek[1]);
+      return year * 100 + Number(yearWeek[2]);
+    }
+    const week = raw.match(/^v?(\d{1,2})$/i);
+    return week ? Number(week[1]) : null;
+  }
+
+  function parseSortQuarter(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw || raw === '--') return null;
+    const match = raw.match(/^(?:(\d{2,4})[- ]?)?q(\d)$/i);
+    if (!match) return null;
+    const year = match[1] ? Number(match[1].length === 2 ? `20${match[1]}` : match[1]) : 0;
+    return year * 10 + Number(match[2]);
+  }
+
+  function getSortValue(row, column) {
+    if (!row || !column) return '';
+
+    if (column.type === 'status') {
+      const statusIndex = STATUS_ORDER.indexOf(String(row[column.field] ?? '').toLowerCase());
+      const statusValue = statusIndex >= 0 ? statusIndex : 0;
+      const dateValue = parseSortDate(row[column.renderToField]) ?? parseSortDate(row[column.renderFromField]);
+      return { kind: 'status', value: statusValue, secondary: dateValue ?? 0 };
+    }
+
+    if (column.type === 'date') {
+      return { kind: 'number', value: parseSortDate(row[column.field]) ?? Number.POSITIVE_INFINITY };
+    }
+
+    if (column.type === 'veckonummer') {
+      return { kind: 'number', value: parseSortWeek(row[column.field]) ?? Number.POSITIVE_INFINITY };
+    }
+
+    if (column.type === 'kvartal') {
+      return { kind: 'number', value: parseSortQuarter(row[column.field]) ?? Number.POSITIVE_INFINITY };
+    }
+
+    const weekValue = parseSortWeek(row[column.field]);
+    if (weekValue !== null && /^v?\d{1,2}$/i.test(String(row[column.field] ?? '').trim())) {
+      return { kind: 'number', value: weekValue };
+    }
+
+    return { kind: 'text', value: normalizeSortText(row[column.field]) };
+  }
+
+  function compareSortValues(a, b) {
+    if (a?.kind === 'status' || b?.kind === 'status') {
+      const primary = (a?.value ?? 0) - (b?.value ?? 0);
+      if (primary !== 0) return primary;
+      return (a?.secondary ?? 0) - (b?.secondary ?? 0);
+    }
+
+    if (a?.kind === 'number' || b?.kind === 'number') {
+      return (a?.value ?? Number.POSITIVE_INFINITY) - (b?.value ?? Number.POSITIVE_INFINITY);
+    }
+
+    return String(a?.value ?? '').localeCompare(String(b?.value ?? ''), 'sv', { numeric: true, sensitivity: 'base' });
+  }
+
+  function getFilteredRows(tableName, tableConfig) {
+    const rows = getFilteredRowsBase(tableName, tableConfig);
+    const sort = getSortState(tableName);
+    if (!sort?.field) return rows;
+
+    const column = getVisibleColumns(tableConfig).find((item) => item.field === sort.field);
+    if (!isSortableColumn(column)) return rows;
+
+    const direction = sort.direction === 'desc' ? -1 : 1;
+    return [...rows].sort((rowA, rowB) => {
+      const compared = compareSortValues(getSortValue(rowA, column), getSortValue(rowB, column));
+      return compared * direction;
+    });
+  }
+
+  function enhanceSortableHeaders() {
+    const active = getActiveConfig();
+    if (!active) return;
+    const [tableName, tableConfig] = active;
+    if (tableConfig.customView || tableName === 'PROJEKT') return;
+
+    const table = app.querySelector('.data-table');
+    if (!table) return;
+
+    const visibleColumns = getVisibleColumns(tableConfig);
+    const currentSort = getSortState(tableName);
+    table.querySelectorAll('thead th').forEach((th, index) => {
+      const column = visibleColumns[index];
+      if (!isSortableColumn(column)) return;
+
+      th.classList.add('is-sortable');
+      th.title = 'Klicka för att sortera';
+
+      const label = th.querySelector('.column-header__label');
+      if (label && !label.dataset.baseText) label.dataset.baseText = label.textContent || column.name || '';
+      if (label) {
+        const baseText = label.dataset.baseText || column.name || '';
+        const indicator = currentSort?.field === column.field
+          ? (currentSort.direction === 'desc' ? ' ↓' : ' ↑')
+          : '';
+        label.textContent = `${baseText}${indicator}`;
+      }
+
+      th.addEventListener('click', (event) => {
+        if (event.target?.closest?.('button,a,input,select,textarea')) return;
+        cycleSort(tableName, column);
+      });
+    });
+  }
+
   const renderController = createRenderController({
     app,
     settingsButton,
@@ -5366,6 +5801,7 @@ export async function runPlanningApp() {
     getVisibleColumns,
     createTopActions,
     createFilterBar,
+    enhanceSortableHeaders,
     createCustomView: (tableName) => {
       if (tableName === 'PROJEKT') return projectsController.createView();
       if (tableName === 'STATISTICS') return createStatisticsView();
@@ -5397,7 +5833,9 @@ export async function runPlanningApp() {
   });
 
   async function render() {
-    return renderController.render();
+    const result = await renderController.render();
+    enhanceSortableHeaders();
+    return result;
   }
 
   settingsButton?.addEventListener('click', () => {
@@ -5407,6 +5845,7 @@ export async function runPlanningApp() {
   await Promise.all(
     tableEntries.filter(([, tableConfig]) => !!tableConfig.dbTable && !tableConfig.customView).map(([tableName, tableConfig]) => loadTableRowsFromData(state, tableName, tableConfig))
   );
+  await repairDigProdLinksFromSaljintro();
   await syncAllSaljintroReadyFromDigProd();
   async function runWeeklyArchiveCleanup() {
     const archivedTodoRows = await archiveCompletedTodosFromPreviousWeeks();
