@@ -19,6 +19,7 @@ import { createColumnToolsController } from './app_column_tools.js?v=176';
 import { createExcelPlanController } from './app_excel_plan.js?v=176';
 import { createProjectsController } from './app_projects.js?v=176';
 import './app_statistics.js?v=176';
+import './app_analysis.js?v=176';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -135,6 +136,7 @@ export async function runPlanningApp() {
     notesSourceTitle: '',
     notesTableLabel: '',
     notesCurrentRow: null,
+    statisticsSubView: 'fsg',
   };
 
 
@@ -5602,16 +5604,74 @@ export async function runPlanningApp() {
     const shell = document.createElement('section');
     shell.className = 'statistics-view';
 
-    const renderStatistics = window.USP?.Statistics?.render || window.renderStatisticsView;
-    if (typeof renderStatistics !== 'function') {
-      const message = document.createElement('p');
-      message.className = 'empty-state';
-      message.textContent = 'Kunde inte ladda statistikvyn.';
-      shell.appendChild(message);
-      return shell;
+    const tabs = document.createElement('div');
+    tabs.className = 'statistics-subnav';
+
+    const content = document.createElement('div');
+    content.className = 'statistics-content';
+
+    const fsgButton = document.createElement('button');
+    fsgButton.type = 'button';
+    fsgButton.className = 'secondary-button statistics-subnav__button';
+    fsgButton.textContent = 'FSG';
+
+    const analysisButton = document.createElement('button');
+    analysisButton.type = 'button';
+    analysisButton.className = 'secondary-button statistics-subnav__button';
+    analysisButton.textContent = 'Analys';
+
+    function applyActiveButton() {
+      const activeKey = state.statisticsSubView === 'analysis' ? 'analysis' : 'fsg';
+      fsgButton.classList.toggle('is-active', activeKey === 'fsg');
+      analysisButton.classList.toggle('is-active', activeKey === 'analysis');
     }
 
-    void renderStatistics(state, shell);
+    function renderStatisticsSubview() {
+      content.innerHTML = '';
+
+      const isAnalysis = state.statisticsSubView === 'analysis';
+      const renderer = isAnalysis
+        ? (window.USP?.Analysis?.render || window.renderAnalysisView)
+        : (window.USP?.Statistics?.render || window.renderStatisticsView);
+
+      if (typeof renderer !== 'function') {
+        const message = document.createElement('p');
+        message.className = 'empty-state';
+        message.textContent = isAnalysis
+          ? 'Kunde inte ladda analysvyn.'
+          : 'Kunde inte ladda statistikvyn.';
+        content.appendChild(message);
+        return;
+      }
+
+      void renderer(state, content);
+    }
+
+    fsgButton.addEventListener('click', () => {
+      if (state.statisticsSubView === 'fsg') return;
+      state.statisticsSubView = 'fsg';
+      applyActiveButton();
+      renderStatisticsSubview();
+    });
+
+    analysisButton.addEventListener('click', () => {
+      if (state.statisticsSubView === 'analysis') return;
+      state.statisticsSubView = 'analysis';
+      applyActiveButton();
+      renderStatisticsSubview();
+    });
+
+    tabs.appendChild(fsgButton);
+    tabs.appendChild(analysisButton);
+    shell.appendChild(tabs);
+    shell.appendChild(content);
+
+    if (state.statisticsSubView !== 'analysis') {
+      state.statisticsSubView = 'fsg';
+    }
+    applyActiveButton();
+    renderStatisticsSubview();
+
     return shell;
   }
 
