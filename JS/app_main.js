@@ -8,18 +8,17 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=176';
-import { createTodoController } from './app_todo.js?v=176';
-import { createMessagesController } from './app_messages.js?v=176';
-import { createRenderController } from './app_render.js?v=176';
-import { createDataController } from './app_data.js?v=176';
-import { createActionController } from './app_actions.js?v=176';
-import { createFilterController } from './app_filters.js?v=176';
-import { createColumnToolsController } from './app_column_tools.js?v=176';
-import { createExcelPlanController } from './app_excel_plan.js?v=176';
-import { createProjectsController } from './app_projects.js?v=176';
-import './app_statistics.js?v=176';
-import './app_analysis.js?v=176';
+} from './app_constants.js?v=178';
+import { createTodoController } from './app_todo.js?v=178';
+import { createMessagesController } from './app_messages.js?v=178';
+import { createRenderController } from './app_render.js?v=178';
+import { createDataController } from './app_data.js?v=178';
+import { createActionController } from './app_actions.js?v=178';
+import { createFilterController } from './app_filters.js?v=178';
+import { createColumnToolsController } from './app_column_tools.js?v=178';
+import { createExcelPlanController } from './app_excel_plan.js?v=178';
+import { createProjectsController } from './app_projects.js?v=178';
+import './app_statistics.js?v=178';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -136,7 +135,6 @@ export async function runPlanningApp() {
     notesSourceTitle: '',
     notesTableLabel: '',
     notesCurrentRow: null,
-    statisticsSubView: 'fsg',
   };
 
 
@@ -2607,6 +2605,8 @@ export async function runPlanningApp() {
     if (normalized === 'anis' || normalized === 'anisa') return 'Anisa';
     if (normalized === 'dream home') return 'Dream Home';
     if (normalized === 'iera living') return 'Iera Living';
+    if (normalized === 'khanna') return 'Khanna';
+    if (normalized === 'texti alpacca' || normalized === 'texti alpaca') return 'Texti Alpacca';
     return raw;
   }
 
@@ -2971,8 +2971,42 @@ export async function runPlanningApp() {
     }
   }
 
+  async function deleteDigProdRowsForSaljintroRow(saljintroRow) {
+    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
+    if (!digProdEntry) return [];
+
+    const [, digProdConfig] = digProdEntry;
+    const rowsToDelete = getDigProdRowsForSaljintroRow(saljintroRow);
+    const deletedIds = [];
+
+    for (const digRow of rowsToDelete) {
+      if (!digRow?.id) continue;
+
+      await deleteRelatedRecordsForSource(digProdConfig.dbTable, digRow.id);
+
+      const { error } = await supabase
+        .from(digProdConfig.dbTable)
+        .delete()
+        .eq('id', digRow.id);
+
+      if (error) {
+        throw new Error(error.message || `Kunde inte ta bort kopplad DIG PROD-rad ${digRow.id}.`);
+      }
+
+      deletedIds.push(digRow.id);
+    }
+
+    if (deletedIds.length) {
+      const deletedIdSet = new Set(deletedIds.map((id) => String(id)));
+      state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || [])
+        .filter((row) => !deletedIdSet.has(String(row.id)));
+    }
+
+    return deletedIds;
+  }
+
   async function deleteSaljintroRowWithDigProdArchive(row) {
-    const confirmed = window.confirm('Ta bort Säljintro-raden permanent och arkivera kopplade DIG PROD-rader?');
+    const confirmed = window.confirm('Ta bort Säljintro-raden permanent och ta bort kopplade DIG PROD-rader?');
     if (!confirmed) return;
 
     const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
@@ -2984,7 +3018,7 @@ export async function runPlanningApp() {
     render();
 
     try {
-      await archiveDigProdRowsForSaljintroRow(row, 'saljintro_deleted');
+      await deleteDigProdRowsForSaljintroRow(row);
       await deleteRelatedRecordsForSource(saljintroConfig.dbTable, row.id);
 
       const { error } = await supabase
@@ -4641,7 +4675,7 @@ export async function runPlanningApp() {
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=176');
+          const { signOutUser } = await import('./auth.js?v=178');
           await signOutUser();
         },
         disabled: false,
@@ -5604,74 +5638,16 @@ export async function runPlanningApp() {
     const shell = document.createElement('section');
     shell.className = 'statistics-view';
 
-    const tabs = document.createElement('div');
-    tabs.className = 'statistics-subnav';
-
-    const content = document.createElement('div');
-    content.className = 'statistics-content';
-
-    const fsgButton = document.createElement('button');
-    fsgButton.type = 'button';
-    fsgButton.className = 'secondary-button statistics-subnav__button';
-    fsgButton.textContent = 'FSG';
-
-    const analysisButton = document.createElement('button');
-    analysisButton.type = 'button';
-    analysisButton.className = 'secondary-button statistics-subnav__button';
-    analysisButton.textContent = 'Analys';
-
-    function applyActiveButton() {
-      const activeKey = state.statisticsSubView === 'analysis' ? 'analysis' : 'fsg';
-      fsgButton.classList.toggle('is-active', activeKey === 'fsg');
-      analysisButton.classList.toggle('is-active', activeKey === 'analysis');
+    const renderStatistics = window.USP?.Statistics?.render || window.renderStatisticsView;
+    if (typeof renderStatistics !== 'function') {
+      const message = document.createElement('p');
+      message.className = 'empty-state';
+      message.textContent = 'Kunde inte ladda statistikvyn.';
+      shell.appendChild(message);
+      return shell;
     }
 
-    function renderStatisticsSubview() {
-      content.innerHTML = '';
-
-      const isAnalysis = state.statisticsSubView === 'analysis';
-      const renderer = isAnalysis
-        ? (window.USP?.Analysis?.render || window.renderAnalysisView)
-        : (window.USP?.Statistics?.render || window.renderStatisticsView);
-
-      if (typeof renderer !== 'function') {
-        const message = document.createElement('p');
-        message.className = 'empty-state';
-        message.textContent = isAnalysis
-          ? 'Kunde inte ladda analysvyn.'
-          : 'Kunde inte ladda statistikvyn.';
-        content.appendChild(message);
-        return;
-      }
-
-      void renderer(state, content);
-    }
-
-    fsgButton.addEventListener('click', () => {
-      if (state.statisticsSubView === 'fsg') return;
-      state.statisticsSubView = 'fsg';
-      applyActiveButton();
-      renderStatisticsSubview();
-    });
-
-    analysisButton.addEventListener('click', () => {
-      if (state.statisticsSubView === 'analysis') return;
-      state.statisticsSubView = 'analysis';
-      applyActiveButton();
-      renderStatisticsSubview();
-    });
-
-    tabs.appendChild(fsgButton);
-    tabs.appendChild(analysisButton);
-    shell.appendChild(tabs);
-    shell.appendChild(content);
-
-    if (state.statisticsSubView !== 'analysis') {
-      state.statisticsSubView = 'fsg';
-    }
-    applyActiveButton();
-    renderStatisticsSubview();
-
+    void renderStatistics(state, shell);
     return shell;
   }
 

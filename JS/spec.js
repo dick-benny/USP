@@ -17,8 +17,8 @@ window.PlanningSpec = (function () {
       dropdown_dig_prod_kategori: { options: ["B2B-intro", "B2C-intro"], filterEnabled: true, filterOptions: ["Alla", "B2B-intro", "B2C-intro"] },
       dropdown_product_kategori: { options: ["matta", "colonnade", "tapestry", "SoftAss", "packaging"], filterEnabled: true, filterOptions: ["Alla", "matta", "colonnade", "tapestry", "SoftAss", "packaging"] },
       dropdown_dev_kategori: { options: ["matta", "colonnade", "tapestry", "softAss", "packaging"], filterEnabled: true, filterOptions: ["Alla", "matta", "colonnade", "tapestry", "softAss", "packaging"] },
-      dropdown_dev_syfte: { options: ["Anisa", "Dream Home", "Iera Living"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living"] },
-      dropdown_pre_dev_kategori: { options: ["Anisa", "Dream Home", "Iera Living"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living"] },
+      dropdown_dev_syfte: { options: ["Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"] },
+      dropdown_pre_dev_kategori: { options: ["Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"] },
       dropdown_todo_kategori: { options: ["Privat", "Todo Planning", "Info", "Shopify", "Butler"], filterEnabled: true, filterOptions: ["Alla", "Privat", "Todo Planning", "Info", "Shopify", "Butler"] },
       dropdown_saljintro_kvartal: { options: ["--", "26-Q1", "26-Q2", "26-Q3", "26-Q4"], filterEnabled: false },
       dropdown_saljintro_vecka: { options: ["--", "v01", "v02", "v03", "v04", "v05", "v06", "v07", "v08", "v09", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48", "v49", "v50", "v51", "v52", "v53"], filterEnabled: false }
@@ -42,7 +42,8 @@ window.PlanningSpec = (function () {
         { name: "Sample", field: "sample_test", type: "status", width: STATUS_WIDTH, renderFromField: "sample_test_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } },
         { name: "Sample datum", field: "sample_test_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "Sample slut", field: "sample_test_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
-        { name: "Fullsize", field: "stort_sample", type: "status", width: STATUS_WIDTH, statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } },
+        { name: "Fullsize", field: "stort_sample", type: "status", width: STATUS_WIDTH, renderFromField: "stort_sample_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } },
+        { name: "Fullsize slut", field: "stort_sample_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "Q-test", field: "q_test", type: "status", width: STATUS_WIDTH, statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } },
         { name: "Prissättning", field: "prissattning", type: "status", width: STATUS_WIDTH, statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } }
       ]},
@@ -121,7 +122,7 @@ window.PlanningSpec = (function () {
 
   const SAMPLE_ROWS = {
     "PRE DEV": [{ utv_ide: "", kategori: "Anisa", beskrivning: "", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", utvardering: "", is_done: false }],
-    "UTVECKLING": [{ produktide: "", kategori: "matta", syfte: "Anisa", beskrivning: "", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", stort_sample: "gray", q_test: "gray", prissattning: "gray", is_done: false }],
+    "UTVECKLING": [{ produktide: "", kategori: "matta", syfte: "Anisa", beskrivning: "", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", stort_sample: "gray", stort_sample_slut_datum: "", q_test: "gray", prissattning: "gray", is_done: false }],
     "SÄLJINTRO": [{ produkt: "", beskrivning_status: "", kategori: "matta", koll_q: "--", po_beslut: "gray", po_beslut_datum: "", po_beslut_slut_datum: "", po_lager: "gray", po_lager_datum: "", po_lager_slut_datum: "", b2b_ready: "gray", b2b_ready_datum: "", b2b_ready_slut_datum: "", shopify_ready: "gray", shopify_ready_datum: "", shopify_ready_slut_datum: "", b2b_intro: "--", is_done: false }],
     "DIG PROD": [{ produktnamn: "", kategori: "B2B-intro", beskrivning: "", p_info: "gray", ai_seo: "gray", metafalt: "gray", copy: "gray", packshot: "gray", is_done: false }],
     "INKÖP": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
