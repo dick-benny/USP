@@ -12,6 +12,7 @@ export function createActionController(deps) {
     normalizeRow,
     render,
     toggleTodoDone,
+    archiveController,
   } = deps;
 
   function getTodayDateString() {
@@ -332,34 +333,9 @@ export function createActionController(deps) {
   }
 
   async function archiveDigProdRow(tableConfig, row) {
-    const archivePayload = {
-      source_table: tableConfig.dbTable,
-      source_row_id: row.id,
-      payload_json: row,
-      archive_reason: 'archived',
-    };
-
-    let archiveError = null;
-
-    const { error: insertError } = await supabase
-      .from('planning_archive')
-      .insert(archivePayload);
-
-    archiveError = insertError;
-
-    if (archiveError) {
-      throw new Error(archiveError.message || 'Kunde inte lägga DIG PROD-raden i Arkiv.');
-    }
-
-    const { error: deleteError } = await supabase
-      .from(tableConfig.dbTable)
-      .delete()
-      .eq('id', row.id);
-
-    if (deleteError) {
-      throw new Error(deleteError.message || 'Kunde inte ta bort DIG PROD-raden efter arkivering.');
-    }
+    await archiveController.archiveRowDirectly(tableConfig, row, 'archived', null);
   }
+
 
   async function archiveRow(tableName, tableConfig, row) {
     const confirmed = window.confirm('Lägg raden i Arkiv?');
@@ -374,17 +350,7 @@ export function createActionController(deps) {
         await archiveDigProdRow(tableConfig, row);
         await updateSaljintroReadyFromDigProd(row);
       } else {
-        const { error } = await supabase.rpc('planning_archive_row', {
-          p_source_table: tableConfig.dbTable,
-          p_row_id: row.id,
-          p_mark_done: true,
-          p_archive_reason: 'archived',
-          p_note: null,
-        });
-
-        if (error) {
-          throw new Error(error.message || 'Kunde inte arkivera raden.');
-        }
+        await archiveController.archiveRowByBestMethod(tableConfig, row, 'archived', null, true);
       }
     } catch (err) {
       state.savingCell = null;
@@ -492,56 +458,9 @@ export function createActionController(deps) {
   }
 
   async function deleteRelatedRecordsForRow(tableConfig, row) {
-    if (!tableConfig?.dbTable || !row?.id) return;
-
-    const sourceTable = tableConfig.dbTable;
-    const sourceRowId = row.id;
-
-    const { data: notesData, error: notesReadError } = await supabase
-      .from('planning_notes')
-      .select('id')
-      .eq('source_table', sourceTable)
-      .eq('source_row_id', sourceRowId);
-
-    if (notesReadError) {
-      throw new Error(`Kunde inte läsa kopplade notes: ${notesReadError.message}`);
-    }
-
-    const noteIds = (Array.isArray(notesData) ? notesData : [])
-      .map((item) => item.id)
-      .filter(Boolean);
-
-    if (noteIds.length) {
-      const { error: noteReadsError } = await supabase
-        .from('planning_note_reads')
-        .delete()
-        .in('note_id', noteIds);
-
-      if (noteReadsError) {
-        throw new Error(`Kunde inte ta bort note-läsningar: ${noteReadsError.message}`);
-      }
-    }
-
-    const { error: notesError } = await supabase
-      .from('planning_notes')
-      .delete()
-      .eq('source_table', sourceTable)
-      .eq('source_row_id', sourceRowId);
-
-    if (notesError) {
-      throw new Error(`Kunde inte ta bort notes: ${notesError.message}`);
-    }
-
-    const { error: todosError } = await supabase
-      .from('planning_row_todos')
-      .delete()
-      .eq('source_table', sourceTable)
-      .eq('source_row_id', sourceRowId);
-
-    if (todosError) {
-      throw new Error(`Kunde inte ta bort ToDos: ${todosError.message}`);
-    }
+    return archiveController.deleteRelatedRecordsForSource(tableConfig?.dbTable, row?.id);
   }
+
 
   async function deleteRow(tableConfig, row) {
     const confirmed = window.confirm('Ta bort raden permanent?');
@@ -565,19 +484,18 @@ export function createActionController(deps) {
       return;
     }
 
-    const { error } = await supabase
-      .from(tableConfig.dbTable)
-      .delete()
-      .eq('id', row.id);
-
-    state.savingCell = null;
-    state.editingCell = null;
-
-    if (error) {
-      alert(`Kunde inte ta bort raden: ${error.message}`);
+    try {
+      await archiveController.deleteRowDirectly(tableConfig, row, { cleanupRelated: false });
+    } catch (err) {
+      state.savingCell = null;
+      state.editingCell = null;
+      alert(`Kunde inte ta bort raden: ${err.message}`);
       render();
       return;
     }
+
+    state.savingCell = null;
+    state.editingCell = null;
 
     await loadModalTodoRows();
 

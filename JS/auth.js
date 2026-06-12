@@ -31,6 +31,17 @@ function fillUserUi(user) {
     : '--';
 }
 
+function isAdminProfile(profile) {
+  const role = String(profile?.role || '').trim().toLowerCase();
+  return (
+    profile?.is_admin === true ||
+    profile?.admin === true ||
+    role === 'admin' ||
+    role === 'administrator' ||
+    role === 'superadmin'
+  );
+}
+
 function mapProfile(profile, authUser) {
   return {
     id: authUser.id,
@@ -38,7 +49,7 @@ function mapProfile(profile, authUser) {
     fullName: profile?.full_name || '',
     initials: profile?.initials || '',
     role: profile?.role || 'user',
-    isAdmin: profile?.role === 'admin',
+    isAdmin: isAdminProfile(profile),
     isActive: profile?.is_active !== false
   };
 }
@@ -58,7 +69,7 @@ async function getProfile(userId) {
 async function loadAppIfNeeded() {
   if (appLoaded) return;
   appLoaded = true;
-  await import('./app.js?v=178');
+  await import('./app.js?v=211');
 }
 
 async function enterApp(user) {

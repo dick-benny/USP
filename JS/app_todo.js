@@ -50,25 +50,13 @@ export function createTodoController({
   isVirtualModalTodoRow,
   normalizeRow,
   render,
+  archiveController,
 }) {
   async function archiveRowSilently(tableConfig, row, archiveReason, note) {
-    if (!row?.id) return false;
-
-    const { error } = await supabase.rpc('planning_archive_row', {
-      p_source_table: tableConfig.dbTable,
-      p_row_id: row.id,
-      p_mark_done: true,
-      p_archive_reason: archiveReason,
-      p_note: note,
-    });
-
-    if (error) {
-      console.warn(`Could not auto-archive ${tableConfig.dbTable} row ${row.id}:`, error.message);
-      return false;
-    }
-
-    return true;
+    if (!archiveController?.archiveRowSilently) return false;
+    return archiveController.archiveRowSilently(tableConfig, row, archiveReason, note);
   }
+
 
   async function archiveCompletedTodosFromPreviousWeeks() {
     const todoConfig = APP_CONFIG.tables?.[TODO_TABLE];

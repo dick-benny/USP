@@ -2,6 +2,18 @@ window.PlanningSpec = (function () {
   const STATUS_WIDTH = "18ch";
   const PRIMARY_TITLE_WIDTH = "28ch";
 
+  function buildRollingQuarterOptions() {
+    const currentYear = new Date().getFullYear();
+    const options = ["--"];
+    for (let yearOffset = 0; yearOffset <= 2; yearOffset += 1) {
+      const shortYear = String(currentYear + yearOffset).slice(-2);
+      for (let quarter = 1; quarter <= 4; quarter += 1) {
+        options.push(`${shortYear}-Q${quarter}`);
+      }
+    }
+    return options;
+  }
+
   const APP_CONFIG = {
     storage: { engine: "localStorage", namespace: "planning_usp", version: 12, dataKey: "planning_usp_data_v12" },
     fieldTypes: {
@@ -20,7 +32,7 @@ window.PlanningSpec = (function () {
       dropdown_dev_syfte: { options: ["Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"] },
       dropdown_pre_dev_kategori: { options: ["Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"] },
       dropdown_todo_kategori: { options: ["Privat", "Todo Planning", "Info", "Shopify", "Butler"], filterEnabled: true, filterOptions: ["Alla", "Privat", "Todo Planning", "Info", "Shopify", "Butler"] },
-      dropdown_saljintro_kvartal: { options: ["--", "26-Q1", "26-Q2", "26-Q3", "26-Q4"], filterEnabled: false },
+      dropdown_saljintro_kvartal: { options: buildRollingQuarterOptions(), filterEnabled: false },
       dropdown_saljintro_vecka: { options: ["--", "v01", "v02", "v03", "v04", "v05", "v06", "v07", "v08", "v09", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48", "v49", "v50", "v51", "v52", "v53"], filterEnabled: false }
     },
     rowTodoConfig: {
@@ -73,7 +85,8 @@ window.PlanningSpec = (function () {
         { name: "Custom", field: "metafalt", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Copy", field: "copy", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Packshot", field: "packshot", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "Kampanj", field: "kampanj", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
+        { name: "Bilder/AI", field: "kampanj", type: "status", width: "10ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
+        { name: "Mail/Notif.", field: "mail_notif", type: "status", width: "11ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Klart", field: "klart", type: "status", width: "9ch", weekFromSaljintro: true, dateDisplayMode: "weekValue", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Klart datum", field: "klart_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: true }, default: "" }
       ]},
@@ -124,7 +137,7 @@ window.PlanningSpec = (function () {
     "PRE DEV": [{ utv_ide: "", kategori: "Anisa", beskrivning: "", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", utvardering: "", is_done: false }],
     "UTVECKLING": [{ produktide: "", kategori: "matta", syfte: "Anisa", beskrivning: "", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", stort_sample: "gray", stort_sample_slut_datum: "", q_test: "gray", prissattning: "gray", is_done: false }],
     "SÄLJINTRO": [{ produkt: "", beskrivning_status: "", kategori: "matta", koll_q: "--", po_beslut: "gray", po_beslut_datum: "", po_beslut_slut_datum: "", po_lager: "gray", po_lager_datum: "", po_lager_slut_datum: "", b2b_ready: "gray", b2b_ready_datum: "", b2b_ready_slut_datum: "", shopify_ready: "gray", shopify_ready_datum: "", shopify_ready_slut_datum: "", b2b_intro: "--", is_done: false }],
-    "DIG PROD": [{ produktnamn: "", kategori: "B2B-intro", beskrivning: "", p_info: "gray", ai_seo: "gray", metafalt: "gray", copy: "gray", packshot: "gray", is_done: false }],
+    "DIG PROD": [{ produktnamn: "", kategori: "B2B-intro", beskrivning: "", p_info: "gray", ai_seo: "gray", metafalt: "gray", copy: "gray", packshot: "gray", kampanj: "gray", mail_notif: "gray", is_done: false }],
     "INKÖP": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
     "MARKNAD": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
     "SÄLJ": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],

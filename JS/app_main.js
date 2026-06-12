@@ -8,17 +8,22 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=178';
-import { createTodoController } from './app_todo.js?v=178';
-import { createMessagesController } from './app_messages.js?v=178';
-import { createRenderController } from './app_render.js?v=178';
-import { createDataController } from './app_data.js?v=178';
-import { createActionController } from './app_actions.js?v=178';
-import { createFilterController } from './app_filters.js?v=178';
-import { createColumnToolsController } from './app_column_tools.js?v=178';
-import { createExcelPlanController } from './app_excel_plan.js?v=178';
-import { createProjectsController } from './app_projects.js?v=178';
-import './app_statistics.js?v=178';
+} from './app_constants.js?v=211';
+import { createTodoController } from './app_todo.js?v=211';
+import { createRowTodoController } from './app_row_todo.js?v=211';
+import { createNotesController } from './app_notes.js?v=211';
+import { createSettingsController } from './app_settings.js?v=211';
+import { createMessagesController } from './app_messages.js?v=211';
+import { createRenderController } from './app_render.js?v=211';
+import { createDataController } from './app_data.js?v=211';
+import { createActionController } from './app_actions.js?v=211';
+import { createFilterController } from './app_filters.js?v=211';
+import { createColumnToolsController } from './app_column_tools.js?v=211';
+import { createExcelPlanController } from './app_excel_plan.js?v=211';
+import { createProjectsController } from './app_projects.js?v=211';
+import { createWorkflowController } from './app_workflows.js?v=211';
+import { createArchiveController } from './app_archive.js?v=211';
+import './app_statistics.js?v=211';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -63,7 +68,18 @@ export async function runPlanningApp() {
     tableEntries.push(...orderedEntries);
   }
 
-  const isAdmin = () => !!window.CurrentUser?.isAdmin;
+  const isAdmin = () => {
+    const user = window.CurrentUser || {};
+    const role = String(user.role || user.user_role || '').trim().toLowerCase();
+    return (
+      user.isAdmin === true ||
+      user.is_admin === true ||
+      user.admin === true ||
+      role === 'admin' ||
+      role === 'administrator' ||
+      role === 'superadmin'
+    );
+  };
 
   const state = {
     activeTableName: tableEntries[0]?.[0] || null,
@@ -90,6 +106,10 @@ export async function runPlanningApp() {
     rowTodoLoading: false,
     rowTodoDraft: { kategori: 'Allmänt', beskrivning: '' },
     documentLinksByTable: {},
+    moodFilesByTable: {},
+    moodPanelOpen: false,
+    moodPanelTableName: '',
+    moodLoading: false,
     columnChecklistsByTable: {},
     columnChecklistPanelOpen: false,
     columnChecklistActive: null,
@@ -150,6 +170,8 @@ export async function runPlanningApp() {
     loadTableRows: loadTableRowsFromData,
   } = dataController;
 
+  const archiveController = createArchiveController({ supabase });
+
   const todoController = createTodoController({
     supabase,
     state,
@@ -160,6 +182,7 @@ export async function runPlanningApp() {
     isVirtualModalTodoRow,
     normalizeRow,
     render,
+    archiveController,
   });
   const { archiveCompletedTodosFromPreviousWeeks, archiveGreenOperationalRowsFromPreviousWeeks, toggleTodoDone } = todoController;
 
@@ -176,8 +199,38 @@ export async function runPlanningApp() {
     normalizeRow,
     render,
     toggleTodoDone,
+    archiveController,
   });
   const { getActionConfig, runRowAction } = actionController;
+
+  const workflowController = createWorkflowController({
+    supabase,
+    state,
+    tableEntries,
+    UI_OPEN_COLUMN,
+    getCellKey,
+    getInlineActionsColumn,
+    normalizeRow,
+    normalizeStatusValue,
+    normalizeDigProdIntroCategory,
+    isLikelySameProductName,
+    getCurrentUserInitials,
+    render,
+    loadArchiveRows,
+    deleteRelatedRecordsForSource: archiveController.deleteRelatedRecordsForSource,
+    archiveController,
+    loadModalTodoRows,
+  });
+  const {
+    createDigProdRowsFromSaljintro,
+    syncSaljintroReadyFromDigProd,
+    syncDigProdProductNameFromSaljintro,
+    syncDigProdDescriptionFromSaljintro,
+    archiveSaljintroRowWithDigProd,
+    deleteSaljintroRowWithDigProdArchive,
+    syncAllSaljintroReadyFromDigProd,
+    createSaljintroFromUtveckling,
+  } = workflowController;
 
   async function navigateToMessageSource(item) {
     const tableName = String(item?.sourceTable || '').trim();
@@ -382,6 +435,26 @@ export async function runPlanningApp() {
   });
   const { openSalesIntroExcelPlan } = excelPlanController;
 
+  const notesController = createNotesController({
+    supabase,
+    state,
+    tableEntries,
+    getCurrentUserId,
+    getCurrentUserInitials,
+    getRowById,
+    getActiveConfig,
+    render,
+    isVirtualModalTodoRow,
+    getRowTitleField,
+    formatDateTimeValue,
+  });
+  const {
+    loadUnreadCountsForTable,
+    openNotesPanel,
+    createNotesButton,
+    createNotesPanel,
+  } = notesController;
+
   const projectsController = createProjectsController({
     supabase,
     state,
@@ -467,80 +540,23 @@ export async function runPlanningApp() {
     createDocumentBadge,
   } = columnToolsController;
 
+  const settingsController = createSettingsController({
+    supabase,
+    state,
+    tableEntries,
+    isAdmin,
+    render,
+    loadDocumentLinks,
+    loadColumnChecklists,
+    loadLinks,
+    openLinksPanel,
+    getPdfDisplayName,
+  });
+  const {
+    openSettingsMenu,
+    createSettingsPanel,
+  } = settingsController;
 
-  function openRutinerFromSettings() {
-    state.activeTableName = 'RUTINER';
-    state.settingsPanelOpen = false;
-    state.settingsView = 'menu';
-    state.linksPanelOpen = false;
-    state.archivePanelOpen = false;
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    state.rowTodoPanelOpen = false;
-    state.rowTodoRowId = null;
-    state.detailRowId = null;
-    state.newRowDraft = null;
-    render();
-  }
-
-  function openSettingsMenu() {
-    state.linksPanelOpen = false;
-    state.settingsPanelOpen = true;
-    state.settingsView = 'menu';
-    state.archivePanelOpen = false;
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    state.rowTodoPanelOpen = false;
-    state.rowTodoRowId = null;
-    state.detailRowId = null;
-    state.newRowDraft = null;
-    render();
-  }
-
-  function openSettingsDocumentLinks() {
-    state.settingsPanelOpen = true;
-    state.settingsView = 'document_links';
-    state.archivePanelOpen = false;
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    state.rowTodoPanelOpen = false;
-    state.rowTodoRowId = null;
-    state.detailRowId = null;
-    state.newRowDraft = null;
-    render();
-  }
-
-  function openSettingsLinks() {
-    state.settingsPanelOpen = true;
-    state.settingsView = 'links';
-    state.archivePanelOpen = false;
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    state.rowTodoPanelOpen = false;
-    state.rowTodoRowId = null;
-    state.detailRowId = null;
-    state.newRowDraft = null;
-    render();
-  }
-
-  function openSettingsChecklists() {
-    state.settingsPanelOpen = true;
-    state.settingsView = 'checklists';
-    state.archivePanelOpen = false;
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    state.rowTodoPanelOpen = false;
-    state.rowTodoRowId = null;
-    state.detailRowId = null;
-    state.newRowDraft = null;
-    render();
-
-    void loadColumnChecklists().then(() => {
-      if (state.settingsPanelOpen && state.settingsView === 'checklists') {
-        render();
-      }
-    });
-  }
 
   function openLinksPanel() {
     state.linksPanelOpen = true;
@@ -566,102 +582,334 @@ export async function runPlanningApp() {
     window.open(value, '_blank', 'noopener');
   }
 
-  function getSettingsTableOptions() {
-    return tableEntries
-      .map(([tableName]) => tableName)
-      .filter((tableName) => tableName !== 'RUTINER');
+  function normalizeMoodTableName(tableName) {
+    const value = String(tableName || '').trim().toLocaleUpperCase('sv-SE');
+    if (value === 'UTVECKLING' || value === 'DESIGN') return 'UTVECKLING';
+    if (value === 'SÄLJINTRO' || value === 'SALJINTRO') return 'SÄLJINTRO';
+    return value;
   }
 
-  function getSettingsColumnOptions(tableName) {
-    const active = tableEntries.find(([name]) => name === tableName);
-    if (!active) return [];
-    const [, tableConfig] = active;
-    return tableConfig.columns
-      .filter((column) => column.field !== 'id')
-      .map((column) => ({
-        field: column.field,
-        name: column.name,
-      }));
+  function isMoodEnabledTable(tableName) {
+    const normalized = normalizeMoodTableName(tableName);
+    return normalized === 'UTVECKLING' || normalized === 'SÄLJINTRO';
   }
 
-  function getRutinerOptions() {
-    return (state.rowsByTable['RUTINER'] || []).map((row) => ({
-      id: row.id,
-      name: row.rutin || getPdfDisplayName(row.document) || `Dokument ${row.id}`,
-      documentName: getPdfDisplayName(row.document) || 'Utan dokument',
-    }));
+  function getMoodViewLabel(tableName) {
+    const normalized = normalizeMoodTableName(tableName);
+    if (normalized === 'UTVECKLING') return 'Design';
+    if (normalized === 'SÄLJINTRO') return 'Säljintro';
+    return tableName || '';
   }
 
-  function closeSettingsPanel() {
-    state.settingsPanelOpen = false;
-    state.settingsView = 'menu';
-    render();
+  function getMoodFilesForTable(tableName) {
+    return state.moodFilesByTable?.[tableName] || [];
   }
 
-  async function saveDocumentLinkFromSettings() {
-    const tableName = String(state.settingsDraft.tableName || '').trim();
-    const columnField = String(state.settingsDraft.columnField || '').trim();
-    const rutinerRowId = String(state.settingsDraft.rutinerRowId || '').trim();
-    const label = String(state.settingsDraft.label || '').trim();
+  function getMoodFileForSlot(tableName, slot) {
+    return getMoodFilesForTable(tableName).find((item) => Number(item.slot) === Number(slot)) || null;
+  }
 
-    if (!tableName) return alert('Välj tabell.');
-    if (!columnField) return alert('Välj kolumn.');
-    if (!rutinerRowId) return alert('Välj dokument.');
+  async function loadMoodFiles() {
+    try {
+      const { data, error } = await supabase
+        .from('planning_mood_files')
+        .select('*')
+        .in('table_name', ['UTVECKLING', 'SÄLJINTRO'])
+        .order('table_name', { ascending: true })
+        .order('slot', { ascending: true });
 
-    state.settingsLoading = true;
+      if (error) throw error;
+
+      const grouped = {};
+      (Array.isArray(data) ? data : []).forEach((item) => {
+        const tableName = String(item.table_name || '').trim();
+        if (!isMoodEnabledTable(tableName)) return;
+        if (!grouped[tableName]) grouped[tableName] = [];
+        grouped[tableName].push(item);
+      });
+      state.moodFilesByTable = grouped;
+    } catch (err) {
+      console.warn('Could not load Mood files:', err.message);
+      state.moodFilesByTable = {};
+    }
+  }
+
+  function mountMoodPanel() {
+    const existingMoodPanel = document.querySelector('.side-panel-overlay[data-panel="mood"]');
+    if (existingMoodPanel) existingMoodPanel.remove();
+
+    if (!state.moodPanelOpen || !isMoodEnabledTable(state.moodPanelTableName)) return;
+
+    const panel = createMoodPanel();
+    if (!panel) return;
+    panel.dataset.panel = 'mood';
+    document.body.appendChild(panel);
+  }
+
+  function openMoodPanel(tableName) {
+    try {
+      const normalized = normalizeMoodTableName(tableName || getActiveMoodTableName?.());
+      if (!isMoodEnabledTable(normalized)) return;
+      state.moodPanelOpen = true;
+      state.moodPanelTableName = normalized;
+      state.linksPanelOpen = false;
+      state.settingsPanelOpen = false;
+      state.archivePanelOpen = false;
+      state.notesPanelOpen = false;
+      state.rowTodoPanelOpen = false;
+      state.rowTodoRowId = null;
+      state.detailRowId = null;
+
+      mountMoodPanel();
+      void loadMoodFiles().then(() => {
+        if (state.moodPanelOpen && state.moodPanelTableName === normalized) mountMoodPanel();
+      });
+    } catch (err) {
+      console.error('Could not open Mood panel:', err);
+      alert(`Kunde inte öppna Mood: ${err?.message || err}`);
+    }
+  }
+
+  window.TodoPlanningOpenMood = (tableName) => openMoodPanel(tableName || getActiveMoodTableName());
+
+  function closeMoodPanel() {
+    state.moodPanelOpen = false;
+    state.moodPanelTableName = '';
+    const existingMoodPanel = document.querySelector('.side-panel-overlay[data-panel="mood"]');
+    if (existingMoodPanel) existingMoodPanel.remove();
+  }
+
+  async function replaceMoodFile(tableName, slot, file) {
+    if (!isAdmin()) {
+      alert('Endast admin kan ladda upp eller byta Mood-fil.');
+      return;
+    }
+    if (!isMoodEnabledTable(tableName)) return;
+    if (!isPdfFile(file)) {
+      alert('Välj en PDF-fil.');
+      return;
+    }
+
+    const oldFile = getMoodFileForSlot(tableName, slot);
+    const oldPath = normalizePdfPath(oldFile?.storage_path);
+
+    state.moodLoading = true;
     render();
 
     try {
+      const storagePath = await uploadPdfFile(file, { type: 'pdf' });
       const payload = {
         table_name: tableName,
-        column_field: columnField,
-        rutiner_row_id: Number(rutinerRowId),
-        label: label || null,
+        slot: Number(slot),
+        storage_path: storagePath,
+        original_name: file.name || null,
+        uploaded_by: window.CurrentUser?.email || window.CurrentUser?.initials || null,
         updated_at: new Date().toISOString(),
       };
 
       const { error } = await supabase
-        .from('planning_document_links')
-        .upsert(payload, { onConflict: 'table_name,column_field' });
+        .from('planning_mood_files')
+        .upsert(payload, { onConflict: 'table_name,slot' });
 
       if (error) throw error;
 
-      await loadDocumentLinks();
-      state.settingsDraft = {
-        tableName: '',
-        columnField: '',
-        rutinerRowId: '',
-        label: '',
-      };
+      if (oldPath && oldPath !== storagePath) {
+        try {
+          await removePdfFromStorage(oldPath);
+        } catch (cleanupError) {
+          console.warn('Old Mood file cleanup failed:', cleanupError);
+        }
+      }
+
+      await loadMoodFiles();
     } catch (err) {
-      alert(`Kunde inte spara dokumentkoppling: ${err.message}`);
+      alert(`Kunde inte spara Mood-fil: ${err.message}`);
     } finally {
-      state.settingsLoading = false;
+      state.moodLoading = false;
       render();
     }
   }
 
-  async function deleteDocumentLinkFromSettings(id) {
-    const confirmed = window.confirm('Ta bort denna dokumentkoppling?');
+  async function removeMoodFile(tableName, slot) {
+    if (!isAdmin()) {
+      alert('Endast admin kan ta bort Mood-fil.');
+      return;
+    }
+    const item = getMoodFileForSlot(tableName, slot);
+    if (!item) return;
+    const confirmed = window.confirm('Ta bort Mood-fil?');
     if (!confirmed) return;
 
-    state.settingsLoading = true;
+    state.moodLoading = true;
     render();
 
     try {
+      const oldPath = normalizePdfPath(item.storage_path);
       const { error } = await supabase
-        .from('planning_document_links')
+        .from('planning_mood_files')
         .delete()
-        .eq('id', id);
+        .eq('table_name', tableName)
+        .eq('slot', Number(slot));
 
       if (error) throw error;
-      await loadDocumentLinks();
+
+      if (oldPath) {
+        try {
+          await removePdfFromStorage(oldPath);
+        } catch (cleanupError) {
+          console.warn('Mood file cleanup failed:', cleanupError);
+        }
+      }
+
+      await loadMoodFiles();
     } catch (err) {
-      alert(`Kunde inte ta bort dokumentkoppling: ${err.message}`);
+      alert(`Kunde inte ta bort Mood-fil: ${err.message}`);
     } finally {
-      state.settingsLoading = false;
+      state.moodLoading = false;
       render();
     }
+  }
+
+  function createMoodPanel() {
+    if (!state.moodPanelOpen || !isMoodEnabledTable(state.moodPanelTableName)) return null;
+
+    const tableName = state.moodPanelTableName;
+    const overlay = document.createElement('div');
+    overlay.className = 'side-panel-overlay';
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.zIndex = '9999';
+    overlay.style.display = 'flex';
+    overlay.style.justifyContent = 'flex-end';
+    overlay.style.background = 'rgba(15, 23, 42, 0.28)';
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) closeMoodPanel();
+    });
+
+    const dialog = document.createElement('aside');
+    dialog.className = 'side-panel';
+    dialog.style.width = 'min(520px, 96vw)';
+    dialog.style.maxWidth = '96vw';
+    dialog.style.height = '100%';
+    dialog.style.overflow = 'auto';
+    dialog.style.background = '#fff';
+    dialog.style.boxShadow = '0 24px 80px rgba(15, 23, 42, 0.24)';
+    dialog.style.padding = '24px';
+    dialog.setAttribute('aria-label', `Mood ${getMoodViewLabel(tableName)}`);
+
+    const header = document.createElement('div');
+    header.className = 'side-panel__header';
+
+    const title = document.createElement('div');
+    title.className = 'side-panel__title';
+    title.textContent = `Mood – ${getMoodViewLabel(tableName)}`;
+    header.appendChild(title);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'side-panel__close';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Stäng Mood');
+    closeButton.addEventListener('click', closeMoodPanel);
+    header.appendChild(closeButton);
+
+    const body = document.createElement('div');
+    body.className = 'side-panel__body';
+
+    const intro = document.createElement('p');
+    intro.className = 'empty-state';
+    intro.textContent = isAdmin()
+      ? 'Adminläge: ladda upp, byt eller ta bort upp till två Mood-PDF:er för vyn.'
+      : 'Du kan öppna Mood-PDF:er. Uppladdning och byte visas bara för admin.';
+    body.appendChild(intro);
+
+    [1, 2].forEach((slot) => {
+      const item = getMoodFileForSlot(tableName, slot);
+      const displayName = item?.original_name || getPdfDisplayName(item?.storage_path) || '';
+
+      const field = document.createElement('div');
+      field.className = 'detail-field detail-field--pdf';
+
+      const label = document.createElement('span');
+      label.className = 'detail-field__label';
+      label.textContent = `Mood ${slot}`;
+      field.appendChild(label);
+
+      const wrap = document.createElement('div');
+      wrap.className = 'rutiner-pdf-field';
+
+      const info = document.createElement('div');
+      info.className = 'rutiner-pdf-field__info';
+
+      const name = document.createElement('div');
+      name.className = displayName ? 'rutiner-pdf-field__name' : 'rutiner-pdf-field__name rutiner-pdf-field__name--empty';
+      name.textContent = displayName || 'Ingen fil uppladdad';
+      info.appendChild(name);
+
+      const helper = document.createElement('div');
+      helper.className = 'rutiner-pdf-field__helper';
+      helper.textContent = displayName ? 'PDF-fil kopplad till denna vy.' : 'Ingen Mood-PDF är kopplad ännu.';
+      info.appendChild(helper);
+
+      const actions = document.createElement('div');
+      actions.className = 'rutiner-pdf-field__actions';
+
+      if (displayName) {
+        const openButton = document.createElement('button');
+        openButton.type = 'button';
+        openButton.className = 'secondary-button';
+        openButton.textContent = 'Öppna PDF';
+        openButton.addEventListener('click', async () => {
+          await openPdfDocument(item.storage_path, { type: 'pdf' });
+        });
+        actions.appendChild(openButton);
+      }
+
+      if (isAdmin()) {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'application/pdf,.pdf';
+        fileInput.style.display = 'none';
+        fileInput.addEventListener('change', async () => {
+          const file = fileInput.files?.[0];
+          if (!file) return;
+          await replaceMoodFile(tableName, slot, file);
+          fileInput.value = '';
+        });
+
+        const uploadButton = document.createElement('button');
+        uploadButton.type = 'button';
+        uploadButton.className = 'secondary-button';
+        uploadButton.disabled = state.moodLoading;
+        uploadButton.textContent = displayName ? 'Byt fil' : 'Ladda upp PDF';
+        uploadButton.addEventListener('click', () => fileInput.click());
+        actions.appendChild(uploadButton);
+
+        if (displayName) {
+          const removeButton = document.createElement('button');
+          removeButton.type = 'button';
+          removeButton.className = 'secondary-button secondary-button--danger';
+          removeButton.disabled = state.moodLoading;
+          removeButton.textContent = 'Ta bort fil';
+          removeButton.addEventListener('click', async () => {
+            await removeMoodFile(tableName, slot);
+          });
+          actions.appendChild(removeButton);
+        }
+
+        wrap.appendChild(fileInput);
+      }
+
+      wrap.appendChild(info);
+      wrap.appendChild(actions);
+      field.appendChild(wrap);
+      body.appendChild(field);
+    });
+
+    dialog.appendChild(header);
+    dialog.appendChild(body);
+    overlay.appendChild(dialog);
+    return overlay;
   }
 
   async function loadLinks() {
@@ -679,218 +927,6 @@ export async function runPlanningApp() {
       state.linksList = [];
     }
   }
-
-  async function saveLinkFromSettings() {
-    const title = String(state.settingsDraft.linkTitle || '').trim();
-    const url = String(state.settingsDraft.linkUrl || '').trim();
-    const sortOrder = Number.parseInt(String(state.settingsDraft.linkSortOrder || '100').trim(), 10);
-    const isActive = !!state.settingsDraft.linkIsActive;
-
-    if (!title) return alert('Ange länknamn.');
-    if (!url) return alert('Ange länkadress.');
-
-    state.settingsLoading = true;
-    render();
-
-    try {
-      const payload = {
-        title,
-        url,
-        sort_order: Number.isFinite(sortOrder) ? sortOrder : 100,
-        is_active: isActive,
-      };
-
-      const { error } = await supabase
-        .from('planning_links')
-        .insert(payload);
-
-      if (error) throw error;
-
-      await loadLinks();
-      state.settingsDraft.linkTitle = '';
-      state.settingsDraft.linkUrl = '';
-      state.settingsDraft.linkSortOrder = '100';
-      state.settingsDraft.linkIsActive = true;
-    } catch (err) {
-      alert(`Kunde inte spara länk: ${err.message}`);
-    } finally {
-      state.settingsLoading = false;
-      render();
-    }
-  }
-
-  async function deleteLinkFromSettings(id) {
-    const confirmed = window.confirm('Ta bort denna länk?');
-    if (!confirmed) return;
-
-    state.settingsLoading = true;
-    render();
-
-    try {
-      const { error } = await supabase
-        .from('planning_links')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      await loadLinks();
-    } catch (err) {
-      alert(`Kunde inte ta bort länk: ${err.message}`);
-    } finally {
-      state.settingsLoading = false;
-      render();
-    }
-  }
-
-
-  function resetChecklistDraft() {
-    state.settingsDraft.checklistId = '';
-    state.settingsDraft.checklistTableName = '';
-    state.settingsDraft.checklistColumnField = '';
-    state.settingsDraft.checklistTitle = '';
-    state.settingsDraft.checklistBody = '';
-    state.settingsDraft.checklistSortOrder = '100';
-    state.settingsDraft.checklistIsActive = true;
-    state.settingsDraft.checklistOriginalTableName = '';
-    state.settingsDraft.checklistOriginalColumnField = '';
-  }
-
-  function editChecklistFromSettings(item) {
-    state.settingsDraft.checklistId = String(item.id || '');
-    state.settingsDraft.checklistTableName = String(item.table_name || '');
-    state.settingsDraft.checklistColumnField = String(item.column_field || '');
-    state.settingsDraft.checklistTitle = String(item.title || '');
-    state.settingsDraft.checklistBody = String(item.body || '');
-    state.settingsDraft.checklistSortOrder = String(item.sort_order ?? 100);
-    state.settingsDraft.checklistIsActive = item.is_active !== false;
-    state.settingsDraft.checklistOriginalTableName = String(item.table_name || '');
-    state.settingsDraft.checklistOriginalColumnField = String(item.column_field || '');
-    render();
-
-    window.setTimeout(() => {
-      document.querySelector('.settings-form')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    }, 0);
-  }
-
-  async function saveChecklistFromSettings() {
-    const tableName = String(state.settingsDraft.checklistTableName || '').trim();
-    const columnField = String(state.settingsDraft.checklistColumnField || '').trim();
-    const title = String(state.settingsDraft.checklistTitle || '').trim();
-    const body = String(state.settingsDraft.checklistBody || '').trim();
-    const sortOrder = Number.parseInt(String(state.settingsDraft.checklistSortOrder || '100').trim(), 10);
-    const isActive = !!state.settingsDraft.checklistIsActive;
-    const id = String(state.settingsDraft.checklistId || '').trim();
-
-    if (!tableName) return alert('Välj tabell.');
-    if (!columnField) return alert('Välj kolumn.');
-    if (!title) return alert('Ange titel.');
-    if (!body) return alert('Ange minst en punkt.');
-
-    state.settingsLoading = true;
-    render();
-
-    try {
-      const payload = {
-        table_name: tableName,
-        column_field: columnField,
-        title,
-        body,
-        sort_order: Number.isFinite(sortOrder) ? sortOrder : 100,
-        is_active: isActive,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (id) {
-        const { data, error } = await supabase
-          .from('planning_column_checklists')
-          .update(payload)
-          .eq('id', id)
-          .select('id')
-          .maybeSingle();
-
-        if (error) throw error;
-
-        if (!data?.id) {
-          const originalTableName = String(state.settingsDraft.checklistOriginalTableName || '').trim();
-          const originalColumnField = String(state.settingsDraft.checklistOriginalColumnField || '').trim();
-
-          if (!originalTableName || !originalColumnField) {
-            throw new Error('Kunde inte hitta befintlig checklist att uppdatera.');
-          }
-
-          const { error: fallbackError } = await supabase
-            .from('planning_column_checklists')
-            .update(payload)
-            .eq('table_name', originalTableName)
-            .eq('column_field', originalColumnField);
-
-          if (fallbackError) throw fallbackError;
-        }
-      } else {
-        const { error } = await supabase
-          .from('planning_column_checklists')
-          .upsert(payload, { onConflict: 'table_name,column_field' });
-        if (error) throw error;
-      }
-
-      resetChecklistDraft();
-      await loadColumnChecklists();
-    } catch (err) {
-      alert(`Kunde inte spara checklistan: ${err.message}`);
-    } finally {
-      state.settingsLoading = false;
-      render();
-    }
-  }
-
-  async function setChecklistActiveFromSettings(item, isActive) {
-    if (!item?.id) return;
-
-    state.settingsLoading = true;
-    render();
-
-    try {
-      const { error } = await supabase
-        .from('planning_column_checklists')
-        .update({ is_active: !!isActive, updated_at: new Date().toISOString() })
-        .eq('id', item.id);
-
-      if (error) throw error;
-      await loadColumnChecklists();
-    } catch (err) {
-      alert(`Kunde inte uppdatera checklistan: ${err.message}`);
-    } finally {
-      state.settingsLoading = false;
-      render();
-    }
-  }
-
-  async function deleteChecklistFromSettings(item) {
-    if (!item?.id) return;
-    const confirmed = window.confirm('Ta bort denna checklist permanent?');
-    if (!confirmed) return;
-
-    state.settingsLoading = true;
-    render();
-
-    try {
-      const { error } = await supabase
-        .from('planning_column_checklists')
-        .delete()
-        .eq('id', item.id);
-
-      if (error) throw error;
-      if (String(state.settingsDraft.checklistId) === String(item.id)) resetChecklistDraft();
-      await loadColumnChecklists();
-    } catch (err) {
-      alert(`Kunde inte ta bort checklistan: ${err.message}`);
-    } finally {
-      state.settingsLoading = false;
-      render();
-    }
-  }
-
-
 
   function createLinksPanel() {
     const overlay = document.createElement('div');
@@ -1178,113 +1214,6 @@ export async function runPlanningApp() {
     return wrap;
   }
 
-  function getUnreadCountForRow(tableName, rowId) {
-    return Number(state.notesUnreadByRowKey[getNotesRowKey(tableName, rowId)] || 0);
-  }
-
-  async function loadUnreadCountsForTable(tableName) {
-    const userId = getCurrentUserId();
-    const active = tableEntries.find(([name]) => name === tableName);
-    if (!userId || !active) return;
-
-    const [, tableConfig] = active;
-    if (!tableConfig?.dbTable) return;
-
-    const initials = getCurrentUserInitials();
-
-    try {
-      const { data: notesData, error: notesError } = await supabase
-        .from('planning_notes')
-        .select('id, source_row_id, created_by')
-        .eq('source_table', tableConfig.dbTable);
-
-      if (notesError) throw notesError;
-
-      const notes = Array.isArray(notesData) ? notesData : [];
-      const noteIds = notes.map((item) => item.id).filter(Boolean);
-
-      let readIds = new Set();
-      if (noteIds.length) {
-        const { data: readsData, error: readsError } = await supabase
-          .from('planning_note_reads')
-          .select('note_id')
-          .eq('user_id', userId)
-          .in('note_id', noteIds);
-
-        if (readsError) throw readsError;
-        readIds = new Set((readsData || []).map((item) => item.note_id));
-      }
-
-      const nextMap = { ...state.notesUnreadByRowKey };
-      Object.keys(nextMap)
-        .filter((key) => key.startsWith(`${tableName}::`))
-        .forEach((key) => delete nextMap[key]);
-
-      notes.forEach((note) => {
-        const rowId = note.source_row_id;
-        const isOwn = String(note.created_by || '').trim() === initials;
-        const isRead = readIds.has(note.id);
-        if (isOwn || isRead) return;
-        const key = getNotesRowKey(tableName, rowId);
-        nextMap[key] = Number(nextMap[key] || 0) + 1;
-      });
-
-      state.notesUnreadByRowKey = nextMap;
-      render();
-    } catch (err) {
-      console.warn('Could not load unread notes:', err.message);
-    }
-  }
-
-  async function markNotesAsRead(tableName, notes) {
-    const userId = getCurrentUserId();
-    const initials = getCurrentUserInitials();
-    if (!userId || !Array.isArray(notes) || !notes.length) return;
-
-    const noteIds = notes
-      .filter((item) => String(item.created_by || '').trim() !== initials)
-      .map((item) => item.id)
-      .filter(Boolean);
-
-    if (!noteIds.length) return;
-
-    const payload = noteIds.map((noteId) => ({
-      note_id: noteId,
-      user_id: userId,
-    }));
-
-    const { error } = await supabase
-      .from('planning_note_reads')
-      .upsert(payload, { onConflict: 'note_id,user_id', ignoreDuplicates: true });
-
-    if (error) {
-      console.warn('Could not mark notes as read:', error.message);
-      return;
-    }
-
-    const nextMap = { ...state.notesUnreadByRowKey };
-    Object.keys(nextMap)
-      .filter((key) => key.startsWith(`${tableName}::`))
-      .forEach((key) => {
-        if (key === getNotesRowKey(tableName, state.notesRowId)) {
-          nextMap[key] = 0;
-        }
-      });
-    state.notesUnreadByRowKey = nextMap;
-    render();
-  }
-
-
-  function formatNoteMeta(item) {
-    const dateText = formatDateTimeValue(item?.created_at);
-    const initials = String(item?.created_by || '').trim();
-    return initials ? `${dateText} · ${initials}` : dateText;
-  }
-
-  function getNotesRowKey(tableName, rowId) {
-    return `${tableName}::${rowId}`;
-  }
-
   function getRowTitleField(tableName) {
     if (tableName === 'PRE DEV') return 'utv_ide';
     if (tableName === 'UTVECKLING') return 'produktide';
@@ -1300,515 +1229,30 @@ export async function runPlanningApp() {
     return '';
   }
 
-  function getCurrentNotesRow() {
-    if (state.notesCurrentRow) return state.notesCurrentRow;
-    if (!state.activeTableName || !state.notesRowId) return null;
-    return getRowById(state.activeTableName, state.notesRowId);
-  }
-
-  function resetNotesDraft() {
-    state.notesDraft = { title: '', body: '' };
-  }
-
-  async function loadNotesForRow(tableName, rowId, options = {}) {
-    state.notesLoading = true;
-    render();
-
-    try {
-      const active = tableEntries.find(([name]) => name === tableName);
-      if (!active) return;
-      const [, tableConfig] = active;
-      const sourceTable = options.sourceTable || state.notesSourceTable || tableConfig.dbTable;
-
-      const { data, error } = await supabase
-        .from('planning_notes')
-        .select('*')
-        .eq('source_table', sourceTable)
-        .eq('source_row_id', rowId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      const notes = Array.isArray(data) ? data : [];
-      state.notesRowsByKey[getNotesRowKey(options.sourceTable || state.notesSourceTable || tableName, rowId)] = notes;
-      await markNotesAsRead(tableName, notes);
-      await loadUnreadCountsForTable(tableName);
-    } catch (err) {
-      alert(`Kunde inte läsa notes: ${err.message}`);
-      state.notesRowsByKey[getNotesRowKey(options.sourceTable || state.notesSourceTable || tableName, rowId)] = [];
-    } finally {
-      state.notesLoading = false;
-      render();
-    }
-  }
-
-  function openNotesPanel(row, options = {}) {
-    if (!row?.id) return;
-    state.linksPanelOpen = false;
-    state.notesPanelOpen = true;
-    state.notesRowId = row.id;
-    state.notesSourceTable = options.sourceTable || '';
-    state.notesSourceTitle = options.title || '';
-    state.notesTableLabel = options.tableLabel || '';
-    state.notesCurrentRow = row;
-    state.detailRowId = null;
-    state.newRowDraft = null;
-    state.archivePanelOpen = false;
-    state.settingsPanelOpen = false;
-    resetNotesDraft();
-    void loadNotesForRow(state.activeTableName, row.id, options);
-    render();
-  }
-
-  function closeNotesPanel() {
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    state.notesSourceTable = '';
-    state.notesSourceTitle = '';
-    state.notesTableLabel = '';
-    state.notesCurrentRow = null;
-    resetNotesDraft();
-    render();
-  }
-
-  async function saveNoteForCurrentRow() {
-    const row = getCurrentNotesRow();
-    if (!row) return;
-    const title = String(state.notesDraft.title || '').trim();
-    const body = String(state.notesDraft.body || '').trim();
-
-    if (!title) {
-      alert('Rubrik saknas.');
-      return;
-    }
-    if (!body) {
-      alert('Text saknas.');
-      return;
-    }
-
-    const active = getActiveConfig();
-    if (!active) return;
-    const [tableName, tableConfig] = active;
-    const sourceTable = state.notesSourceTable || tableConfig.dbTable;
-
-    state.notesLoading = true;
-    render();
-
-    try {
-      const { error } = await supabase
-        .from('planning_notes')
-        .insert({
-          source_table: sourceTable,
-          source_row_id: row.id,
-          title,
-          body,
-          created_by: getCurrentUserInitials(),
-        });
-
-      if (error) throw error;
-
-      resetNotesDraft();
-      await loadNotesForRow(tableName, row.id, { sourceTable });
-      await loadUnreadCountsForTable(tableName);
-      return;
-    } catch (err) {
-      alert(`Kunde inte spara note: ${err.message}`);
-    } finally {
-      state.notesLoading = false;
-      render();
-    }
-  }
-
-
-  function getRowTodoKey(tableName, rowId) {
-    return `${tableName}::${rowId}`;
-  }
-
-  function getCurrentRowTodoRow() {
-    if (!state.activeTableName || !state.rowTodoRowId) return null;
-    return getRowById(state.activeTableName, state.rowTodoRowId);
-  }
-
-  function resetRowTodoDraft(tableName) {
-    const categories = getRowTodoCategories(tableName);
-    state.rowTodoDraft = {
-      kategori: categories[0] || 'Alla',
-      beskrivning: '',
-    };
-  }
-
-  async function loadRowTodosForRow(tableName, rowId) {
-    state.rowTodoLoading = true;
-    render();
-
-    try {
-      const active = tableEntries.find(([name]) => name === tableName);
-      if (!active) return;
-      const [, tableConfig] = active;
-
-      const { data, error } = await supabase
-        .from('planning_row_todos')
-        .select('*')
-        .eq('source_table', tableConfig.dbTable)
-        .eq('source_row_id', rowId)
-        .order('is_done', { ascending: true })
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      state.rowTodosByKey[getRowTodoKey(tableName, rowId)] = Array.isArray(data) ? data : [];
-      await loadModalTodoRows();
-    } catch (err) {
-      alert(`Kunde inte läsa ToDos: ${err.message}`);
-      state.rowTodosByKey[getRowTodoKey(tableName, rowId)] = [];
-    } finally {
-      state.rowTodoLoading = false;
-      render();
-    }
-  }
-
-  function openRowTodoPanel(row) {
-    if (!row?.id || !hasRowTodo(state.activeTableName)) return;
-    state.linksPanelOpen = false;
-    state.rowTodoPanelOpen = true;
-    state.rowTodoRowId = row.id;
-    state.detailRowId = null;
-    state.newRowDraft = null;
-    state.archivePanelOpen = false;
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    state.settingsPanelOpen = false;
-    resetRowTodoDraft(state.activeTableName);
-    void loadRowTodosForRow(state.activeTableName, row.id);
-    render();
-  }
-
-  function closeRowTodoPanel() {
-    state.rowTodoPanelOpen = false;
-    state.rowTodoRowId = null;
-    resetRowTodoDraft(state.activeTableName);
-    render();
-  }
-
-  async function saveRowTodoForCurrentRow() {
-    const row = getCurrentRowTodoRow();
-    if (!row) return;
-
-    const kategori = 'Allmänt';
-    const beskrivning = String(state.rowTodoDraft.beskrivning || '').trim();
-
-    if (!beskrivning) {
-      alert('Beskrivning saknas.');
-      return;
-    }
-
-    const active = getActiveConfig();
-    if (!active) return;
-    const [tableName, tableConfig] = active;
-
-    state.rowTodoLoading = true;
-    render();
-
-    try {
-      const { error } = await supabase
-        .from('planning_row_todos')
-        .insert({
-          source_table: tableConfig.dbTable,
-          source_row_id: row.id,
-          kategori,
-          beskrivning,
-          is_done: false,
-          created_by: getCurrentUserInitials(),
-        });
-
-      if (error) throw error;
-
-      await loadRowTodosForRow(tableName, row.id);
-    } catch (err) {
-      alert(`Kunde inte spara ToDo: ${err.message}`);
-    } finally {
-      state.rowTodoLoading = false;
-      render();
-    }
-  }
-
-  async function toggleRowTodoDone(item) {
-    state.rowTodoLoading = true;
-    render();
-
-    try {
-      const { error } = await supabase
-        .from('planning_row_todos')
-        .update({ is_done: !item.is_done })
-        .eq('id', item.id);
-
-      if (error) throw error;
-
-      await loadRowTodosForRow(state.activeTableName, state.rowTodoRowId);
-    } catch (err) {
-      alert(`Kunde inte uppdatera ToDo: ${err.message}`);
-    } finally {
-      state.rowTodoLoading = false;
-      render();
-    }
-  }
-
-  async function deleteRowTodo(item) {
-    const confirmed = window.confirm('Ta bort denna ToDo?');
-    if (!confirmed) return;
-
-    state.rowTodoLoading = true;
-    render();
-
-    try {
-      const { error } = await supabase
-        .from('planning_row_todos')
-        .delete()
-        .eq('id', item.id);
-
-      if (error) throw error;
-
-      await loadRowTodosForRow(state.activeTableName, state.rowTodoRowId);
-    } catch (err) {
-      alert(`Kunde inte ta bort ToDo: ${err.message}`);
-    } finally {
-      state.rowTodoLoading = false;
-      render();
-    }
-  }
-
-  function createTodoButton(row) {
-    const wrap = document.createElement('div');
-    wrap.className = 'row-actions';
-
-    if (isVirtualModalTodoRow(row)) {
-      return wrap;
-    }
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'notes-button';
-    button.textContent = '✓';
-    button.title = 'ToDo';
-    button.setAttribute('aria-label', 'Öppna ToDo');
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      openRowTodoPanel(row);
-    });
-
-    wrap.appendChild(button);
-    return wrap;
-  }
-
-  function createRowTodoPanel() {
-    const tableName = state.activeTableName;
-    const row = getCurrentRowTodoRow();
-    const rowKey = row ? getRowTodoKey(tableName, row.id) : '';
-    const todos = state.rowTodosByKey[rowKey] || [];
-    const titleField = getRowTitleField(tableName);
-    const rowTitle = row ? (row[titleField] || 'Rad') : 'Rad';
-    const categories = getRowTodoCategories(tableName);
-    const selectedCategory = String(state.rowTodoDraft.kategori || 'Alla');
-    const filteredTodos = selectedCategory === 'Alla'
-      ? todos
-      : todos.filter((item) => String(item.kategori || '') === selectedCategory);
-
-    const overlay = document.createElement('div');
-    overlay.className = 'overlay-modal';
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    });
-
-    const dialog = document.createElement('aside');
-    dialog.className = 'side-panel overlay-modal__dialog notes-panel';
-
-    const header = document.createElement('div');
-    header.className = 'side-panel__header';
-
-    const heading = document.createElement('div');
-    heading.className = 'todo-modal__heading';
-    heading.innerHTML = `
-      <p class="side-panel__eyebrow">${tableLabel}</p>
-      <h2 class="side-panel__title">ToDo</h2>
-      <p class="side-panel__text">${rowTitle}</p>
-    `;
-
-    const headerActions = document.createElement('div');
-    headerActions.className = 'side-panel__header-actions';
-
-    const cancelButtonTop = document.createElement('button');
-    cancelButtonTop.type = 'button';
-    cancelButtonTop.className = 'secondary-button';
-    cancelButtonTop.textContent = 'Avbryt';
-    cancelButtonTop.addEventListener('click', () => {
-      resetRowTodoDraft(tableName);
-      render();
-    });
-
-    const saveButtonTop = document.createElement('button');
-    saveButtonTop.type = 'button';
-    saveButtonTop.className = 'secondary-button';
-    saveButtonTop.textContent = state.rowTodoLoading ? 'Sparar...' : 'Spara';
-    saveButtonTop.disabled = state.rowTodoLoading;
-    saveButtonTop.addEventListener('click', async () => {
-      await saveRowTodoForCurrentRow();
-    });
-
-    const closeButton = document.createElement('button');
-    closeButton.type = 'button';
-    closeButton.className = 'side-panel__close side-panel__close--small';
-    closeButton.textContent = '×';
-    closeButton.setAttribute('aria-label', 'Stäng');
-    closeButton.title = 'Stäng';
-    closeButton.addEventListener('click', closeRowTodoPanel);
-
-    headerActions.appendChild(cancelButtonTop);
-    headerActions.appendChild(saveButtonTop);
-
-    header.appendChild(heading);
-    header.appendChild(headerActions);
-    header.appendChild(closeButton);
-
-    const body = document.createElement('div');
-    body.className = 'side-panel__body';
-
-    const formCard = document.createElement('section');
-    formCard.className = 'detail-card notes-form';
-
-    const formTitle = document.createElement('h3');
-    formTitle.className = 'detail-card__title';
-    formTitle.textContent = 'Ny ToDo';
-
-    const categoryLabel = document.createElement('label');
-    categoryLabel.className = 'detail-field';
-    const categorySpan = document.createElement('span');
-    categorySpan.className = 'detail-field__label';
-    categorySpan.textContent = 'Kategori';
-    const categorySelect = document.createElement('select');
-    categorySelect.className = 'detail-field__control';
-    categories.forEach((value) => {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = getDropdownOptionLabel(value);
-      if ((state.rowTodoDraft.kategori || 'Alla') === value) option.selected = true;
-      categorySelect.appendChild(option);
-    });
-    categorySelect.addEventListener('change', () => {
-      state.rowTodoDraft.kategori = categorySelect.value;
-      render();
-    });
-    categoryLabel.appendChild(categorySpan);
-    categoryLabel.appendChild(categorySelect);
-
-    const bodyLabel = document.createElement('label');
-    bodyLabel.className = 'detail-field';
-    const bodySpan = document.createElement('span');
-    bodySpan.className = 'detail-field__label';
-    bodySpan.textContent = 'Beskrivning';
-    const bodyInput = document.createElement('textarea');
-    bodyInput.className = 'detail-field__control notes-form__body todo-modal__textarea';
-    bodyInput.rows = 6;
-    bodyInput.value = state.rowTodoDraft.beskrivning || '';
-    bodyInput.addEventListener('input', () => {
-      state.rowTodoDraft.beskrivning = bodyInput.value;
-    });
-    bodyLabel.appendChild(bodySpan);
-    bodyLabel.appendChild(bodyInput);
-
-    formCard.appendChild(formTitle);
-    formCard.appendChild(categoryLabel);
-    formCard.appendChild(bodyLabel);
-
-    const historyCard = document.createElement('section');
-    historyCard.className = 'detail-card notes-history';
-
-    const historyTitle = document.createElement('h3');
-    historyTitle.className = 'detail-card__title';
-    historyTitle.textContent = 'ToDos';
-
-    historyCard.appendChild(historyTitle);
-
-    if (state.rowTodoLoading) {
-      const loading = document.createElement('p');
-      loading.className = 'empty-state';
-      loading.textContent = 'Laddar ToDos...';
-      historyCard.appendChild(loading);
-    } else if (!filteredTodos.length) {
-      const empty = document.createElement('p');
-      empty.className = 'empty-state';
-      empty.textContent = selectedCategory === 'Alla' ? 'Inga ToDos ännu.' : 'Inga ToDos i vald kategori.';
-      historyCard.appendChild(empty);
-    } else {
-      const list = document.createElement('div');
-      list.className = 'notes-history__list';
-
-      filteredTodos.forEach((item) => {
-        const card = document.createElement('article');
-        card.className = `todo-item${item.is_done ? ' is-done' : ''}`;
-
-        const topRow = document.createElement('div');
-        topRow.className = 'todo-item__top';
-
-        const title = document.createElement('div');
-        title.className = 'todo-item__category';
-        title.textContent = item.kategori || 'Alla';
-
-        const rightGroup = document.createElement('div');
-        rightGroup.className = 'todo-item__right';
-
-        const meta = document.createElement('div');
-        meta.className = 'todo-item__meta';
-        meta.textContent = `${formatDateTimeValue(item.created_at)}${item.created_by ? ` · ${item.created_by}` : ''}`;
-
-        const actions = document.createElement('div');
-        actions.className = 'todo-item__actions';
-
-        const doneButton = document.createElement('button');
-        doneButton.type = 'button';
-        doneButton.className = item.is_done ? 'secondary-button' : 'primary-button';
-        doneButton.textContent = item.is_done ? 'Öppna igen' : 'Klar';
-        doneButton.addEventListener('click', async () => {
-          await toggleRowTodoDone(item);
-        });
-
-        const deleteButton = document.createElement('button');
-        deleteButton.type = 'button';
-        deleteButton.className = 'secondary-button secondary-button--danger';
-        deleteButton.textContent = 'Ta bort';
-        deleteButton.addEventListener('click', async () => {
-          await deleteRowTodo(item);
-        });
-
-        actions.appendChild(doneButton);
-        actions.appendChild(deleteButton);
-        rightGroup.appendChild(meta);
-        rightGroup.appendChild(actions);
-
-        topRow.appendChild(title);
-        topRow.appendChild(rightGroup);
-
-        const text = document.createElement('div');
-        text.className = 'todo-item__body';
-        text.textContent = item.beskrivning || '';
-
-        card.appendChild(topRow);
-        card.appendChild(text);
-
-        list.appendChild(card);
-      });
-
-      historyCard.appendChild(list);
-    }
-
-    body.appendChild(formCard);
-    body.appendChild(historyCard);
-
-    dialog.appendChild(header);
-    dialog.appendChild(body);
-    overlay.appendChild(dialog);
-    return overlay;
-  }
+  const rowTodoController = createRowTodoController({
+    supabase,
+    state,
+    tableEntries,
+    hasRowTodo,
+    getRowTodoCategories,
+    getRowById,
+    getActiveConfig,
+    getCurrentUserInitials,
+    loadModalTodoRows,
+    render,
+    isVirtualModalTodoRow,
+    getRowTitleField,
+    getDropdownOptionLabel,
+    formatDateTimeValue,
+  });
+  const {
+    getRowTodoKey,
+    resetRowTodoDraft,
+    openRowTodoPanel,
+    closeRowTodoPanel,
+    createTodoButton,
+    createRowTodoPanel,
+  } = rowTodoController;
 
   function formatDateValue(value) {
     const raw = String(value ?? '').trim();
@@ -2061,6 +1505,7 @@ export async function runPlanningApp() {
           copy: 'gray',
           packshot: 'gray',
           kampanj: 'gray',
+          mail_notif: 'gray',
           klart: 'gray',
           klart_datum: null,
           owner_initials: saljRow.owner_initials || getCurrentUserInitials(),
@@ -2409,6 +1854,23 @@ export async function runPlanningApp() {
     });
   }
 
+  function createHeaderActionButton(label, onClick, options = {}) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = options.className || 'secondary-button';
+    button.textContent = label;
+    if (options.dataset && typeof options.dataset === 'object') {
+      Object.entries(options.dataset).forEach(([key, value]) => {
+        button.dataset[key] = String(value);
+      });
+    }
+    if (options.title) button.title = options.title;
+    if (typeof onClick === 'function') {
+      button.addEventListener('click', onClick);
+    }
+    return button;
+  }
+
   function createTopActions(tableName, tableConfig) {
     const wrap = document.createElement('div');
     wrap.className = 'view-actions';
@@ -2435,22 +1897,10 @@ export async function runPlanningApp() {
 
     if (tableName === 'DIG PROD') {
       if (tableName !== 'RUTINER') {
-        const archiveButton = document.createElement('button');
-        archiveButton.type = 'button';
-        archiveButton.className = 'secondary-button';
-        archiveButton.textContent = 'Arkiv';
-        archiveButton.addEventListener('click', openArchivePanel);
-        wrap.appendChild(archiveButton);
+        wrap.appendChild(createHeaderActionButton('Arkiv', openArchivePanel));
       }
 
-      const printButton = document.createElement('button');
-      printButton.type = 'button';
-      printButton.className = 'secondary-button';
-      printButton.textContent = 'Print';
-      printButton.addEventListener('click', () => {
-        printActiveView(tableName);
-      });
-      wrap.appendChild(printButton);
+      wrap.appendChild(createHeaderActionButton('Print', () => printActiveView(tableName)));
 
       return wrap;
     }
@@ -2541,43 +1991,27 @@ export async function runPlanningApp() {
     wrap.appendChild(newButton);
 
     if (tableName !== 'RUTINER') {
-      const archiveButton = document.createElement('button');
-      archiveButton.type = 'button';
-      archiveButton.className = 'secondary-button';
-      archiveButton.textContent = 'Arkiv';
-      archiveButton.addEventListener('click', openArchivePanel);
-      wrap.appendChild(archiveButton);
+      wrap.appendChild(createHeaderActionButton('Arkiv', openArchivePanel));
     }
 
     if (tableName === TODO_TABLE) {
-      const mineButton = document.createElement('button');
-      mineButton.type = 'button';
-      mineButton.className = `secondary-button${state.todoMineOnly ? ' is-active' : ''}`;
-      mineButton.textContent = 'Mina Todo';
-      mineButton.title = 'Visa mina ansvariga och privata todo';
-      mineButton.addEventListener('click', () => {
+      wrap.appendChild(createHeaderActionButton('Mina Todo', () => {
         state.todoMineOnly = !state.todoMineOnly;
         render();
-      });
-      wrap.appendChild(mineButton);
+      }, {
+        className: `secondary-button${state.todoMineOnly ? ' is-active' : ''}`,
+        title: 'Visa mina ansvariga och privata todo',
+      }));
     }
     if (tableName === 'SÄLJINTRO') {
-      const excelPlanButton = document.createElement('button');
-      excelPlanButton.type = 'button';
-      excelPlanButton.className = 'secondary-button';
-      excelPlanButton.textContent = 'Excel-plan';
-      excelPlanButton.addEventListener('click', openSalesIntroExcelPlan);
-      wrap.appendChild(excelPlanButton);
+      wrap.appendChild(createHeaderActionButton('Excel-plan', openSalesIntroExcelPlan));
     }
 
-    const printButton = document.createElement('button');
-    printButton.type = 'button';
-    printButton.className = 'secondary-button';
-    printButton.textContent = 'Print';
-    printButton.addEventListener('click', () => {
-      printActiveView(tableName);
-    });
-    wrap.appendChild(printButton);
+    wrap.appendChild(createHeaderActionButton('Print', () => printActiveView(tableName)));
+
+    if (isMoodEnabledTable(tableName)) {
+      wrap.appendChild(createMoodToolbarButton(tableName));
+    }
 
     return wrap;
   }
@@ -2649,559 +2083,12 @@ export async function runPlanningApp() {
     render();
   }
 
-  async function createDigProdRowsFromSaljintro(saljintroRow) {
-    const produkt = String(saljintroRow?.produkt || '').trim();
-    if (!produkt) return [];
 
-    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
-    if (!digProdEntry) return [];
-
-    const [, digProdConfig] = digProdEntry;
-    const ownerInitials = saljintroRow.owner_initials || getCurrentUserInitials();
-
-    const beskrivning = String(saljintroRow?.beskrivning_status || '').trim();
-
-    const payload = ['B2B-intro', 'B2C-intro'].map((kategori) => ({
-      produktnamn: produkt,
-      kategori,
-      beskrivning,
-      p_info: 'gray',
-      ai_seo: 'gray',
-      metafalt: 'gray',
-      copy: 'gray',
-      packshot: 'gray',
-      kampanj: 'gray',
-      klart: 'gray',
-      klart_datum: null,
-      owner_initials: ownerInitials,
-      is_done: false,
-    }));
-
-    const { data, error } = await supabase
-      .from(digProdConfig.dbTable)
-      .insert(payload)
-      .select('*');
-
-    if (error) {
-      throw new Error(error.message || 'Kunde inte skapa DIG PROD-rader.');
-    }
-
-    const normalizedRows = (Array.isArray(data) ? data : [])
-      .map((row) => normalizeRow('DIG PROD', digProdConfig, row));
-
-    state.rowsByTable['DIG PROD'] = [
-      ...normalizedRows,
-      ...(state.rowsByTable['DIG PROD'] || []),
-    ];
-
-    return normalizedRows;
-  }
-
-  function getSaljintroReadyFieldsForDigProdCategory(kategori) {
-    const normalized = String(kategori || '').trim();
-    if (normalized === 'B2B-intro' || normalized === 'B2B-ready') {
-      return { statusField: 'b2b_ready', dateField: null };
-    }
-    if (normalized === 'B2C-intro' || normalized === 'B2C-ready' || normalized === 'Shopify-ready') {
-      return { statusField: 'shopify_ready', dateField: null };
-    }
-    return null;
-  }
-
-  async function syncSaljintroReadyFromDigProd(digProdRow) {
-    const produkt = String(digProdRow?.produktnamn || '').trim();
-    const fields = getSaljintroReadyFieldsForDigProdCategory(digProdRow?.kategori);
-    if (!produkt || !fields) return;
-
-    const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
-    if (!saljintroEntry) return;
-
-    const [, saljintroConfig] = saljintroEntry;
-    const nextStatus = normalizeStatusValue(digProdRow?.klart || 'gray');
-
-    const payload = { [fields.statusField]: nextStatus };
-
-    const { data, error } = await supabase
-      .from(saljintroConfig.dbTable)
-      .update(payload)
-      .eq('produkt', produkt)
-      .select('*');
-
-    if (error) {
-      throw new Error(error.message || `Kunde inte spegla ${digProdRow?.kategori} till SÄLJINTRO.`);
-    }
-
-    const updatedRows = (Array.isArray(data) ? data : [])
-      .map((row) => normalizeRow('SÄLJINTRO', saljintroConfig, row));
-
-    if (!updatedRows.length) return;
-
-    const updatedById = new Map(updatedRows.map((row) => [String(row.id), row]));
-    state.rowsByTable['SÄLJINTRO'] = (state.rowsByTable['SÄLJINTRO'] || []).map((row) =>
-      updatedById.get(String(row.id)) || row
-    );
-  }
-
-  async function syncDigProdProductNameFromSaljintro(previousProductName, nextProductName) {
-    const previous = String(previousProductName || '').trim();
-    const next = String(nextProductName || '').trim();
-    if (!previous || !next || previous === next) return;
-
-    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
-    if (!digProdEntry) return;
-
-    const [, digProdConfig] = digProdEntry;
-    const { data, error } = await supabase
-      .from(digProdConfig.dbTable)
-      .update({ produktnamn: next })
-      .eq('produktnamn', previous)
-      .in('kategori', ['B2B-intro', 'B2C-intro', 'B2B-ready', 'B2C-ready', 'Shopify-ready'])
-      .select('*');
-
-    if (error) {
-      throw new Error(error.message || 'Kunde inte uppdatera Produktnamn i DIG PROD.');
-    }
-
-    const updatedRows = (Array.isArray(data) ? data : [])
-      .map((row) => normalizeRow('DIG PROD', digProdConfig, row));
-
-    if (updatedRows.length) {
-      const updatedById = new Map(updatedRows.map((row) => [String(row.id), row]));
-      state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) =>
-        updatedById.get(String(row.id)) || row
-      );
-    }
-
-    state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) => {
-      if (String(row?.produktnamn || '').trim() !== previous) return row;
-      const kategori = normalizeDigProdIntroCategory(row?.kategori);
-      if (kategori !== 'B2B-intro' && kategori !== 'B2C-intro') return row;
-      return { ...row, produktnamn: next };
-    });
-  }
-
-
-  async function syncDigProdDescriptionFromSaljintro(saljintroRow) {
-    const produkt = String(saljintroRow?.produkt || '').trim();
-    if (!produkt) return;
-
-    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
-    if (!digProdEntry) return;
-
-    const [, digProdConfig] = digProdEntry;
-    const nextDescription = String(saljintroRow?.beskrivning_status || '').trim();
-
-    const { data, error } = await supabase
-      .from(digProdConfig.dbTable)
-      .update({ beskrivning: nextDescription })
-      .eq('produktnamn', produkt)
-      .in('kategori', ['B2B-intro', 'B2C-intro', 'B2B-ready', 'B2C-ready', 'Shopify-ready'])
-      .select('*');
-
-    if (error) {
-      throw new Error(error.message || 'Kunde inte uppdatera Beskrivning i DIG PROD.');
-    }
-
-    const updatedRows = (Array.isArray(data) ? data : [])
-      .map((row) => normalizeRow('DIG PROD', digProdConfig, row));
-
-    if (!updatedRows.length) return;
-
-    const updatedById = new Map(updatedRows.map((row) => [String(row.id), row]));
-    state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || []).map((row) =>
-      updatedById.get(String(row.id)) || row
-    );
-  }
-
-
-  function isDigProdIntroCategory(kategori) {
-    const normalized = normalizeDigProdIntroCategory(kategori);
-    return normalized === 'B2B-intro' || normalized === 'B2C-intro';
-  }
-
-  function getDigProdRowsForSaljintroRow(saljintroRow) {
-    const produkt = String(saljintroRow?.produkt || '').trim();
-    if (!produkt) return [];
-
-    return (state.rowsByTable['DIG PROD'] || []).filter((row) => {
-      if (!isDigProdIntroCategory(row?.kategori)) return false;
-      return isLikelySameProductName(produkt, row?.produktnamn);
-    });
-  }
-
-  async function archiveDigProdRowFromSaljintro(digProdConfig, digRow, saljintroRow, archiveReason) {
-    const archivePayload = {
-      source_table: digProdConfig.dbTable,
-      source_row_id: digRow.id,
-      payload_json: digRow,
-      archive_reason: archiveReason,
-      note: `Arkiverad automatiskt från SÄLJINTRO: ${saljintroRow?.produkt || ''}`,
-    };
-
-    const { error: insertError } = await supabase
-      .from('planning_archive')
-      .insert(archivePayload);
-
-    if (insertError) {
-      throw new Error(insertError.message || `Kunde inte lägga DIG PROD-rad ${digRow.id} i Arkiv.`);
-    }
-
-    const { error: deleteError } = await supabase
-      .from(digProdConfig.dbTable)
-      .delete()
-      .eq('id', digRow.id);
-
-    if (deleteError) {
-      throw new Error(deleteError.message || `Kunde inte ta bort DIG PROD-rad ${digRow.id} efter arkivering.`);
-    }
-  }
-
-  async function archiveDigProdRowsForSaljintroRow(saljintroRow, archiveReason = 'saljintro_archived') {
-    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
-    if (!digProdEntry) return [];
-
-    const [, digProdConfig] = digProdEntry;
-    const rowsToArchive = getDigProdRowsForSaljintroRow(saljintroRow);
-    const archivedIds = [];
-
-    for (const digRow of rowsToArchive) {
-      if (!digRow?.id) continue;
-      await archiveDigProdRowFromSaljintro(digProdConfig, digRow, saljintroRow, archiveReason);
-      archivedIds.push(digRow.id);
-    }
-
-    if (archivedIds.length) {
-      const archivedIdSet = new Set(archivedIds.map((id) => String(id)));
-      state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || [])
-        .filter((row) => !archivedIdSet.has(String(row.id)));
-    }
-
-    return archivedIds;
-  }
-
-  async function archiveSaljintroRowWithDigProd(row) {
-    const confirmed = window.confirm('Lägg Säljintro-raden i Arkiv och arkivera kopplade DIG PROD-rader?');
-    if (!confirmed) return;
-
-    const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
-    if (!saljintroEntry || !row?.id) return;
-
-    const [, saljintroConfig] = saljintroEntry;
-    const key = getCellKey(row, getInlineActionsColumn()) || `saljintro-actions-${row.id}`;
-    state.savingCell = key;
-    render();
-
-    try {
-      await archiveDigProdRowsForSaljintroRow(row, 'saljintro_archived');
-
-      const { error } = await supabase.rpc('planning_archive_row', {
-        p_source_table: saljintroConfig.dbTable,
-        p_row_id: row.id,
-        p_mark_done: true,
-        p_archive_reason: 'archived',
-        p_note: null,
-      });
-
-      if (error) {
-        throw new Error(error.message || 'Kunde inte arkivera Säljintro-raden.');
-      }
-
-      state.rowsByTable['SÄLJINTRO'] = (state.rowsByTable['SÄLJINTRO'] || [])
-        .filter((item) => item.id !== row.id);
-
-      if (state.detailRowId === row.id) state.detailRowId = null;
-
-      if (state.archivePanelOpen) {
-        void loadArchiveRows('SÄLJINTRO');
-      }
-    } catch (err) {
-      alert(`Kunde inte arkivera Säljintro-raden: ${err.message}`);
-    } finally {
-      state.savingCell = null;
-      render();
-    }
-  }
 
   async function deleteRelatedRecordsForSource(sourceTable, sourceRowId) {
-    if (!sourceTable || !sourceRowId) return;
-
-    const { data: notesData, error: notesReadError } = await supabase
-      .from('planning_notes')
-      .select('id')
-      .eq('source_table', sourceTable)
-      .eq('source_row_id', sourceRowId);
-
-    if (notesReadError) {
-      throw new Error(`Kunde inte läsa kopplade notes: ${notesReadError.message}`);
-    }
-
-    const noteIds = (Array.isArray(notesData) ? notesData : [])
-      .map((item) => item.id)
-      .filter(Boolean);
-
-    if (noteIds.length) {
-      const { error: noteReadsError } = await supabase
-        .from('planning_note_reads')
-        .delete()
-        .in('note_id', noteIds);
-
-      if (noteReadsError) {
-        throw new Error(`Kunde inte ta bort note-läsningar: ${noteReadsError.message}`);
-      }
-    }
-
-    const { error: notesError } = await supabase
-      .from('planning_notes')
-      .delete()
-      .eq('source_table', sourceTable)
-      .eq('source_row_id', sourceRowId);
-
-    if (notesError) {
-      throw new Error(`Kunde inte ta bort notes: ${notesError.message}`);
-    }
-
-    const { error: todosError } = await supabase
-      .from('planning_row_todos')
-      .delete()
-      .eq('source_table', sourceTable)
-      .eq('source_row_id', sourceRowId);
-
-    if (todosError) {
-      throw new Error(`Kunde inte ta bort ToDos: ${todosError.message}`);
-    }
+    return archiveController.deleteRelatedRecordsForSource(sourceTable, sourceRowId);
   }
 
-  async function deleteDigProdRowsForSaljintroRow(saljintroRow) {
-    const digProdEntry = tableEntries.find(([name]) => name === 'DIG PROD');
-    if (!digProdEntry) return [];
-
-    const [, digProdConfig] = digProdEntry;
-    const rowsToDelete = getDigProdRowsForSaljintroRow(saljintroRow);
-    const deletedIds = [];
-
-    for (const digRow of rowsToDelete) {
-      if (!digRow?.id) continue;
-
-      await deleteRelatedRecordsForSource(digProdConfig.dbTable, digRow.id);
-
-      const { error } = await supabase
-        .from(digProdConfig.dbTable)
-        .delete()
-        .eq('id', digRow.id);
-
-      if (error) {
-        throw new Error(error.message || `Kunde inte ta bort kopplad DIG PROD-rad ${digRow.id}.`);
-      }
-
-      deletedIds.push(digRow.id);
-    }
-
-    if (deletedIds.length) {
-      const deletedIdSet = new Set(deletedIds.map((id) => String(id)));
-      state.rowsByTable['DIG PROD'] = (state.rowsByTable['DIG PROD'] || [])
-        .filter((row) => !deletedIdSet.has(String(row.id)));
-    }
-
-    return deletedIds;
-  }
-
-  async function deleteSaljintroRowWithDigProdArchive(row) {
-    const confirmed = window.confirm('Ta bort Säljintro-raden permanent och ta bort kopplade DIG PROD-rader?');
-    if (!confirmed) return;
-
-    const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
-    if (!saljintroEntry || !row?.id) return;
-
-    const [, saljintroConfig] = saljintroEntry;
-    const key = getCellKey(row, getInlineActionsColumn()) || `saljintro-actions-${row.id}`;
-    state.savingCell = key;
-    render();
-
-    try {
-      await deleteDigProdRowsForSaljintroRow(row);
-      await deleteRelatedRecordsForSource(saljintroConfig.dbTable, row.id);
-
-      const { error } = await supabase
-        .from(saljintroConfig.dbTable)
-        .delete()
-        .eq('id', row.id);
-
-      if (error) {
-        throw new Error(error.message || 'Kunde inte ta bort Säljintro-raden.');
-      }
-
-      await loadModalTodoRows();
-
-      state.rowsByTable['SÄLJINTRO'] = (state.rowsByTable['SÄLJINTRO'] || [])
-        .filter((item) => item.id !== row.id);
-
-      if (state.detailRowId === row.id) state.detailRowId = null;
-    } catch (err) {
-      alert(`Kunde inte ta bort Säljintro-raden: ${err.message}`);
-    } finally {
-      state.savingCell = null;
-      state.editingCell = null;
-      render();
-    }
-  }
-
-  async function syncAllSaljintroReadyFromDigProd() {
-    const saljRows = state.rowsByTable['SÄLJINTRO'] || [];
-    const digRows = state.rowsByTable['DIG PROD'] || [];
-    if (!saljRows.length || !digRows.length) return;
-
-    const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
-    if (!saljintroEntry) return;
-    const [, saljintroConfig] = saljintroEntry;
-
-    const saljByProduct = new Map();
-    saljRows.forEach((row) => {
-      const produkt = String(row?.produkt || '').trim();
-      if (produkt) saljByProduct.set(produkt, row);
-    });
-
-    const updates = [];
-    digRows.forEach((digRow) => {
-      const produkt = String(digRow?.produktnamn || '').trim();
-      const fields = getSaljintroReadyFieldsForDigProdCategory(digRow?.kategori);
-      if (!produkt || !fields) return;
-      const saljRow = saljByProduct.get(produkt);
-      if (!saljRow?.id) return;
-
-      const nextStatus = normalizeStatusValue(digRow?.klart || 'gray');
-      const currentStatus = normalizeStatusValue(saljRow?.[fields.statusField] || 'gray');
-
-      if (currentStatus !== nextStatus) {
-        updates.push({ saljRow, fields, nextStatus });
-      }
-    });
-
-    if (!updates.length) return;
-
-    for (const item of updates) {
-      const payload = { [item.fields.statusField]: item.nextStatus };
-
-      const { data, error } = await supabase
-        .from(saljintroConfig.dbTable)
-        .update(payload)
-        .eq('id', item.saljRow.id)
-        .select('*')
-        .single();
-
-      if (error) {
-        console.warn('Could not sync SÄLJINTRO ready status from DIG PROD:', error.message);
-        continue;
-      }
-
-      const normalized = normalizeRow('SÄLJINTRO', saljintroConfig, data);
-      state.rowsByTable['SÄLJINTRO'] = (state.rowsByTable['SÄLJINTRO'] || []).map((row) =>
-        String(row.id) === String(normalized.id) ? normalized : row
-      );
-    }
-  }
-
-
-  async function archiveUtvecklingRowAfterSaljintro(utvecklingRow) {
-    if (!utvecklingRow?.id) return;
-
-    const utvecklingEntry = tableEntries.find(([name]) => name === 'UTVECKLING');
-    const [, utvecklingConfig] = utvecklingEntry || [];
-    const sourceTable = utvecklingConfig?.dbTable || 'utveckling';
-
-    const { error } = await supabase.rpc('planning_archive_row', {
-      p_source_table: sourceTable,
-      p_row_id: utvecklingRow.id,
-      p_mark_done: true,
-      p_archive_reason: 'promoted_to_saljintro',
-      p_note: 'Skapad i SÄLJINTRO från Design.',
-    });
-
-    if (error) {
-      throw new Error(error.message || 'Kunde inte arkivera Design-raden.');
-    }
-
-    state.rowsByTable['UTVECKLING'] = (state.rowsByTable['UTVECKLING'] || [])
-      .filter((item) => String(item.id) !== String(utvecklingRow.id));
-
-    if (state.detailRowId && String(state.detailRowId) === String(utvecklingRow.id)) {
-      state.detailRowId = null;
-    }
-
-    if (state.archivePanelOpen && state.activeTableName === 'UTVECKLING') {
-      void loadArchiveRows('UTVECKLING');
-    }
-  }
-
-  async function createSaljintroFromUtveckling(utvecklingRow) {
-    const produkt = String(utvecklingRow?.produktide || '').trim();
-    if (!produkt) {
-      alert('Produktnamn saknas i Design-raden.');
-      return;
-    }
-
-    const saljintroEntry = tableEntries.find(([name]) => name === 'SÄLJINTRO');
-    if (!saljintroEntry) return;
-
-    const [, saljintroConfig] = saljintroEntry;
-    const key = getCellKey(utvecklingRow, UI_OPEN_COLUMN);
-    state.savingCell = key;
-    render();
-
-    const payload = {
-      produkt,
-      beskrivning_status: utvecklingRow.beskrivning || '',
-      kategori: utvecklingRow.kategori || 'matta',
-      koll_q: '--',
-      po_beslut: 'gray',
-      po_beslut_datum: null,
-      b2b_ready: 'gray',
-      b2b_ready_datum: null,
-      b2b_ready_slut_datum: null,
-      shopify_ready: 'gray',
-      shopify_ready_datum: null,
-      shopify_ready_slut_datum: null,
-      b2b_intro: '--',
-      drop_vecka: '--',
-      owner_initials: utvecklingRow.owner_initials || getCurrentUserInitials(),
-      is_done: false,
-    };
-
-    const { data, error } = await supabase
-      .from(saljintroConfig.dbTable)
-      .insert(payload)
-      .select('*')
-      .single();
-
-    if (error) {
-      state.savingCell = null;
-      alert(`Kunde inte skapa rad i SÄLJINTRO: ${error.message}`);
-      render();
-      return;
-    }
-
-    const finalRow = normalizeRow('SÄLJINTRO', saljintroConfig, data);
-
-    try {
-      await createDigProdRowsFromSaljintro(finalRow);
-    } catch (err) {
-      alert(`SÄLJINTRO-raden skapades, men DIG PROD-rader kunde inte skapas: ${err.message}`);
-    }
-
-    state.rowsByTable['SÄLJINTRO'] = [
-      finalRow,
-      ...(state.rowsByTable['SÄLJINTRO'] || []),
-    ];
-
-    try {
-      await archiveUtvecklingRowAfterSaljintro(utvecklingRow);
-    } catch (err) {
-      alert(`SÄLJINTRO skapades men Design-raden kunde inte arkiveras: ${err.message}`);
-    }
-
-    state.savingCell = null;
-    state.detailRowId = null;
-    render();
-  }
 
   async function saveNewRow(tableName, tableConfig, draftRow) {
     if (!draftRow) return;
@@ -3347,6 +2234,11 @@ export async function runPlanningApp() {
     if (tableConfig.dbTable === 'saljintro' && column.field === 'produkt') {
       try {
         await syncDigProdProductNameFromSaljintro(currentValue, normalizedNextValue);
+        // Ny rad i SÄLJINTRO skapas först utan produktnamn. När produktnamnet
+        // sparas första gången finns därför inga DIG PROD-rader att döpa om.
+        // Säkerställ då att B2B-intro och B2C-intro finns, med samma repair-logik
+        // som används för datum-/länk-reparationer.
+        await repairDigProdLinksFromSaljintro();
       } catch (syncErr) {
         alert(`SÄLJINTRO sparades, men DIG PROD kunde inte uppdateras: ${syncErr.message}`);
       }
@@ -4029,39 +2921,6 @@ export async function runPlanningApp() {
   }
 
 
-  function createNotesButton(row) {
-    const wrap = document.createElement('div');
-    wrap.className = 'row-actions';
-
-    if (isVirtualModalTodoRow(row)) {
-      return wrap;
-    }
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'notes-button';
-    button.textContent = '📝';
-    button.title = 'Notes';
-    button.setAttribute('aria-label', 'Öppna notes');
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      openNotesPanel(row);
-    });
-
-    const unreadCount = getUnreadCountForRow(state.activeTableName, row.id);
-    if (unreadCount > 0) {
-      const badge = document.createElement('span');
-      badge.className = 'notes-button__badge';
-      badge.textContent = unreadCount > 9 ? '9+' : String(unreadCount);
-      badge.setAttribute('aria-hidden', 'true');
-      button.appendChild(badge);
-    }
-
-    wrap.appendChild(button);
-    return wrap;
-  }
-
-
   function createOpenButton(row) {
     const wrap = document.createElement('div');
     wrap.className = 'row-actions';
@@ -4534,968 +3393,7 @@ export async function runPlanningApp() {
   }
 
 
-  function createSettingsPanel() {
-    const overlay = document.createElement('div');
-    overlay.className = 'overlay-modal';
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    });
-
-    const dialog = document.createElement('aside');
-    dialog.className = 'side-panel overlay-modal__dialog settings-panel';
-
-    const header = document.createElement('div');
-    header.className = 'side-panel__header';
-
-    const heading = document.createElement('div');
-    if (state.settingsView === 'document_links') {
-      heading.innerHTML = `
-        <p class="side-panel__eyebrow">Settings</p>
-        <h2 class="side-panel__title">Match kolumn + dok</h2>
-        <p class="side-panel__text">Koppla kolumner till dokument i RUTINER.</p>
-      `;
-    } else if (state.settingsView === 'links') {
-      heading.innerHTML = `
-        <p class="side-panel__eyebrow">Settings</p>
-        <h2 class="side-panel__title">Manage Links</h2>
-        <p class="side-panel__text">Skapa och hantera globala länkar.</p>
-      `;
-    } else if (state.settingsView === 'checklists') {
-      heading.innerHTML = `
-        <p class="side-panel__eyebrow">Settings</p>
-        <h2 class="side-panel__title">Checklistor</h2>
-        <p class="side-panel__text">Koppla checklistor till tabellkolumner.</p>
-      `;
-    } else {
-      heading.innerHTML = `
-        <p class="side-panel__eyebrow">Settings</p>
-        <h2 class="side-panel__title">Settings</h2>
-        <p class="side-panel__text">Välj funktion.</p>
-      `;
-    }
-
-    const closeButton = document.createElement('button');
-    closeButton.type = 'button';
-    closeButton.className = 'side-panel__close';
-    closeButton.textContent = 'Stäng';
-    closeButton.addEventListener('click', closeSettingsPanel);
-
-    header.appendChild(heading);
-    header.appendChild(closeButton);
-
-    const body = document.createElement('div');
-    body.className = 'side-panel__body';
-
-    if (state.settingsView === 'menu') {
-      const menu = document.createElement('div');
-      menu.className = 'settings-menu';
-
-      const createCard = ({ title, subtitle, onClick, disabled = false, adminOnly = false }) => {
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.className = `settings-menu__card${disabled ? ' is-disabled' : ''}`;
-        card.disabled = disabled;
-        if (!disabled) card.addEventListener('click', onClick);
-
-        const cardTitle = document.createElement('div');
-        cardTitle.className = 'settings-menu__title';
-        cardTitle.textContent = title;
-
-        const cardMeta = document.createElement('div');
-        cardMeta.className = 'settings-menu__meta';
-        cardMeta.textContent = subtitle;
-
-        card.appendChild(cardTitle);
-        card.appendChild(cardMeta);
-
-        if (adminOnly) {
-          const tag = document.createElement('span');
-          tag.className = 'settings-menu__tag';
-          tag.textContent = 'Admin';
-          card.appendChild(tag);
-        }
-
-        return card;
-      };
-
-      if (isAdmin()) {
-        menu.appendChild(createCard({
-          title: 'Match kolumn + dok',
-          subtitle: 'Öppna dokumentkopplingar',
-          onClick: openSettingsDocumentLinks,
-          disabled: false,
-          adminOnly: true,
-        }));
-
-        menu.appendChild(createCard({
-          title: 'Manage Users',
-          subtitle: 'To be continued',
-          onClick: () => alert('Manage Users — To be continued'),
-          disabled: false,
-          adminOnly: true,
-        }));
-
-        menu.appendChild(createCard({
-          title: 'Manage Links',
-          subtitle: 'Hantera länkar',
-          onClick: openSettingsLinks,
-          disabled: false,
-          adminOnly: true,
-        }));
-
-        menu.appendChild(createCard({
-          title: 'Checklistor',
-          subtitle: 'Hantera kolumn-checklistor',
-          onClick: openSettingsChecklists,
-          disabled: false,
-          adminOnly: true,
-        }));
-      }
-
-      menu.appendChild(createCard({
-        title: 'Länkar',
-        subtitle: 'Öppna länkar',
-        onClick: openLinksPanel,
-        disabled: false,
-        adminOnly: false,
-      }));
-
-      menu.appendChild(createCard({
-        title: 'Rutiner',
-        subtitle: 'Öppna rutiner',
-        onClick: openRutinerFromSettings,
-        disabled: false,
-        adminOnly: false,
-      }));
-
-      menu.appendChild(createCard({
-        title: 'Logout',
-        subtitle: 'Logga ut från appen',
-        onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=178');
-          await signOutUser();
-        },
-        disabled: false,
-        adminOnly: false,
-      }));
-
-      body.appendChild(menu);
-    } else {
-      const backRow = document.createElement('div');
-      backRow.className = 'settings-back-row';
-
-      const backButton = document.createElement('button');
-      backButton.type = 'button';
-      backButton.className = 'secondary-button';
-      backButton.textContent = '← Tillbaka';
-      backButton.addEventListener('click', openSettingsMenu);
-      backRow.appendChild(backButton);
-      body.appendChild(backRow);
-
-      if (state.settingsView === 'checklists') {
-        const formCard = document.createElement('section');
-        formCard.className = 'detail-card settings-form';
-
-        const formTitle = document.createElement('h3');
-        formTitle.className = 'detail-card__title';
-        formTitle.textContent = state.settingsDraft.checklistId ? 'Redigera checklist' : 'Ny checklist';
-        if (state.settingsDraft.checklistId) {
-          formTitle.classList.add('is-editing');
-        }
-
-        const tableLabel = document.createElement('label');
-        tableLabel.className = 'detail-field';
-        const tableText = document.createElement('span');
-        tableText.className = 'detail-field__label';
-        tableText.textContent = 'Tabell';
-        const tableSelect = document.createElement('select');
-        tableSelect.className = 'detail-field__control';
-        tableSelect.innerHTML = '<option value="">Välj tabell</option>';
-        getSettingsTableOptions().forEach((name) => {
-          const option = document.createElement('option');
-          option.value = name;
-          option.textContent = name;
-          if (state.settingsDraft.checklistTableName === name) option.selected = true;
-          tableSelect.appendChild(option);
-        });
-        tableSelect.addEventListener('change', () => {
-          state.settingsDraft.checklistTableName = tableSelect.value;
-          state.settingsDraft.checklistColumnField = '';
-          render();
-        });
-        tableLabel.appendChild(tableText);
-        tableLabel.appendChild(tableSelect);
-
-        const columnLabel = document.createElement('label');
-        columnLabel.className = 'detail-field';
-        const columnText = document.createElement('span');
-        columnText.className = 'detail-field__label';
-        columnText.textContent = 'Kolumn';
-        const columnSelect = document.createElement('select');
-        columnSelect.className = 'detail-field__control';
-        columnSelect.innerHTML = '<option value="">Välj kolumn</option>';
-        getSettingsColumnOptions(state.settingsDraft.checklistTableName).forEach((column) => {
-          const option = document.createElement('option');
-          option.value = column.field;
-          option.textContent = column.name;
-          if (state.settingsDraft.checklistColumnField === column.field) option.selected = true;
-          columnSelect.appendChild(option);
-        });
-        columnSelect.addEventListener('change', () => {
-          state.settingsDraft.checklistColumnField = columnSelect.value;
-        });
-        columnLabel.appendChild(columnText);
-        columnLabel.appendChild(columnSelect);
-
-        const titleField = document.createElement('label');
-        titleField.className = 'detail-field';
-        const titleText = document.createElement('span');
-        titleText.className = 'detail-field__label';
-        titleText.textContent = 'Titel';
-        const titleInput = document.createElement('input');
-        titleInput.className = 'detail-field__control';
-        titleInput.type = 'text';
-        titleInput.value = state.settingsDraft.checklistTitle || '';
-        titleInput.addEventListener('input', () => {
-          state.settingsDraft.checklistTitle = titleInput.value;
-        });
-        titleField.appendChild(titleText);
-        titleField.appendChild(titleInput);
-
-        const bodyField = document.createElement('label');
-        bodyField.className = 'detail-field';
-        const bodyText = document.createElement('span');
-        bodyText.className = 'detail-field__label';
-        bodyText.textContent = 'Punkter - en per rad';
-        const bodyInput = document.createElement('textarea');
-        bodyInput.className = 'detail-field__control notes-form__body todo-modal__textarea';
-        bodyInput.rows = 8;
-        bodyInput.value = state.settingsDraft.checklistBody || '';
-        bodyInput.addEventListener('input', () => {
-          state.settingsDraft.checklistBody = bodyInput.value;
-        });
-        bodyField.appendChild(bodyText);
-        bodyField.appendChild(bodyInput);
-
-        const sortField = document.createElement('label');
-        sortField.className = 'detail-field';
-        const sortText = document.createElement('span');
-        sortText.className = 'detail-field__label';
-        sortText.textContent = 'Ordning';
-        const sortInput = document.createElement('input');
-        sortInput.className = 'detail-field__control';
-        sortInput.type = 'number';
-        sortInput.value = state.settingsDraft.checklistSortOrder || '100';
-        sortInput.addEventListener('input', () => {
-          state.settingsDraft.checklistSortOrder = sortInput.value;
-        });
-        sortField.appendChild(sortText);
-        sortField.appendChild(sortInput);
-
-        const activeField = document.createElement('label');
-        activeField.className = 'detail-field';
-        const activeWrap = document.createElement('div');
-        activeWrap.className = 'settings-checkbox-row';
-        const activeInput = document.createElement('input');
-        activeInput.type = 'checkbox';
-        activeInput.checked = !!state.settingsDraft.checklistIsActive;
-        activeInput.addEventListener('change', () => {
-          state.settingsDraft.checklistIsActive = activeInput.checked;
-        });
-        const activeLabel = document.createElement('span');
-        activeLabel.className = 'detail-field__label';
-        activeLabel.textContent = 'Aktiv';
-        activeWrap.appendChild(activeInput);
-        activeWrap.appendChild(activeLabel);
-        activeField.appendChild(activeWrap);
-
-        const footer = document.createElement('div');
-        footer.className = 'side-panel__footer';
-
-        const saveButton = document.createElement('button');
-        saveButton.type = 'button';
-        saveButton.className = 'primary-button';
-        saveButton.textContent = state.settingsLoading ? 'Sparar...' : 'Spara';
-        saveButton.disabled = state.settingsLoading || !isAdmin();
-        saveButton.addEventListener('click', async () => {
-          await saveChecklistFromSettings();
-        });
-
-        const resetButton = document.createElement('button');
-        resetButton.type = 'button';
-        resetButton.className = 'secondary-button';
-        resetButton.textContent = 'Rensa';
-        resetButton.addEventListener('click', () => {
-          resetChecklistDraft();
-          render();
-        });
-
-        footer.appendChild(saveButton);
-        footer.appendChild(resetButton);
-
-        formCard.appendChild(formTitle);
-        formCard.appendChild(tableLabel);
-        formCard.appendChild(columnLabel);
-        formCard.appendChild(titleField);
-        formCard.appendChild(bodyField);
-        formCard.appendChild(sortField);
-        formCard.appendChild(activeField);
-        formCard.appendChild(footer);
-
-        const listCard = document.createElement('section');
-        listCard.className = 'detail-card settings-list';
-
-        const listHeader = document.createElement('div');
-        listHeader.className = 'settings-list__header';
-
-        const listTitle = document.createElement('h3');
-        listTitle.className = 'detail-card__title';
-        listTitle.textContent = `Befintliga checklistor (${(state.columnChecklistsList || []).length})`;
-
-        const refreshButton = document.createElement('button');
-        refreshButton.type = 'button';
-        refreshButton.className = 'secondary-button';
-        refreshButton.textContent = state.columnChecklistsLoading ? 'Laddar...' : 'Uppdatera';
-        refreshButton.disabled = !!state.columnChecklistsLoading;
-        refreshButton.addEventListener('click', async () => {
-          await loadColumnChecklists();
-          render();
-        });
-
-        listHeader.appendChild(listTitle);
-        listHeader.appendChild(refreshButton);
-        listCard.appendChild(listHeader);
-
-        if (state.columnChecklistsError) {
-          const error = document.createElement('p');
-          error.className = 'empty-state';
-          error.textContent = `Kunde inte läsa checklistor: ${state.columnChecklistsError}`;
-          listCard.appendChild(error);
-        }
-
-        const rows = state.columnChecklistsList || [];
-        if (state.columnChecklistsLoading) {
-          const loading = document.createElement('p');
-          loading.className = 'empty-state';
-          loading.textContent = 'Laddar checklistor...';
-          listCard.appendChild(loading);
-        } else if (!rows.length) {
-          const empty = document.createElement('p');
-          empty.className = 'empty-state';
-          empty.textContent = 'Inga checklistor visas. Om checklist finns i DB: kör SQL-filen planning_column_checklists_policy_fix.sql och tryck Uppdatera.';
-          listCard.appendChild(empty);
-        } else {
-          const list = document.createElement('div');
-          list.className = 'settings-list__rows';
-
-          rows.forEach((item) => {
-            const row = document.createElement('div');
-            row.className = 'settings-list__row';
-
-            const info = document.createElement('div');
-            info.className = 'settings-list__info';
-
-            const title = document.createElement('div');
-            title.className = 'settings-list__title';
-            title.textContent = item.title || 'Utan titel';
-
-            const subtitle = document.createElement('div');
-            subtitle.className = 'settings-list__meta';
-            subtitle.textContent = `${item.table_name} · ${item.column_field} · ${item.is_active ? 'aktiv' : 'inaktiv'}`;
-
-            info.appendChild(title);
-            info.appendChild(subtitle);
-
-            const actions = document.createElement('div');
-            actions.className = 'settings-list__actions';
-
-            const editButton = document.createElement('button');
-            editButton.type = 'button';
-            editButton.className = 'secondary-button';
-            editButton.textContent = 'Redigera';
-            editButton.addEventListener('click', () => {
-              if (!isAdmin()) {
-                alert('Endast admin kan redigera checklistor.');
-                return;
-              }
-              editChecklistFromSettings(item);
-            });
-
-            const activeButton = document.createElement('button');
-            activeButton.type = 'button';
-            activeButton.className = 'secondary-button';
-            activeButton.textContent = item.is_active ? 'Inaktivera' : 'Aktivera';
-            activeButton.disabled = !isAdmin() || state.settingsLoading;
-            activeButton.addEventListener('click', async () => {
-              await setChecklistActiveFromSettings(item, !item.is_active);
-            });
-
-            const deleteButton = document.createElement('button');
-            deleteButton.type = 'button';
-            deleteButton.className = 'secondary-button secondary-button--danger';
-            deleteButton.textContent = 'Ta bort';
-            deleteButton.disabled = !isAdmin() || state.settingsLoading;
-            deleteButton.addEventListener('click', async () => {
-              await deleteChecklistFromSettings(item);
-            });
-
-            actions.appendChild(editButton);
-            actions.appendChild(activeButton);
-            actions.appendChild(deleteButton);
-
-            row.classList.add('settings-list__row--clickable');
-            info.addEventListener('click', () => {
-              if (!isAdmin()) {
-                alert('Endast admin kan redigera checklistor.');
-                return;
-              }
-              editChecklistFromSettings(item);
-            });
-
-            row.appendChild(info);
-            row.appendChild(actions);
-            list.appendChild(row);
-          });
-
-          listCard.appendChild(list);
-        }
-
-        body.appendChild(formCard);
-        body.appendChild(listCard);
-      } else if (state.settingsView === 'links') {
-        const formCard = document.createElement('section');
-        formCard.className = 'detail-card settings-form';
-
-        const formTitle = document.createElement('h3');
-        formTitle.className = 'detail-card__title';
-        formTitle.textContent = 'Ny länk';
-
-        const titleField = document.createElement('label');
-        titleField.className = 'detail-field';
-        const titleText = document.createElement('span');
-        titleText.className = 'detail-field__label';
-        titleText.textContent = 'Länknamn';
-        const titleInput = document.createElement('input');
-        titleInput.className = 'detail-field__control';
-        titleInput.type = 'text';
-        titleInput.value = state.settingsDraft.linkTitle || '';
-        titleInput.addEventListener('input', () => {
-          state.settingsDraft.linkTitle = titleInput.value;
-        });
-        titleField.appendChild(titleText);
-        titleField.appendChild(titleInput);
-
-        const urlField = document.createElement('label');
-        urlField.className = 'detail-field';
-        const urlText = document.createElement('span');
-        urlText.className = 'detail-field__label';
-        urlText.textContent = 'Länkadress';
-        const urlInput = document.createElement('input');
-        urlInput.className = 'detail-field__control';
-        urlInput.type = 'url';
-        urlInput.placeholder = 'https://...';
-        urlInput.value = state.settingsDraft.linkUrl || '';
-        urlInput.addEventListener('input', () => {
-          state.settingsDraft.linkUrl = urlInput.value;
-        });
-        urlField.appendChild(urlText);
-        urlField.appendChild(urlInput);
-
-        const sortField = document.createElement('label');
-        sortField.className = 'detail-field';
-        const sortText = document.createElement('span');
-        sortText.className = 'detail-field__label';
-        sortText.textContent = 'Ordning';
-        const sortInput = document.createElement('input');
-        sortInput.className = 'detail-field__control';
-        sortInput.type = 'number';
-        sortInput.value = state.settingsDraft.linkSortOrder || '100';
-        sortInput.addEventListener('input', () => {
-          state.settingsDraft.linkSortOrder = sortInput.value;
-        });
-        sortField.appendChild(sortText);
-        sortField.appendChild(sortInput);
-
-        const activeField = document.createElement('label');
-        activeField.className = 'detail-field';
-        const activeWrap = document.createElement('div');
-        activeWrap.className = 'settings-checkbox-row';
-        const activeInput = document.createElement('input');
-        activeInput.type = 'checkbox';
-        activeInput.checked = !!state.settingsDraft.linkIsActive;
-        activeInput.addEventListener('change', () => {
-          state.settingsDraft.linkIsActive = activeInput.checked;
-        });
-        const activeLabel = document.createElement('span');
-        activeLabel.className = 'detail-field__label';
-        activeLabel.textContent = 'Aktiv';
-        activeWrap.appendChild(activeInput);
-        activeWrap.appendChild(activeLabel);
-        activeField.appendChild(activeWrap);
-
-        const footer = document.createElement('div');
-        footer.className = 'side-panel__footer';
-
-        const saveButton = document.createElement('button');
-        saveButton.type = 'button';
-        saveButton.className = 'primary-button';
-        saveButton.textContent = state.settingsLoading ? 'Sparar...' : 'Spara';
-        saveButton.disabled = state.settingsLoading || !isAdmin();
-        saveButton.addEventListener('click', async () => {
-          await saveLinkFromSettings();
-        });
-
-        const resetButton = document.createElement('button');
-        resetButton.type = 'button';
-        resetButton.className = 'secondary-button';
-        resetButton.textContent = 'Rensa';
-        resetButton.addEventListener('click', () => {
-          state.settingsDraft.linkTitle = '';
-          state.settingsDraft.linkUrl = '';
-          state.settingsDraft.linkSortOrder = '100';
-          state.settingsDraft.linkIsActive = true;
-          render();
-        });
-
-        footer.appendChild(saveButton);
-        footer.appendChild(resetButton);
-
-        formCard.appendChild(formTitle);
-        formCard.appendChild(titleField);
-        formCard.appendChild(urlField);
-        formCard.appendChild(sortField);
-        formCard.appendChild(activeField);
-        formCard.appendChild(footer);
-
-        const listCard = document.createElement('section');
-        listCard.className = 'detail-card settings-list';
-
-        const listTitle = document.createElement('h3');
-        listTitle.className = 'detail-card__title';
-        listTitle.textContent = 'Befintliga länkar';
-        listCard.appendChild(listTitle);
-
-        if (!state.linksList.length) {
-          const empty = document.createElement('p');
-          empty.className = 'empty-state';
-          empty.textContent = 'Inga länkar ännu.';
-          listCard.appendChild(empty);
-        } else {
-          const list = document.createElement('div');
-          list.className = 'settings-list__rows';
-
-          state.linksList.forEach((item) => {
-            const row = document.createElement('div');
-            row.className = 'settings-list__row';
-
-            const info = document.createElement('div');
-            info.className = 'settings-list__info';
-
-            const title = document.createElement('div');
-            title.className = 'settings-list__title';
-            title.textContent = item.title || 'Utan namn';
-
-            const subtitle = document.createElement('div');
-            subtitle.className = 'settings-list__meta';
-            subtitle.textContent = `${item.url || ''} · ordning ${item.sort_order ?? 100}${item.is_active ? '' : ' · inaktiv'}`;
-
-            info.appendChild(title);
-            info.appendChild(subtitle);
-
-            const actions = document.createElement('div');
-            actions.className = 'settings-list__actions';
-
-            const deleteButton = document.createElement('button');
-            deleteButton.type = 'button';
-            deleteButton.className = 'secondary-button secondary-button--danger';
-            deleteButton.textContent = 'Ta bort';
-            deleteButton.disabled = !isAdmin();
-            deleteButton.addEventListener('click', async () => {
-              await deleteLinkFromSettings(item.id);
-            });
-
-            actions.appendChild(deleteButton);
-            row.appendChild(info);
-            row.appendChild(actions);
-            list.appendChild(row);
-          });
-
-          listCard.appendChild(list);
-        }
-
-        body.appendChild(formCard);
-        body.appendChild(listCard);
-      } else {
-        const formCard = document.createElement('section');
-        formCard.className = 'detail-card settings-form';
-
-        const formTitle = document.createElement('h3');
-        formTitle.className = 'detail-card__title';
-        formTitle.textContent = 'Ny koppling';
-
-        const tableLabel = document.createElement('label');
-        tableLabel.className = 'detail-field';
-        const tableText = document.createElement('span');
-        tableText.className = 'detail-field__label';
-        tableText.textContent = 'Tabell';
-        const tableSelect = document.createElement('select');
-        tableSelect.className = 'detail-field__control';
-        tableSelect.innerHTML = '<option value="">Välj tabell</option>';
-        getSettingsTableOptions().forEach((name) => {
-          const option = document.createElement('option');
-          option.value = name;
-          option.textContent = name;
-          if (state.settingsDraft.tableName === name) option.selected = true;
-          tableSelect.appendChild(option);
-        });
-        tableSelect.addEventListener('change', () => {
-          state.settingsDraft.tableName = tableSelect.value;
-          state.settingsDraft.columnField = '';
-          render();
-        });
-        tableLabel.appendChild(tableText);
-        tableLabel.appendChild(tableSelect);
-
-        const columnLabel = document.createElement('label');
-        columnLabel.className = 'detail-field';
-        const columnText = document.createElement('span');
-        columnText.className = 'detail-field__label';
-        columnText.textContent = 'Kolumn';
-        const columnSelect = document.createElement('select');
-        columnSelect.className = 'detail-field__control';
-        columnSelect.innerHTML = '<option value="">Välj kolumn</option>';
-        getSettingsColumnOptions(state.settingsDraft.tableName).forEach((column) => {
-          const option = document.createElement('option');
-          option.value = column.field;
-          option.textContent = column.name;
-          if (state.settingsDraft.columnField === column.field) option.selected = true;
-          columnSelect.appendChild(option);
-        });
-        columnSelect.addEventListener('change', () => {
-          state.settingsDraft.columnField = columnSelect.value;
-        });
-        columnLabel.appendChild(columnText);
-        columnLabel.appendChild(columnSelect);
-
-        const documentLabel = document.createElement('label');
-        documentLabel.className = 'detail-field';
-        const documentText = document.createElement('span');
-        documentText.className = 'detail-field__label';
-        documentText.textContent = 'Dokument';
-        const documentSelect = document.createElement('select');
-        documentSelect.className = 'detail-field__control';
-        documentSelect.innerHTML = '<option value="">Välj dokument</option>';
-        getRutinerOptions().forEach((item) => {
-          const option = document.createElement('option');
-          option.value = item.id;
-          option.textContent = `${item.name} · ${item.documentName}`;
-          if (String(state.settingsDraft.rutinerRowId) === String(item.id)) option.selected = true;
-          documentSelect.appendChild(option);
-        });
-        documentSelect.addEventListener('change', () => {
-          state.settingsDraft.rutinerRowId = documentSelect.value;
-        });
-        documentLabel.appendChild(documentText);
-        documentLabel.appendChild(documentSelect);
-
-        const labelField = document.createElement('label');
-        labelField.className = 'detail-field';
-        const labelText = document.createElement('span');
-        labelText.className = 'detail-field__label';
-        labelText.textContent = 'Label (valfri)';
-        const labelInput = document.createElement('input');
-        labelInput.className = 'detail-field__control';
-        labelInput.type = 'text';
-        labelInput.placeholder = 'Ex. Guide';
-        labelInput.value = state.settingsDraft.label || '';
-        labelInput.addEventListener('input', () => {
-          state.settingsDraft.label = labelInput.value;
-        });
-        labelField.appendChild(labelText);
-        labelField.appendChild(labelInput);
-
-        const footer = document.createElement('div');
-        footer.className = 'side-panel__footer';
-
-        const saveButton = document.createElement('button');
-        saveButton.type = 'button';
-        saveButton.className = 'primary-button';
-        saveButton.textContent = state.settingsLoading ? 'Sparar...' : 'Spara';
-        saveButton.disabled = state.settingsLoading || !isAdmin();
-        saveButton.addEventListener('click', async () => {
-          await saveDocumentLinkFromSettings();
-        });
-
-        const resetButton = document.createElement('button');
-        resetButton.type = 'button';
-        resetButton.className = 'secondary-button';
-        resetButton.textContent = 'Rensa';
-        resetButton.addEventListener('click', () => {
-          state.settingsDraft.tableName = '';
-          state.settingsDraft.columnField = '';
-          state.settingsDraft.rutinerRowId = '';
-          state.settingsDraft.label = '';
-          render();
-        });
-
-        footer.appendChild(saveButton);
-        footer.appendChild(resetButton);
-
-        formCard.appendChild(formTitle);
-        formCard.appendChild(tableLabel);
-        formCard.appendChild(columnLabel);
-        formCard.appendChild(documentLabel);
-        formCard.appendChild(labelField);
-        formCard.appendChild(footer);
-
-        const listCard = document.createElement('section');
-        listCard.className = 'detail-card settings-list';
-
-        const listTitle = document.createElement('h3');
-        listTitle.className = 'detail-card__title';
-        listTitle.textContent = 'Befintliga kopplingar';
-        listCard.appendChild(listTitle);
-
-        if (!state.documentLinksList.length) {
-          const empty = document.createElement('p');
-          empty.className = 'empty-state';
-          empty.textContent = 'Inga kopplingar ännu.';
-          listCard.appendChild(empty);
-        } else {
-          const list = document.createElement('div');
-          list.className = 'settings-list__rows';
-
-          state.documentLinksList.forEach((item) => {
-            const row = document.createElement('div');
-            row.className = 'settings-list__row';
-
-            const info = document.createElement('div');
-            info.className = 'settings-list__info';
-
-            const title = document.createElement('div');
-            title.className = 'settings-list__title';
-            title.textContent = `${item.table_name} · ${item.column_field}`;
-
-            const rutiner = (state.rowsByTable['RUTINER'] || []).find((r) => String(r.id) === String(item.rutiner_row_id));
-            const subtitle = document.createElement('div');
-            subtitle.className = 'settings-list__meta';
-            subtitle.textContent = `${item.label || 'Dok'} · ${rutiner?.rutin || 'Dokument'} · ${getPdfDisplayName(rutiner?.document || '') || 'Utan filnamn'}`;
-
-            info.appendChild(title);
-            info.appendChild(subtitle);
-
-            const actions = document.createElement('div');
-            actions.className = 'settings-list__actions';
-
-            const deleteButton = document.createElement('button');
-            deleteButton.type = 'button';
-            deleteButton.className = 'secondary-button secondary-button--danger';
-            deleteButton.textContent = 'Ta bort';
-            deleteButton.disabled = !isAdmin();
-            deleteButton.addEventListener('click', async () => {
-              await deleteDocumentLinkFromSettings(item.id);
-            });
-
-            actions.appendChild(deleteButton);
-            row.appendChild(info);
-            row.appendChild(actions);
-            list.appendChild(row);
-          });
-
-          listCard.appendChild(list);
-        }
-
-        body.appendChild(formCard);
-        body.appendChild(listCard);
-      }
-    }
-
-    dialog.appendChild(header);
-    dialog.appendChild(body);
-    overlay.appendChild(dialog);
-    return overlay;
-  }
-
-  function createNotesPanel() {
-    const tableName = state.activeTableName;
-    const row = getCurrentNotesRow();
-    const sourceTable = state.notesSourceTable || tableName;
-    const rowKey = row ? getNotesRowKey(sourceTable, row.id) : '';
-    const notes = state.notesRowsByKey[rowKey] || [];
-    const titleField = getRowTitleField(tableName);
-    const rowTitle = state.notesSourceTitle || (row ? (row[titleField] || row.project_name || row.activity_name || 'Rad') : 'Rad');
-    const tableLabel = state.notesTableLabel || tableName;
-
-    const overlay = document.createElement('div');
-    overlay.className = 'overlay-modal';
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    });
-
-    const dialog = document.createElement('aside');
-    dialog.className = 'side-panel overlay-modal__dialog notes-panel';
-
-    const header = document.createElement('div');
-    header.className = 'side-panel__header';
-
-    const heading = document.createElement('div');
-    heading.className = 'todo-modal__heading';
-    heading.innerHTML = `
-      <p class="side-panel__eyebrow">${tableName}</p>
-      <h2 class="side-panel__title">Notes</h2>
-      <p class="side-panel__text">${rowTitle}</p>
-    `;
-
-    const headerActions = document.createElement('div');
-    headerActions.className = 'side-panel__header-actions';
-
-    const cancelButtonTop = document.createElement('button');
-    cancelButtonTop.type = 'button';
-    cancelButtonTop.className = 'secondary-button';
-    cancelButtonTop.textContent = 'Avbryt';
-    cancelButtonTop.addEventListener('click', () => {
-      resetNotesDraft();
-      render();
-    });
-
-    const saveButtonTop = document.createElement('button');
-    saveButtonTop.type = 'button';
-    saveButtonTop.className = 'secondary-button';
-    saveButtonTop.textContent = state.notesLoading ? 'Sparar...' : 'Spara';
-    saveButtonTop.disabled = state.notesLoading;
-    saveButtonTop.addEventListener('click', async () => {
-      await saveNoteForCurrentRow();
-    });
-
-    const closeButton = document.createElement('button');
-    closeButton.type = 'button';
-    closeButton.className = 'side-panel__close side-panel__close--small';
-    closeButton.textContent = '×';
-    closeButton.setAttribute('aria-label', 'Stäng');
-    closeButton.title = 'Stäng';
-    closeButton.addEventListener('click', closeNotesPanel);
-
-    headerActions.appendChild(cancelButtonTop);
-    headerActions.appendChild(saveButtonTop);
-
-    header.appendChild(heading);
-    header.appendChild(headerActions);
-    header.appendChild(closeButton);
-
-    const body = document.createElement('div');
-    body.className = 'side-panel__body';
-
-    const formCard = document.createElement('section');
-    formCard.className = 'detail-card notes-form';
-
-    const formTitle = document.createElement('h3');
-    formTitle.className = 'detail-card__title';
-    formTitle.textContent = 'Nytt inlägg';
-
-    const titleLabel = document.createElement('label');
-    titleLabel.className = 'detail-field';
-    const titleSpan = document.createElement('span');
-    titleSpan.className = 'detail-field__label';
-    titleSpan.textContent = 'Rubrik';
-    const titleInput = document.createElement('input');
-    titleInput.className = 'detail-field__control notes-form__title';
-    titleInput.type = 'text';
-    titleInput.value = state.notesDraft.title || '';
-    titleInput.addEventListener('input', () => {
-      state.notesDraft.title = titleInput.value;
-    });
-    titleLabel.appendChild(titleSpan);
-    titleLabel.appendChild(titleInput);
-
-    const bodyLabel = document.createElement('label');
-    bodyLabel.className = 'detail-field';
-    const bodySpan = document.createElement('span');
-    bodySpan.className = 'detail-field__label';
-    bodySpan.textContent = 'Text';
-    const bodyInput = document.createElement('textarea');
-    bodyInput.className = 'detail-field__control notes-form__body todo-modal__textarea';
-    bodyInput.rows = 6;
-    bodyInput.value = state.notesDraft.body || '';
-    bodyInput.addEventListener('input', () => {
-      state.notesDraft.body = bodyInput.value;
-    });
-    bodyLabel.appendChild(bodySpan);
-    bodyLabel.appendChild(bodyInput);
-
-    formCard.appendChild(formTitle);
-    formCard.appendChild(titleLabel);
-    formCard.appendChild(bodyLabel);
-
-    const historyCard = document.createElement('section');
-    historyCard.className = 'detail-card notes-history';
-
-    const historyTitle = document.createElement('h3');
-    historyTitle.className = 'detail-card__title';
-    historyTitle.textContent = 'Historik';
-
-    historyCard.appendChild(historyTitle);
-
-    if (state.notesLoading) {
-      const loading = document.createElement('p');
-      loading.className = 'empty-state';
-      loading.textContent = 'Laddar notes...';
-      historyCard.appendChild(loading);
-    } else if (!notes.length) {
-      const empty = document.createElement('p');
-      empty.className = 'empty-state';
-      empty.textContent = 'Inga notes ännu.';
-      historyCard.appendChild(empty);
-    } else {
-      const list = document.createElement('div');
-      list.className = 'notes-history__list';
-
-      notes.forEach((item) => {
-        const card = document.createElement('article');
-        card.className = 'note-item';
-
-        const topRow = document.createElement('div');
-        topRow.className = 'note-item__top';
-
-        const title = document.createElement('div');
-        title.className = 'note-item__title';
-        title.textContent = item.title || 'Utan rubrik';
-
-        const meta = document.createElement('div');
-        meta.className = 'note-item__meta';
-        meta.textContent = formatNoteMeta(item);
-
-        topRow.appendChild(title);
-        topRow.appendChild(meta);
-
-        const text = document.createElement('div');
-        text.className = 'note-item__body';
-        text.textContent = item.body || '';
-
-        card.appendChild(topRow);
-        card.appendChild(text);
-        list.appendChild(card);
-      });
-
-      historyCard.appendChild(list);
-    }
-
-    body.appendChild(formCard);
-    body.appendChild(historyCard);
-
-    dialog.appendChild(header);
-    dialog.appendChild(body);
-    overlay.appendChild(dialog);
-    return overlay;
-  }
-
-
-  function createDetailPanel(tableName, tableConfig, row, options = {}) {
+function createDetailPanel(tableName, tableConfig, row, options = {}) {
     const isDraft = !!options.isDraft;
 
     const overlay = document.createElement('div');
@@ -5868,11 +3766,75 @@ export async function runPlanningApp() {
     startEditing,
   });
 
+  function getActiveMoodTableName() {
+    const active = getActiveConfig?.();
+    const fromActiveConfig = normalizeMoodTableName(active?.[0]);
+    if (isMoodEnabledTable(fromActiveConfig)) return fromActiveConfig;
+
+    const fromState = normalizeMoodTableName(state.activeTableName);
+    if (isMoodEnabledTable(fromState)) return fromState;
+
+    const activeNavText = String(document.querySelector('.table-nav__link.is-active')?.textContent || '').trim();
+    const fromNav = normalizeMoodTableName(activeNavText);
+    if (isMoodEnabledTable(fromNav)) return fromNav;
+
+    const titleText = String(app.querySelector('.view-card__title')?.textContent || '').trim();
+    const fromTitle = normalizeMoodTableName(titleText);
+    if (isMoodEnabledTable(fromTitle)) return fromTitle;
+
+    return '';
+  }
+
+  function bindMoodButton(button, tableName) {
+    if (!button) return button;
+    const normalized = normalizeMoodTableName(tableName || getActiveMoodTableName());
+    button.dataset.action = 'mood';
+    button.setAttribute('onclick', `window.TodoPlanningOpenMood && window.TodoPlanningOpenMood(${JSON.stringify(normalized)}); return false;`);
+    button.onclick = (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      event?.stopImmediatePropagation?.();
+      openMoodPanel(normalized || getActiveMoodTableName());
+      return false;
+    };
+    return button;
+  }
+
+  function createMoodToolbarButton(tableName) {
+    const moodButton = document.createElement('button');
+    moodButton.type = 'button';
+    moodButton.className = 'secondary-button';
+    moodButton.dataset.action = 'mood';
+    moodButton.textContent = 'Mood';
+    return bindMoodButton(moodButton, tableName);
+  }
+
+  function bindMoodToolbarDelegation() {
+    if (document.body?.dataset.moodDelegationBound === 'true') return;
+    if (!document.body) return;
+    document.body.dataset.moodDelegationBound = 'true';
+    document.body.addEventListener('click', (event) => {
+      const target = event.target;
+      const moodElement = target?.closest?.('[data-action="mood"], button, a');
+      if (!moodElement) return;
+      const action = String(moodElement.dataset?.action || '').trim().toLowerCase();
+      const text = String(moodElement.textContent || '').trim().toLocaleLowerCase('sv-SE');
+      if (action !== 'mood' && text !== 'mood') return;
+      const tableName = getActiveMoodTableName();
+      if (!isMoodEnabledTable(tableName)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openMoodPanel(tableName);
+    }, true);
+  }
+
   async function render() {
     const result = await renderController.render();
-    enhanceSortableHeaders();
+    bindMoodToolbarDelegation();
+    mountMoodPanel();
     return result;
   }
+
 
   settingsButton?.addEventListener('click', () => {
     openSettingsMenu();
@@ -5896,6 +3858,7 @@ export async function runPlanningApp() {
     });
   }, 30 * 60 * 1000);
   await loadDocumentLinks();
+  await loadMoodFiles();
   await loadColumnChecklists();
   await loadLinks();
   await loadPlanningUsers();

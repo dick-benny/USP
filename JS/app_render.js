@@ -25,6 +25,7 @@ export function createRenderController(deps) {
     createTopActions,
     createFilterBar,
     createCustomView,
+    enhanceSortableHeaders,
     getAlignment,
     isStatusColumn,
     isOpenColumn,
@@ -43,9 +44,6 @@ export function createRenderController(deps) {
     createEditableDropdownControl,
     createStaticCellContent,
     toggleStatusCell,
-    editStatusDateCell,
-    saveStatusDateCell,
-    saveStatusWeekValue,
     toggleTodoDone,
     startEditing,
   } = deps;
@@ -66,6 +64,45 @@ export function createRenderController(deps) {
   function getCurrentWeekSubtitle() {
     const now = new Date();
     return `V${String(getISOWeekNumber(now)).padStart(2, '0')} - ${formatDateSv(now)}`;
+  }
+
+  function isCustomViewConfig(tableConfig) {
+    return !!tableConfig?.customView;
+  }
+
+  function shouldEnhanceSortableHeaders(tableName, tableConfig, renderedCustomView) {
+    return !renderedCustomView && tableName !== 'PROJEKT' && !isCustomViewConfig(tableConfig);
+  }
+
+  function createCustomViewFallback(tableName, tableConfig) {
+    const shell = document.createElement('section');
+    shell.className = 'view-card';
+
+    const header = document.createElement('div');
+    header.className = 'view-card__header';
+
+    const titleBlock = document.createElement('div');
+    titleBlock.className = 'view-card__title-block';
+
+    const title = document.createElement('h1');
+    title.className = 'view-card__title';
+    title.textContent = tableConfig?.title || tableName;
+
+    const subtitle = document.createElement('p');
+    subtitle.className = 'view-card__subtitle';
+    subtitle.textContent = getCurrentWeekSubtitle();
+
+    titleBlock.appendChild(title);
+    titleBlock.appendChild(subtitle);
+    header.appendChild(titleBlock);
+
+    const body = document.createElement('div');
+    body.className = 'empty-state';
+    body.textContent = 'Specialvyn kunde inte laddas.';
+
+    shell.appendChild(header);
+    shell.appendChild(body);
+    return shell;
   }
 
   function createPlaceholderView(tableName, tableConfig) {
@@ -227,82 +264,11 @@ export function createRenderController(deps) {
           td.appendChild(createStaticCellContent(row, column));
           if (statusToggle) {
             const statusButton = td.querySelector('.status-button');
-            const dateTriggers = Array.from(td.querySelectorAll('.status-week-cell__date-trigger'));
-            const dateInputs = Array.from(td.querySelectorAll('.status-week-cell__date-input'));
-            const weekSelects = Array.from(td.querySelectorAll('.status-week-cell__week-select'));
-
-            const dateHandler = async (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              await editStatusDateCell?.(tableConfig, row, column);
-            };
-
             const toggleHandler = async (event) => {
               event.preventDefault();
               event.stopPropagation();
               await toggleStatusCell(tableConfig, row, column);
             };
-
-
-            if (weekSelects.length) {
-              weekSelects.forEach((weekSelect) => {
-                weekSelect.addEventListener('click', (event) => {
-                  event.stopPropagation();
-                });
-                weekSelect.addEventListener('mousedown', (event) => {
-                  event.stopPropagation();
-                });
-                weekSelect.addEventListener('pointerdown', (event) => {
-                  event.stopPropagation();
-                });
-                weekSelect.addEventListener('change', async (event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  const targetWeekField = weekSelect.dataset.statusWeekField || null;
-                  await saveStatusWeekValue?.(tableConfig, row, column, weekSelect.value, targetWeekField);
-                });
-              });
-            }
-
-            if (dateInputs.length) {
-              dateInputs.forEach((dateInput) => {
-                dateInput.addEventListener('click', (event) => {
-                  event.stopPropagation();
-                });
-                dateInput.addEventListener('mousedown', (event) => {
-                  event.stopPropagation();
-                });
-                dateInput.addEventListener('pointerdown', (event) => {
-                  event.stopPropagation();
-                });
-                dateInput.addEventListener('change', async (event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  const targetDateField = dateInput.dataset.statusDateField || null;
-                  await saveStatusDateCell?.(tableConfig, row, column, dateInput.value, targetDateField);
-                });
-              });
-            } else if (dateTriggers.length) {
-              dateTriggers.forEach((dateTrigger) => {
-                dateTrigger.addEventListener('click', dateHandler);
-                dateTrigger.addEventListener('keydown', async (event) => {
-                  if (event.key !== 'Enter' && event.key !== ' ') return;
-                  await dateHandler(event);
-                });
-              });
-            }
-
-            dateTriggers.forEach((dateTrigger) => {
-              dateTrigger.addEventListener('click', (event) => {
-                event.stopPropagation();
-              });
-              dateTrigger.addEventListener('mousedown', (event) => {
-                event.stopPropagation();
-              });
-              dateTrigger.addEventListener('pointerdown', (event) => {
-                event.stopPropagation();
-              });
-            });
 
             if (statusButton) {
               statusButton.addEventListener('click', toggleHandler);
@@ -347,26 +313,39 @@ export function createRenderController(deps) {
     if (!active) return;
 
     const [tableName, tableConfig] = active;
-    if (settingsButton && !settingsButton.dataset.boundSettings) {
-    settingsButton.dataset.boundSettings = 'true';
-    settingsButton.addEventListener('click', openSettingsMenu);
-  }
 
-  ensureLinksButton();
+    if (settingsButton && !settingsButton.dataset.boundSettings) {
+      settingsButton.dataset.boundSettings = 'true';
+      settingsButton.addEventListener('click', openSettingsMenu);
+    }
+
+    ensureLinksButton();
     ensureMessagesButton(userArea, settingsButton);
     createNav();
     app.innerHTML = '';
 
-    if (tableConfig.placeholder) {
-      app.appendChild(createPlaceholderView(tableName, tableConfig));
-      return;
+    let mainView = null;
+    let renderedCustomView = false;
+
+    if (isCustomViewConfig(tableConfig)) {
+      renderedCustomView = true;
+      mainView = typeof createCustomView === 'function'
+        ? createCustomView(tableName, tableConfig)
+        : null;
+
+      if (!mainView) {
+        mainView = createCustomViewFallback(tableName, tableConfig);
+      }
+    } else if (tableConfig.placeholder) {
+      mainView = createPlaceholderView(tableName, tableConfig);
+    } else {
+      mainView = createTable(tableName, tableConfig);
     }
 
-    const customView = typeof createCustomView === 'function' ? createCustomView(tableName, tableConfig) : null;
-    if (customView) {
-      app.appendChild(customView);
-    } else {
-      app.appendChild(createTable(tableName, tableConfig));
+    app.appendChild(mainView);
+
+    if (typeof enhanceSortableHeaders === 'function' && shouldEnhanceSortableHeaders(tableName, tableConfig, renderedCustomView)) {
+      enhanceSortableHeaders();
     }
 
     const draftRow = getCurrentDraftRow();

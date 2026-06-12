@@ -1634,9 +1634,16 @@ body {
 }
 
 /* =========================================================
-   TODO MODAL – REFINED UI
-   Additive block only — keeps the original app styling intact
+   TODO + NOTES UI
+   Consolidated modal/list styling for row TODOs and notes.
    ========================================================= */
+
+:root {
+  --space-xs: 6px;
+  --space-sm: 10px;
+  --space-md: 14px;
+  --space-lg: 20px;
+}
 
 .side-panel {
   position: relative;
@@ -1657,7 +1664,7 @@ body {
 .side-panel__header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm);
   margin-left: auto;
   padding-right: 28px;
 }
@@ -1678,8 +1685,8 @@ body {
   justify-content: center;
   font-size: 11px;
   line-height: 1;
-  border-radius: 999px;
   border: none;
+  border-radius: 999px;
   background: transparent;
   color: var(--muted, #6b7280);
   cursor: pointer;
@@ -1687,35 +1694,55 @@ body {
 }
 
 .side-panel__close--small:hover {
-  background: rgba(0, 0, 0, 0.07);
+  background: rgba(0, 0, 0, 0.08);
   color: var(--text, #1f2937);
 }
 
+.notes-form {
+  margin-bottom: var(--space-lg);
+}
+
+.notes-form .detail-field {
+  margin-top: var(--space-md);
+}
+
+.notes-form .detail-field:first-of-type {
+  margin-top: 0;
+}
+
 .todo-modal__textarea {
-  min-height: 148px;
+  min-height: 150px;
   resize: vertical;
 }
 
-.todo-item {
-  padding: 12px 14px;
-  border: 1px solid rgba(17, 24, 39, 0.08);
+.todo-item,
+.note-item {
+  padding: var(--space-md);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.58);
+  background: rgba(255, 255, 255, 0.6);
   box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+}
+
+.todo-item + .todo-item,
+.note-item + .note-item {
+  margin-top: var(--space-sm);
 }
 
 .todo-item.is-done {
   opacity: 0.66;
 }
 
-.todo-item__top {
+.todo-item__top,
+.note-item__top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-sm);
 }
 
-.todo-item__category {
+.todo-item__category,
+.note-item__title {
   font-size: 13px;
   font-weight: 700;
   color: var(--text, #1f2937);
@@ -1730,7 +1757,8 @@ body {
   flex-wrap: wrap;
 }
 
-.todo-item__meta {
+.todo-item__meta,
+.note-item__meta {
   font-size: 12px;
   color: var(--muted, #6b7280);
   white-space: nowrap;
@@ -1743,17 +1771,22 @@ body {
   flex-wrap: wrap;
 }
 
-.todo-item__body {
-  margin-top: 6px;
+.todo-item__body,
+.note-item__body {
+  margin-top: var(--space-xs);
   font-size: 14px;
   line-height: 1.5;
   white-space: pre-wrap;
   color: var(--text, #1f2937);
 }
 
+.notes-history__list {
+  margin-top: var(--space-md);
+}
+
 @media (max-width: 920px) {
   .side-panel__header-actions {
-    gap: 6px;
+    gap: var(--space-xs);
     padding-right: 24px;
   }
 
@@ -1761,7 +1794,8 @@ body {
     min-width: 84px;
   }
 
-  .todo-item__top {
+  .todo-item__top,
+  .note-item__top {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -1769,182 +1803,6 @@ body {
   .todo-item__right {
     width: 100%;
     justify-content: flex-start;
-  }
-}
-
-/* =========================================================
-   NOTES MODAL – REFINED UI
-   Additive block only — keeps the original app styling intact
-   ========================================================= */
-
-.note-item {
-  padding: 12px 14px;
-  border: 1px solid rgba(17, 24, 39, 0.08);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.58);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
-}
-
-.note-item + .note-item {
-  margin-top: 10px;
-}
-
-.note-item__top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.note-item__title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text, #1f2937);
-  letter-spacing: 0.01em;
-}
-
-.note-item__meta {
-  font-size: 12px;
-  color: var(--muted, #6b7280);
-  white-space: nowrap;
-}
-
-.note-item__body {
-  margin-top: 6px;
-  font-size: 14px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  color: var(--text, #1f2937);
-}
-
-@media (max-width: 920px) {
-  .note-item__top {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-/* =========================================================
-   TODO + NOTES – SAFE UI EXTENSION (NON-DESTRUCTIVE)
-   ========================================================= */
-
-/* ===== SPACING SYSTEM ===== */
-:root {
-  --space-xs: 6px;
-  --space-sm: 10px;
-  --space-md: 14px;
-  --space-lg: 20px;
-}
-
-/* ===== PANEL BASE ===== */
-.side-panel {
-  position: relative;
-}
-
-/* ===== HEADER ===== */
-.side-panel__header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  margin-left: auto;
-  padding-right: 28px;
-}
-
-/* Close button (top right corner) */
-.side-panel__close--small {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.side-panel__close--small:hover {
-  background: rgba(0,0,0,0.08);
-}
-
-/* ===== FORM ===== */
-.notes-form {
-  margin-bottom: var(--space-lg);
-}
-
-/* Consistent spacing between fields */
-.notes-form .detail-field {
-  margin-top: var(--space-md);
-}
-
-.notes-form .detail-field:first-of-type {
-  margin-top: 0;
-}
-
-/* Larger textarea */
-.todo-modal__textarea {
-  min-height: 150px;
-  resize: vertical;
-}
-
-/* ===== TODO LIST ===== */
-.todo-item {
-  padding: var(--space-md);
-  border: 1px solid rgba(0,0,0,0.08);
-  border-radius: 12px;
-  background: rgba(255,255,255,0.6);
-}
-
-.todo-item + .todo-item {
-  margin-top: var(--space-sm);
-}
-
-.todo-item__top {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-sm);
-}
-
-.todo-item__body {
-  margin-top: var(--space-xs);
-}
-
-/* ===== NOTES LIST ===== */
-.note-item {
-  padding: var(--space-md);
-  border: 1px solid rgba(0,0,0,0.08);
-  border-radius: 12px;
-  background: rgba(255,255,255,0.6);
-}
-
-.note-item + .note-item {
-  margin-top: var(--space-sm);
-}
-
-.note-item__top {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-sm);
-}
-
-.note-item__body {
-  margin-top: var(--space-xs);
-}
-
-/* ===== LIST CONTAINER ===== */
-.notes-history__list {
-  margin-top: var(--space-md);
-}
-
-/* ===== RESPONSIVE ===== */
-@media (max-width: 920px) {
-  .todo-item__top,
-  .note-item__top {
-    flex-direction: column;
   }
 }
 
