@@ -553,7 +553,7 @@ export function createSettingsController({
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=212');
+          const { signOutUser } = await import('./auth.js?v=213');
           await signOutUser();
         },
         disabled: false,

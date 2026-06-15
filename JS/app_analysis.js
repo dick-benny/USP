@@ -14,12 +14,20 @@
   };
 
   const SORT_COLUMNS = ['productTitle', 'sku', 'quantity', 'qtyPerMo', 'unitPrice', 'totalAmount'];
+  const TAG_FILTERS = [
+    { value: 'rugs', label: 'Rugs', tags: ['rugs'] },
+    { value: 'tapestry', label: 'Tapestry', tags: ['tapestry'] },
+    { value: 'colonnade', label: 'Colonnade', tags: ['colonnades'] },
+    { value: 'coverlet', label: 'Coverlet', tags: ['covers'] },
+    { value: 'custom', label: 'Custom', tags: ['custom'] },
+    { value: 'soft-accessories', label: 'Soft Accessories', tags: ['soft accessories'] },
+  ];
 
   function createDefaultState() {
     return {
       envChoice: 'all',
       months: 1,
-      collectionFilter: 'all',
+      tagFilter: 'all',
       search: '',
       data: null,
       loading: false,
@@ -62,25 +70,30 @@
     return `${String(item?.productTitle || '')} ${String(item?.sku || '')}`.toLowerCase();
   }
 
-  function getCollectionOptions(data) {
-    const set = new Set();
-    (data?.items || []).forEach((item) => {
-      (item?.collections || []).forEach((collection) => {
-        const title = String(collection?.title || '').trim();
-        if (title) set.add(title);
-      });
-    });
-    return Array.from(set).sort((left, right) => left.localeCompare(right, 'sv'));
+  function normalizeTag(value) {
+    return String(value || '').trim().toLowerCase();
   }
 
-  function getFilteredItems(data, collectionFilter, search) {
+  function getItemTags(item) {
+    if (Array.isArray(item?.tags)) return item.tags.map(normalizeTag).filter(Boolean);
+    return String(item?.tags || '')
+      .split(',')
+      .map(normalizeTag)
+      .filter(Boolean);
+  }
+
+  function getTagFilterConfig(tagFilter) {
+    return TAG_FILTERS.find((item) => item.value === tagFilter) || null;
+  }
+
+  function getFilteredItems(data, tagFilter, search) {
     const needle = String(search || '').trim().toLowerCase();
     return (data?.items || []).filter((item) => {
-      if (collectionFilter !== 'all') {
-        const hasCollection = (item?.collections || []).some(
-          (collection) => String(collection?.title || '').trim() === collectionFilter
-        );
-        if (!hasCollection) return false;
+      if (tagFilter !== 'all') {
+        const filterConfig = getTagFilterConfig(tagFilter);
+        const itemTags = getItemTags(item);
+        const hasTag = (filterConfig?.tags || []).some((tag) => itemTags.includes(normalizeTag(tag)));
+        if (!hasTag) return false;
       }
 
       if (!needle) return true;
@@ -194,11 +207,11 @@
     monthsField.appendChild(monthsLabel);
     monthsField.appendChild(monthsSelect);
 
-    const collectionField = createElement('label', 'analysis-field');
-    const collectionLabel = createElement('span', 'analysis-field__label', 'Kollektion');
-    const collectionSelect = createElement('select', 'analysis-field__control');
-    collectionField.appendChild(collectionLabel);
-    collectionField.appendChild(collectionSelect);
+    const tagField = createElement('label', 'analysis-field');
+    const tagLabel = createElement('span', 'analysis-field__label', 'Produktgrupp');
+    const tagSelect = createElement('select', 'analysis-field__control');
+    tagField.appendChild(tagLabel);
+    tagField.appendChild(tagSelect);
 
     const searchField = createElement('label', 'analysis-field analysis-field--wide');
     const searchLabel = createElement('span', 'analysis-field__label', 'Sök');
@@ -211,7 +224,7 @@
 
     filters.appendChild(envField);
     filters.appendChild(monthsField);
-    filters.appendChild(collectionField);
+    filters.appendChild(tagField);
     filters.appendChild(searchField);
 
     const content = createElement('div', 'analysis-content');
@@ -249,25 +262,29 @@
       return `${localState.envChoice}:${localState.months}`;
     }
 
-    function fillCollectionOptions() {
-      const options = getCollectionOptions(localState.data);
-      const nextValue = options.includes(localState.collectionFilter) ? localState.collectionFilter : 'all';
-      localState.collectionFilter = nextValue;
+    function fillTagOptions() {
+      if (!localState.tagFilter) {
+        localState.tagFilter = localState.collectionFilter || 'all';
+      }
 
-      collectionSelect.innerHTML = '';
+      if (localState.tagFilter !== 'all' && !getTagFilterConfig(localState.tagFilter)) {
+        localState.tagFilter = 'all';
+      }
+
+      tagSelect.innerHTML = '';
       const allOption = document.createElement('option');
       allOption.value = 'all';
       allOption.textContent = 'All';
-      collectionSelect.appendChild(allOption);
+      tagSelect.appendChild(allOption);
 
-      options.forEach((title) => {
+      TAG_FILTERS.forEach((filter) => {
         const option = document.createElement('option');
-        option.value = title;
-        option.textContent = title;
-        collectionSelect.appendChild(option);
+        option.value = filter.value;
+        option.textContent = filter.label;
+        tagSelect.appendChild(option);
       });
 
-      collectionSelect.value = localState.collectionFilter;
+      tagSelect.value = localState.tagFilter;
     }
 
     function applySort(column) {
@@ -383,7 +400,7 @@
       shell.classList.toggle('is-loading', isLoading);
       loadingOverlay.classList.toggle('is-visible', isLoading);
 
-      [envSelect, monthsSelect, collectionSelect, searchInput].forEach((control) => {
+      [envSelect, monthsSelect, tagSelect, searchInput].forEach((control) => {
         control.disabled = isLoading;
       });
     }
@@ -392,9 +409,9 @@
       envSelect.value = localState.envChoice;
       monthsSelect.value = String(localState.months);
       searchInput.value = localState.search;
-      fillCollectionOptions();
+      fillTagOptions();
 
-      const filteredItems = getFilteredItems(localState.data, localState.collectionFilter, localState.search);
+      const filteredItems = getFilteredItems(localState.data, localState.tagFilter, localState.search);
       const sortedItems = getSortedItems(filteredItems, localState.sortCol, localState.sortDir, localState.months);
 
       renderCards(filteredItems);
@@ -493,8 +510,8 @@
       void loadData();
     });
 
-    collectionSelect.addEventListener('change', () => {
-      localState.collectionFilter = collectionSelect.value;
+    tagSelect.addEventListener('change', () => {
+      localState.tagFilter = tagSelect.value;
       renderView();
     });
 
