@@ -8,22 +8,23 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=211';
-import { createTodoController } from './app_todo.js?v=211';
-import { createRowTodoController } from './app_row_todo.js?v=211';
-import { createNotesController } from './app_notes.js?v=211';
-import { createSettingsController } from './app_settings.js?v=211';
-import { createMessagesController } from './app_messages.js?v=211';
-import { createRenderController } from './app_render.js?v=211';
-import { createDataController } from './app_data.js?v=211';
-import { createActionController } from './app_actions.js?v=211';
-import { createFilterController } from './app_filters.js?v=211';
-import { createColumnToolsController } from './app_column_tools.js?v=211';
-import { createExcelPlanController } from './app_excel_plan.js?v=211';
-import { createProjectsController } from './app_projects.js?v=211';
-import { createWorkflowController } from './app_workflows.js?v=211';
-import { createArchiveController } from './app_archive.js?v=211';
-import './app_statistics.js?v=211';
+} from './app_constants.js?v=212';
+import { createTodoController } from './app_todo.js?v=212';
+import { createRowTodoController } from './app_row_todo.js?v=212';
+import { createNotesController } from './app_notes.js?v=212';
+import { createSettingsController } from './app_settings.js?v=212';
+import { createMessagesController } from './app_messages.js?v=212';
+import { createRenderController } from './app_render.js?v=212';
+import { createDataController } from './app_data.js?v=212';
+import { createActionController } from './app_actions.js?v=212';
+import { createFilterController } from './app_filters.js?v=212';
+import { createColumnToolsController } from './app_column_tools.js?v=212';
+import { createExcelPlanController } from './app_excel_plan.js?v=212';
+import { createProjectsController } from './app_projects.js?v=212';
+import { createWorkflowController } from './app_workflows.js?v=212';
+import { createArchiveController } from './app_archive.js?v=212';
+import './app_statistics.js?v=212';
+import './app_analysis.js?v=212';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -3536,16 +3537,74 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     const shell = document.createElement('section');
     shell.className = 'statistics-view';
 
-    const renderStatistics = window.USP?.Statistics?.render || window.renderStatisticsView;
-    if (typeof renderStatistics !== 'function') {
-      const message = document.createElement('p');
-      message.className = 'empty-state';
-      message.textContent = 'Kunde inte ladda statistikvyn.';
-      shell.appendChild(message);
-      return shell;
+    const tabs = document.createElement('div');
+    tabs.className = 'statistics-subnav';
+
+    const content = document.createElement('div');
+    content.className = 'statistics-content';
+
+    const fsgButton = document.createElement('button');
+    fsgButton.type = 'button';
+    fsgButton.className = 'secondary-button statistics-subnav__button';
+    fsgButton.textContent = 'FSG';
+
+    const analysisButton = document.createElement('button');
+    analysisButton.type = 'button';
+    analysisButton.className = 'secondary-button statistics-subnav__button';
+    analysisButton.textContent = 'Analys';
+
+    function applyActiveButton() {
+      const activeKey = state.statisticsSubView === 'analysis' ? 'analysis' : 'fsg';
+      fsgButton.classList.toggle('is-active', activeKey === 'fsg');
+      analysisButton.classList.toggle('is-active', activeKey === 'analysis');
     }
 
-    void renderStatistics(state, shell);
+    function renderStatisticsSubview() {
+      content.innerHTML = '';
+
+      const isAnalysis = state.statisticsSubView === 'analysis';
+      const renderer = isAnalysis
+        ? (window.USP?.Analysis?.render || window.renderAnalysisView)
+        : (window.USP?.Statistics?.render || window.renderStatisticsView);
+
+      if (typeof renderer !== 'function') {
+        const message = document.createElement('p');
+        message.className = 'empty-state';
+        message.textContent = isAnalysis
+          ? 'Kunde inte ladda analysvyn.'
+          : 'Kunde inte ladda statistikvyn.';
+        content.appendChild(message);
+        return;
+      }
+
+      void renderer(state, content);
+    }
+
+    fsgButton.addEventListener('click', () => {
+      if (state.statisticsSubView === 'fsg') return;
+      state.statisticsSubView = 'fsg';
+      applyActiveButton();
+      renderStatisticsSubview();
+    });
+
+    analysisButton.addEventListener('click', () => {
+      if (state.statisticsSubView === 'analysis') return;
+      state.statisticsSubView = 'analysis';
+      applyActiveButton();
+      renderStatisticsSubview();
+    });
+
+    tabs.appendChild(fsgButton);
+    tabs.appendChild(analysisButton);
+    shell.appendChild(tabs);
+    shell.appendChild(content);
+
+    if (state.statisticsSubView !== 'analysis') {
+      state.statisticsSubView = 'fsg';
+    }
+    applyActiveButton();
+    renderStatisticsSubview();
+
     return shell;
   }
 

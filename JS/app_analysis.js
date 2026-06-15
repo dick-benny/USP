@@ -127,6 +127,16 @@
     };
   }
 
+  function isSalesAnalysisItem(item) {
+    if (!item || typeof item !== 'object') return false;
+    return (
+      item.productTitle !== undefined ||
+      item.sku !== undefined ||
+      item.quantity !== undefined ||
+      item.totalAmount !== undefined
+    );
+  }
+
   function createElement(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -431,13 +441,24 @@
         }
 
         const json = await response.json();
+        const items = Array.isArray(json?.items) ? json.items : null;
+
+        if (!items) {
+          throw new Error('Analys-API:t saknar produktlista från /totalSales.');
+        }
+
+        if (items.length && !items.some(isSalesAnalysisItem)) {
+          throw new Error('Analysdata saknar produktfält från /totalSales.');
+        }
+
         localState.data = {
           success: !!json?.success,
           env: Array.isArray(json?.env) ? json.env : [],
           months: Number(json?.months || localState.months),
           totalOrderAmount: Number(json?.totalOrderAmount || 0),
           scannedOrders: Number(json?.scannedOrders || 0),
-          items: Array.isArray(json?.items) ? json.items : [],
+          scannedLineItems: Number(json?.scannedLineItems || 0),
+          items,
         };
       } catch (error) {
         if (error?.name === 'AbortError') {
