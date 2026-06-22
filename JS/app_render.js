@@ -44,6 +44,7 @@ export function createRenderController(deps) {
     createEditableDropdownControl,
     createStaticCellContent,
     toggleStatusCell,
+    saveStatusDateCell,
     toggleTodoDone,
     startEditing,
   } = deps;
@@ -264,7 +265,41 @@ export function createRenderController(deps) {
           td.appendChild(createStaticCellContent(row, column));
           if (statusToggle) {
             const statusButton = td.querySelector('.status-button');
+            const dateInputs = Array.from(td.querySelectorAll('[data-status-date-field]'));
+
+            dateInputs.forEach((dateInput) => {
+              const stopStatusToggle = (event) => {
+                event.stopPropagation();
+              };
+
+              dateInput.addEventListener('pointerdown', stopStatusToggle);
+              dateInput.addEventListener('mousedown', stopStatusToggle);
+              dateInput.addEventListener('click', (event) => {
+                event.stopPropagation();
+                if (typeof dateInput.showPicker === 'function') {
+                  try {
+                    dateInput.showPicker();
+                  } catch (err) {
+                    // Native picker may already be opening, or the browser may block it.
+                  }
+                }
+              });
+
+              dateInput.addEventListener('change', async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const dateField = String(dateInput.dataset.statusDateField || '').trim();
+                if (!dateField || typeof saveStatusDateCell !== 'function') return;
+                await saveStatusDateCell(tableConfig, row, column, dateInput.value, dateField);
+              });
+            });
+
             const toggleHandler = async (event) => {
+              if (event.target?.closest?.('[data-status-date-field], .status-week-cell__date-trigger')) {
+                event.stopPropagation();
+                return;
+              }
+
               event.preventDefault();
               event.stopPropagation();
               await toggleStatusCell(tableConfig, row, column);

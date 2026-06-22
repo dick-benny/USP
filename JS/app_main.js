@@ -8,23 +8,22 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=213';
-import { createTodoController } from './app_todo.js?v=213';
-import { createRowTodoController } from './app_row_todo.js?v=213';
-import { createNotesController } from './app_notes.js?v=213';
-import { createSettingsController } from './app_settings.js?v=213';
-import { createMessagesController } from './app_messages.js?v=213';
-import { createRenderController } from './app_render.js?v=213';
-import { createDataController } from './app_data.js?v=213';
-import { createActionController } from './app_actions.js?v=213';
-import { createFilterController } from './app_filters.js?v=213';
-import { createColumnToolsController } from './app_column_tools.js?v=213';
-import { createExcelPlanController } from './app_excel_plan.js?v=213';
-import { createProjectsController } from './app_projects.js?v=213';
-import { createWorkflowController } from './app_workflows.js?v=213';
-import { createArchiveController } from './app_archive.js?v=213';
-import './app_statistics.js?v=213';
-import './app_analysis.js?v=213';
+} from './app_constants.js?v=211';
+import { createTodoController } from './app_todo.js?v=211';
+import { createRowTodoController } from './app_row_todo.js?v=211';
+import { createNotesController } from './app_notes.js?v=211';
+import { createSettingsController } from './app_settings.js?v=211';
+import { createMessagesController } from './app_messages.js?v=211';
+import { createRenderController } from './app_render.js?v=215';
+import { createDataController } from './app_data.js?v=211';
+import { createActionController } from './app_actions.js?v=211';
+import { createFilterController } from './app_filters.js?v=216';
+import { createColumnToolsController } from './app_column_tools.js?v=211';
+import { createExcelPlanController } from './app_excel_plan.js?v=211';
+import { createProjectsController } from './app_projects.js?v=211';
+import { createWorkflowController } from './app_workflows.js?v=211';
+import { createArchiveController } from './app_archive.js?v=211';
+import './app_statistics.js?v=211';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -2346,8 +2345,8 @@ export async function runPlanningApp() {
     render();
   }
 
-  async function editStatusDateCell(tableConfig, row, column) {
-    const dateField = String(column?.renderFromField || '').trim();
+  async function editStatusDateCell(tableConfig, row, column, targetDateField = null) {
+    const dateField = String(targetDateField || column?.renderFromField || '').trim();
     if (!dateField || !row?.id) return;
 
     const input = document.createElement('input');
@@ -2536,11 +2535,13 @@ export async function runPlanningApp() {
       wrap.className = isRange ? 'status-week-cell status-week-cell--range' : 'status-week-cell';
 
       const createDateTrigger = (dateValue, dateField, sideLabel) => {
-        const trigger = document.createElement('span');
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
         trigger.className = dateValue
           ? 'status-week-cell__date-trigger'
           : 'status-week-cell__date-trigger status-week-cell__date-trigger--empty';
         if (isRange) trigger.classList.add(`status-week-cell__date-trigger--${sideLabel}`);
+        trigger.dataset.statusDateField = dateField;
         trigger.title = dateValue ? `Ändra ${sideLabel === 'from' ? 'från' : 'till'}-datum` : `Välj ${sideLabel === 'from' ? 'från' : 'till'}-datum`;
         trigger.setAttribute('aria-label', `${column.name}: ${dateValue ? 'ändra' : 'välj'} ${sideLabel === 'from' ? 'från' : 'till'}-datum`);
 
@@ -2548,16 +2549,7 @@ export async function runPlanningApp() {
         label.className = 'status-week-cell__date-label';
         label.textContent = formatWeekFromDateValue(dateValue) || '📅';
 
-        const dateInput = document.createElement('input');
-        dateInput.type = 'date';
-        dateInput.className = 'status-week-cell__date-input';
-        dateInput.value = getDateInputValue(dateValue);
-        dateInput.dataset.statusDateField = dateField;
-        dateInput.setAttribute('aria-label', `${column.name}: ${dateValue ? 'ändra' : 'välj'} ${sideLabel === 'from' ? 'från' : 'till'}-datum`);
-        dateInput.title = dateValue ? 'Ändra datum' : 'Välj datum';
-
         trigger.appendChild(label);
-        trigger.appendChild(dateInput);
         return trigger;
       };
 
@@ -3537,74 +3529,16 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     const shell = document.createElement('section');
     shell.className = 'statistics-view';
 
-    const tabs = document.createElement('div');
-    tabs.className = 'statistics-subnav';
-
-    const content = document.createElement('div');
-    content.className = 'statistics-content';
-
-    const fsgButton = document.createElement('button');
-    fsgButton.type = 'button';
-    fsgButton.className = 'secondary-button statistics-subnav__button';
-    fsgButton.textContent = 'FSG';
-
-    const analysisButton = document.createElement('button');
-    analysisButton.type = 'button';
-    analysisButton.className = 'secondary-button statistics-subnav__button';
-    analysisButton.textContent = 'Analys';
-
-    function applyActiveButton() {
-      const activeKey = state.statisticsSubView === 'analysis' ? 'analysis' : 'fsg';
-      fsgButton.classList.toggle('is-active', activeKey === 'fsg');
-      analysisButton.classList.toggle('is-active', activeKey === 'analysis');
+    const renderStatistics = window.USP?.Statistics?.render || window.renderStatisticsView;
+    if (typeof renderStatistics !== 'function') {
+      const message = document.createElement('p');
+      message.className = 'empty-state';
+      message.textContent = 'Kunde inte ladda statistikvyn.';
+      shell.appendChild(message);
+      return shell;
     }
 
-    function renderStatisticsSubview() {
-      content.innerHTML = '';
-
-      const isAnalysis = state.statisticsSubView === 'analysis';
-      const renderer = isAnalysis
-        ? (window.USP?.Analysis?.render || window.renderAnalysisView)
-        : (window.USP?.Statistics?.render || window.renderStatisticsView);
-
-      if (typeof renderer !== 'function') {
-        const message = document.createElement('p');
-        message.className = 'empty-state';
-        message.textContent = isAnalysis
-          ? 'Kunde inte ladda analysvyn.'
-          : 'Kunde inte ladda statistikvyn.';
-        content.appendChild(message);
-        return;
-      }
-
-      void renderer(state, content);
-    }
-
-    fsgButton.addEventListener('click', () => {
-      if (state.statisticsSubView === 'fsg') return;
-      state.statisticsSubView = 'fsg';
-      applyActiveButton();
-      renderStatisticsSubview();
-    });
-
-    analysisButton.addEventListener('click', () => {
-      if (state.statisticsSubView === 'analysis') return;
-      state.statisticsSubView = 'analysis';
-      applyActiveButton();
-      renderStatisticsSubview();
-    });
-
-    tabs.appendChild(fsgButton);
-    tabs.appendChild(analysisButton);
-    shell.appendChild(tabs);
-    shell.appendChild(content);
-
-    if (state.statisticsSubView !== 'analysis') {
-      state.statisticsSubView = 'fsg';
-    }
-    applyActiveButton();
-    renderStatisticsSubview();
-
+    void renderStatistics(state, shell);
     return shell;
   }
 

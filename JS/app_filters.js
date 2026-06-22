@@ -6,11 +6,19 @@ function getDropdownOptionLabel(value) {
   return String(value ?? '').toLocaleUpperCase('sv-SE');
 }
 
-function createSelectOption(value, selectedValue) {
+function isAllFilterValue(value) {
+  return value === 'Alla' || value === 'All';
+}
+
+function getFilterFallback(options) {
+  return Array.isArray(options) && options.includes('All') ? 'All' : 'Alla';
+}
+
+function createSelectOption(value, selectedValue, options) {
   const opt = document.createElement('option');
   opt.value = value;
   opt.textContent = getDropdownOptionLabel(value);
-  if ((selectedValue || 'Alla') === value) opt.selected = true;
+  if ((selectedValue || getFilterFallback(options)) === value) opt.selected = true;
   return opt;
 }
 
@@ -26,7 +34,7 @@ function createFilterSelect({ labelText, value, options, onChange }) {
   select.className = 'filter-item__control';
 
   options.forEach((option) => {
-    select.appendChild(createSelectOption(option, value));
+    select.appendChild(createSelectOption(option, value, options));
   });
 
   select.addEventListener('change', () => {
@@ -71,7 +79,7 @@ export function createFilterController({
       getFilterableColumns(tableConfig).forEach((column) => {
         const dropdown = APP_CONFIG.dropdowns?.[column.type];
         if (dropdown?.filterEnabled) {
-          filters[column.field] = column.defaultFilter || tableConfig.defaultFilters?.[column.field] || 'Alla';
+          filters[column.field] = column.defaultFilter || tableConfig.defaultFilters?.[column.field] || getFilterFallback(dropdown.filterOptions);
         }
       });
 
@@ -116,7 +124,7 @@ export function createFilterController({
 
       wrapper.appendChild(createFilterSelect({
         labelText: column.name,
-        value: filters[column.field] || 'Alla',
+        value: filters[column.field] || getFilterFallback(dropdown.filterOptions),
         options: dropdown.filterOptions,
         onChange: (nextValue) => {
           filters[column.field] = nextValue;
@@ -185,11 +193,11 @@ export function createFilterController({
   function matchesFilters(tableName, row, filters) {
     return Object.entries(filters).every(([field, value]) => {
       if (field === '__projekt_product') {
-        if (!value || value === 'Alla') return true;
+        if (!value || isAllFilterValue(value)) return true;
         return getProjektProductFromName(row.projektnamn) === value;
       }
 
-      if (!value || value === 'Alla') return true;
+      if (!value || isAllFilterValue(value)) return true;
       return String(row[field] ?? '') === value;
     });
   }

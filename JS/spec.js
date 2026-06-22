@@ -30,6 +30,7 @@ window.PlanningSpec = (function () {
       dropdown_product_kategori: { options: ["matta", "colonnade", "tapestry", "SoftAss", "packaging"], filterEnabled: true, filterOptions: ["Alla", "matta", "colonnade", "tapestry", "SoftAss", "packaging"] },
       dropdown_dev_kategori: { options: ["matta", "colonnade", "tapestry", "softAss", "packaging"], filterEnabled: true, filterOptions: ["Alla", "matta", "colonnade", "tapestry", "softAss", "packaging"] },
       dropdown_dev_syfte: { options: ["Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"] },
+      dropdown_design_collection: { options: ["27-spring", "27-fall", "28-spring", "28-fall"], filterEnabled: true, filterOptions: ["All", "27-spring", "27-fall", "28-spring", "28-fall"] },
       dropdown_pre_dev_kategori: { options: ["Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"] },
       dropdown_todo_kategori: { options: ["Privat", "Todo Planning", "Info", "Shopify", "Butler"], filterEnabled: true, filterOptions: ["Alla", "Privat", "Todo Planning", "Info", "Shopify", "Butler"] },
       dropdown_saljintro_kvartal: { options: buildRollingQuarterOptions(), filterEnabled: false },
@@ -51,13 +52,13 @@ window.PlanningSpec = (function () {
         { name: "Kategori", field: "kategori", type: "dropdown_dev_kategori", width: "14ch", hiddenInTable: true, mods: { align: "left", displayMode: "select", readonly: false } },
         { name: "Supplier", field: "syfte", type: "dropdown_dev_syfte", width: "16ch", mods: { align: "left", displayMode: "select", readonly: false } },
         { name: "Beskrivning", field: "beskrivning", type: "text", width: "34ch", mods: { align: "left", displayMode: "textarea", readonly: false } },
-        { name: "Sample", field: "sample_test", type: "status", width: STATUS_WIDTH, renderFromField: "sample_test_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } },
+        { name: "Collection", field: "collection", type: "dropdown_design_collection", width: "13ch", mods: { align: "left", displayMode: "select", readonly: false }, default: "27-spring" },
+        { name: "Prissättning", field: "prissattning", type: "status", width: STATUS_WIDTH, statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } },
         { name: "Sample datum", field: "sample_test_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "Sample slut", field: "sample_test_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "Fullsize", field: "stort_sample", type: "status", width: STATUS_WIDTH, renderFromField: "stort_sample_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } },
         { name: "Fullsize slut", field: "stort_sample_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
-        { name: "Q-test", field: "q_test", type: "status", width: STATUS_WIDTH, statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } },
-        { name: "Prissättning", field: "prissattning", type: "status", width: STATUS_WIDTH, statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } }
+        { name: "Q-test", field: "q_test", type: "status", width: STATUS_WIDTH, statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false } }
       ]},
       "SÄLJINTRO": { id: "saljintro", dbTable: "saljintro", title: "SÄLJINTRO", columns: [
         { name: "Produkt", field: "produkt", type: "text", key: true, width: PRIMARY_TITLE_WIDTH, mods: { align: "left", displayMode: "text", readonly: false } },
@@ -135,7 +136,7 @@ window.PlanningSpec = (function () {
 
   const SAMPLE_ROWS = {
     "PRE DEV": [{ utv_ide: "", kategori: "Anisa", beskrivning: "", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", utvardering: "", is_done: false }],
-    "UTVECKLING": [{ produktide: "", kategori: "matta", syfte: "Anisa", beskrivning: "", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", stort_sample: "gray", stort_sample_slut_datum: "", q_test: "gray", prissattning: "gray", is_done: false }],
+    "UTVECKLING": [{ produktide: "", kategori: "matta", syfte: "Anisa", beskrivning: "", collection: "27-spring", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", stort_sample: "gray", stort_sample_slut_datum: "", q_test: "gray", prissattning: "gray", is_done: false }],
     "SÄLJINTRO": [{ produkt: "", beskrivning_status: "", kategori: "matta", koll_q: "--", po_beslut: "gray", po_beslut_datum: "", po_beslut_slut_datum: "", po_lager: "gray", po_lager_datum: "", po_lager_slut_datum: "", b2b_ready: "gray", b2b_ready_datum: "", b2b_ready_slut_datum: "", shopify_ready: "gray", shopify_ready_datum: "", shopify_ready_slut_datum: "", b2b_intro: "--", is_done: false }],
     "DIG PROD": [{ produktnamn: "", kategori: "B2B-intro", beskrivning: "", p_info: "gray", ai_seo: "gray", metafalt: "gray", copy: "gray", packshot: "gray", kampanj: "gray", mail_notif: "gray", is_done: false }],
     "INKÖP": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
