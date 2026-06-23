@@ -75,6 +75,232 @@ export function createRenderController(deps) {
     return !renderedCustomView && tableName !== 'PROJEKT' && !isCustomViewConfig(tableConfig);
   }
 
+  let activeStatusWeekDatePicker = null;
+
+  function closeStatusWeekDatePicker() {
+    if (!activeStatusWeekDatePicker) return;
+    const { panel, outsideHandler, keyHandler } = activeStatusWeekDatePicker;
+    document.removeEventListener('pointerdown', outsideHandler, true);
+    document.removeEventListener('keydown', keyHandler, true);
+    if (panel?.parentNode) panel.parentNode.removeChild(panel);
+    activeStatusWeekDatePicker = null;
+  }
+
+  function parseDateInputValue(value) {
+    const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const day = Number(match[3]);
+    const date = new Date(year, month, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
+    return date;
+  }
+
+  function formatDateInputValue(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  function datesAreSameDay(a, b) {
+    return !!a && !!b
+      && a.getFullYear() === b.getFullYear()
+      && a.getMonth() === b.getMonth()
+      && a.getDate() === b.getDate();
+  }
+
+  function getMonthLabel(date) {
+    const months = ['januari', 'februari', 'mars', 'april', 'maj', 'juni', 'juli', 'augusti', 'september', 'oktober', 'november', 'december'];
+    return `${months[date.getMonth()]} ${date.getFullYear()}`;
+  }
+
+  function getCalendarStartDate(monthDate) {
+    const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+    const mondayIndex = (first.getDay() + 6) % 7;
+    const start = new Date(first);
+    start.setDate(first.getDate() - mondayIndex);
+    return start;
+  }
+
+  function positionStatusWeekDatePicker(panel, anchor) {
+    const rect = anchor.getBoundingClientRect();
+    panel.style.left = '0px';
+    panel.style.top = '0px';
+    panel.style.visibility = 'hidden';
+    document.body.appendChild(panel);
+
+    const panelRect = panel.getBoundingClientRect();
+    const viewportGap = 10;
+    const left = Math.min(
+      Math.max(viewportGap, rect.left),
+      Math.max(viewportGap, window.innerWidth - panelRect.width - viewportGap)
+    );
+    const below = rect.bottom + 8;
+    const above = rect.top - panelRect.height - 8;
+    const top = below + panelRect.height <= window.innerHeight - viewportGap
+      ? below
+      : Math.max(viewportGap, above);
+
+    panel.style.left = `${Math.round(left + window.scrollX)}px`;
+    panel.style.top = `${Math.round(top + window.scrollY)}px`;
+    panel.style.visibility = '';
+  }
+
+  function openStatusWeekDatePicker({ anchor, currentValue, tableConfig, row, column, dateField }) {
+    if (!anchor || !dateField || typeof saveStatusDateCell !== 'function') return;
+
+    closeStatusWeekDatePicker();
+
+    const selectedDate = parseDateInputValue(currentValue);
+    const today = new Date();
+    const initialDate = selectedDate || today;
+    let visibleMonth = new Date(initialDate.getFullYear(), initialDate.getMonth(), 1);
+
+    const panel = document.createElement('div');
+    panel.className = 'status-week-datepicker';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Välj datum');
+
+    const renderCalendar = () => {
+      panel.innerHTML = '';
+
+      const header = document.createElement('div');
+      header.className = 'status-week-datepicker__header';
+
+      const prevButton = document.createElement('button');
+      prevButton.type = 'button';
+      prevButton.className = 'status-week-datepicker__nav';
+      prevButton.textContent = '‹';
+      prevButton.setAttribute('aria-label', 'Föregående månad');
+      prevButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        visibleMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1);
+        renderCalendar();
+      });
+
+      const title = document.createElement('div');
+      title.className = 'status-week-datepicker__title';
+      title.textContent = getMonthLabel(visibleMonth);
+
+      const nextButton = document.createElement('button');
+      nextButton.type = 'button';
+      nextButton.className = 'status-week-datepicker__nav';
+      nextButton.textContent = '›';
+      nextButton.setAttribute('aria-label', 'Nästa månad');
+      nextButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        visibleMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1);
+        renderCalendar();
+      });
+
+      header.appendChild(prevButton);
+      header.appendChild(title);
+      header.appendChild(nextButton);
+      panel.appendChild(header);
+
+      const grid = document.createElement('div');
+      grid.className = 'status-week-datepicker__grid';
+
+      const headings = ['V', 'M', 'T', 'O', 'T', 'F', 'L', 'S'];
+      headings.forEach((heading, index) => {
+        const cell = document.createElement('div');
+        cell.className = index === 0
+          ? 'status-week-datepicker__weekday status-week-datepicker__week-heading'
+          : 'status-week-datepicker__weekday';
+        cell.textContent = heading;
+        grid.appendChild(cell);
+      });
+
+      const startDate = getCalendarStartDate(visibleMonth);
+      for (let week = 0; week < 6; week += 1) {
+        const weekStart = new Date(startDate);
+        weekStart.setDate(startDate.getDate() + week * 7);
+
+        const weekCell = document.createElement('div');
+        weekCell.className = 'status-week-datepicker__week-number';
+        weekCell.textContent = String(getISOWeekNumber(weekStart)).padStart(2, '0');
+        grid.appendChild(weekCell);
+
+        for (let day = 0; day < 7; day += 1) {
+          const cellDate = new Date(weekStart);
+          cellDate.setDate(weekStart.getDate() + day);
+          const dateValue = formatDateInputValue(cellDate);
+
+          const dayButton = document.createElement('button');
+          dayButton.type = 'button';
+          dayButton.className = 'status-week-datepicker__day';
+          if (cellDate.getMonth() !== visibleMonth.getMonth()) dayButton.classList.add('is-outside-month');
+          if (datesAreSameDay(cellDate, today)) dayButton.classList.add('is-today');
+          if (datesAreSameDay(cellDate, selectedDate)) dayButton.classList.add('is-selected');
+          dayButton.textContent = String(cellDate.getDate());
+          dayButton.setAttribute('aria-label', dateValue);
+          dayButton.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            closeStatusWeekDatePicker();
+            await saveStatusDateCell(tableConfig, row, column, dateValue, dateField);
+          });
+          grid.appendChild(dayButton);
+        }
+      }
+
+      panel.appendChild(grid);
+
+      const footer = document.createElement('div');
+      footer.className = 'status-week-datepicker__footer';
+
+      const clearButton = document.createElement('button');
+      clearButton.type = 'button';
+      clearButton.className = 'status-week-datepicker__footer-button';
+      clearButton.textContent = 'Rensa';
+      clearButton.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeStatusWeekDatePicker();
+        await saveStatusDateCell(tableConfig, row, column, '', dateField);
+      });
+
+      const todayButton = document.createElement('button');
+      todayButton.type = 'button';
+      todayButton.className = 'status-week-datepicker__footer-button';
+      todayButton.textContent = 'Idag';
+      todayButton.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeStatusWeekDatePicker();
+        await saveStatusDateCell(tableConfig, row, column, formatDateInputValue(new Date()), dateField);
+      });
+
+      footer.appendChild(clearButton);
+      footer.appendChild(todayButton);
+      panel.appendChild(footer);
+    };
+
+    renderCalendar();
+
+    const outsideHandler = (event) => {
+      if (panel.contains(event.target) || anchor.contains(event.target)) return;
+      closeStatusWeekDatePicker();
+    };
+
+    const keyHandler = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeStatusWeekDatePicker();
+      }
+    };
+
+    activeStatusWeekDatePicker = { panel, outsideHandler, keyHandler };
+    positionStatusWeekDatePicker(panel, anchor);
+    document.addEventListener('pointerdown', outsideHandler, true);
+    document.addEventListener('keydown', keyHandler, true);
+  }
+
   function createCustomViewFallback(tableName, tableConfig) {
     const shell = document.createElement('section');
     shell.className = 'view-card';
@@ -272,16 +498,28 @@ export function createRenderController(deps) {
                 event.stopPropagation();
               };
 
+              const openCustomDatePicker = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const dateField = String(dateInput.dataset.statusDateField || '').trim();
+                if (!dateField) return;
+                const anchor = dateInput.closest('.status-week-cell__date-trigger') || dateInput;
+                openStatusWeekDatePicker({
+                  anchor,
+                  currentValue: dateInput.value,
+                  tableConfig,
+                  row,
+                  column,
+                  dateField,
+                });
+              };
+
               dateInput.addEventListener('pointerdown', stopStatusToggle);
               dateInput.addEventListener('mousedown', stopStatusToggle);
-              dateInput.addEventListener('click', (event) => {
-                event.stopPropagation();
-                if (typeof dateInput.showPicker === 'function') {
-                  try {
-                    dateInput.showPicker();
-                  } catch (err) {
-                    // Native picker may already be opening, or the browser may block it.
-                  }
+              dateInput.addEventListener('click', openCustomDatePicker);
+              dateInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  openCustomDatePicker(event);
                 }
               });
 

@@ -3283,3 +3283,136 @@ button[aria-label="Stäng"]:active {
   padding-left: 8px;
   padding-right: 8px;
 }
+
+/* =========================================================
+   CUSTOM WEEK DATEPICKER
+   Shows ISO week numbers in a fixed left column.
+   ========================================================= */
+
+.status-week-datepicker {
+  position: absolute;
+  z-index: 80;
+  width: 292px;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 18px 40px rgba(16, 35, 58, 0.18);
+}
+
+.status-week-datepicker__header {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.status-week-datepicker__title {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.status-week-datepicker__nav,
+.status-week-datepicker__day,
+.status-week-datepicker__footer-button {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  transition: 0.15s ease;
+}
+
+.status-week-datepicker__nav {
+  width: 34px;
+  height: 32px;
+  border-radius: 999px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.status-week-datepicker__nav:hover,
+.status-week-datepicker__day:hover,
+.status-week-datepicker__footer-button:hover {
+  border-color: var(--accent);
+  background: var(--white);
+}
+
+.status-week-datepicker__grid {
+  display: grid;
+  grid-template-columns: 30px repeat(7, 1fr);
+  gap: 4px;
+  align-items: center;
+}
+
+.status-week-datepicker__weekday,
+.status-week-datepicker__week-number {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.status-week-datepicker__week-heading,
+.status-week-datepicker__week-number {
+  color: var(--green-text);
+}
+
+.status-week-datepicker__week-number {
+  border-right: 1px solid rgba(207, 190, 160, 0.6);
+  padding-right: 4px;
+}
+
+.status-week-datepicker__day {
+  min-width: 0;
+  height: 30px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-week-datepicker__day.is-outside-month {
+  color: var(--muted);
+  opacity: 0.46;
+}
+
+.status-week-datepicker__day.is-today {
+  border-color: var(--green-line);
+  color: var(--green-text);
+}
+
+.status-week-datepicker__day.is-selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--white);
+  opacity: 1;
+}
+
+.status-week-datepicker__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.status-week-datepicker__footer-button {
+  min-height: 30px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+@media (max-width: 520px) {
+  .status-week-datepicker {
+    width: min(292px, calc(100vw - 20px));
+  }
+}

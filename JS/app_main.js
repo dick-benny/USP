@@ -14,7 +14,7 @@ import { createRowTodoController } from './app_row_todo.js?v=211';
 import { createNotesController } from './app_notes.js?v=211';
 import { createSettingsController } from './app_settings.js?v=211';
 import { createMessagesController } from './app_messages.js?v=211';
-import { createRenderController } from './app_render.js?v=215';
+import { createRenderController } from './app_render.js?v=219';
 import { createDataController } from './app_data.js?v=211';
 import { createActionController } from './app_actions.js?v=211';
 import { createFilterController } from './app_filters.js?v=216';
@@ -2367,7 +2367,7 @@ export async function runPlanningApp() {
       handled = true;
       const nextDate = String(input.value || '').trim();
       cleanup();
-      await saveStatusDateCell(tableConfig, row, column, nextDate);
+      await saveStatusDateCell(tableConfig, row, column, nextDate, dateField);
     };
 
     input.addEventListener('change', saveDate);
@@ -2535,13 +2535,11 @@ export async function runPlanningApp() {
       wrap.className = isRange ? 'status-week-cell status-week-cell--range' : 'status-week-cell';
 
       const createDateTrigger = (dateValue, dateField, sideLabel) => {
-        const trigger = document.createElement('button');
-        trigger.type = 'button';
+        const trigger = document.createElement('span');
         trigger.className = dateValue
           ? 'status-week-cell__date-trigger'
           : 'status-week-cell__date-trigger status-week-cell__date-trigger--empty';
         if (isRange) trigger.classList.add(`status-week-cell__date-trigger--${sideLabel}`);
-        trigger.dataset.statusDateField = dateField;
         trigger.title = dateValue ? `Ändra ${sideLabel === 'from' ? 'från' : 'till'}-datum` : `Välj ${sideLabel === 'from' ? 'från' : 'till'}-datum`;
         trigger.setAttribute('aria-label', `${column.name}: ${dateValue ? 'ändra' : 'välj'} ${sideLabel === 'from' ? 'från' : 'till'}-datum`);
 
@@ -2549,7 +2547,16 @@ export async function runPlanningApp() {
         label.className = 'status-week-cell__date-label';
         label.textContent = formatWeekFromDateValue(dateValue) || '📅';
 
+        const dateInput = document.createElement('input');
+        dateInput.type = 'date';
+        dateInput.className = 'status-week-cell__date-input';
+        dateInput.value = getDateInputValue(dateValue);
+        dateInput.dataset.statusDateField = dateField;
+        dateInput.setAttribute('aria-label', `${column.name}: ${dateValue ? 'ändra' : 'välj'} ${sideLabel === 'from' ? 'från' : 'till'}-datum`);
+        dateInput.title = dateValue ? 'Ändra datum' : 'Välj datum';
+
         trigger.appendChild(label);
+        trigger.appendChild(dateInput);
         return trigger;
       };
 
