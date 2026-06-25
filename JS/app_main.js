@@ -8,22 +8,22 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=211';
-import { createTodoController } from './app_todo.js?v=211';
-import { createRowTodoController } from './app_row_todo.js?v=211';
-import { createNotesController } from './app_notes.js?v=211';
-import { createSettingsController } from './app_settings.js?v=211';
-import { createMessagesController } from './app_messages.js?v=211';
-import { createRenderController } from './app_render.js?v=219';
-import { createDataController } from './app_data.js?v=211';
-import { createActionController } from './app_actions.js?v=211';
-import { createFilterController } from './app_filters.js?v=216';
-import { createColumnToolsController } from './app_column_tools.js?v=211';
-import { createExcelPlanController } from './app_excel_plan.js?v=211';
-import { createProjectsController } from './app_projects.js?v=211';
-import { createWorkflowController } from './app_workflows.js?v=211';
-import { createArchiveController } from './app_archive.js?v=211';
-import './app_statistics.js?v=211';
+} from './app_constants.js?v=228';
+import { createTodoController } from './app_todo.js?v=228';
+import { createRowTodoController } from './app_row_todo.js?v=228';
+import { createNotesController } from './app_notes.js?v=228';
+import { createSettingsController } from './app_settings.js?v=228';
+import { createMessagesController } from './app_messages.js?v=228';
+import { createRenderController } from './app_render.js?v=228';
+import { createDataController } from './app_data.js?v=228';
+import { createActionController } from './app_actions.js?v=228';
+import { createFilterController } from './app_filters.js?v=228';
+import { createColumnToolsController } from './app_column_tools.js?v=228';
+import { createExcelPlanController } from './app_excel_plan.js?v=228';
+import { createProjectsController } from './app_projects.js?v=228';
+import { createWorkflowController } from './app_workflows.js?v=228';
+import { createArchiveController } from './app_archive.js?v=228';
+import './app_statistics.js?v=228';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -155,6 +155,11 @@ export async function runPlanningApp() {
     notesSourceTitle: '',
     notesTableLabel: '',
     notesCurrentRow: null,
+    cdmpProvmattorPanelOpen: false,
+    cdmpProvmattorRowId: null,
+    cdmpProvmattorRowsByCdmpId: {},
+    cdmpProvmattorCountsByCdmpId: {},
+    cdmpProvmattorLoading: false,
   };
 
 
@@ -404,11 +409,14 @@ export async function runPlanningApp() {
   function getVisibleColumns(tableConfig) {
     const hiddenRowTodoTables = ['PRE DEV', 'UTVECKLING', 'SÄLJINTRO', 'DIG PROD'];
     const tableName = state.activeTableName;
-    const inlineOnlyTables = ['SÄLJINTRO', 'UTVECKLING', 'PRE DEV', 'DIG PROD', 'INKÖP', 'MARKNAD', 'SÄLJ'];
-    const inlineActionTables = ['PRE DEV', 'UTVECKLING', 'SÄLJINTRO', 'INKÖP', 'MARKNAD', 'SÄLJ'];
+    const inlineOnlyTables = ['SÄLJINTRO', 'UTVECKLING', 'PRE DEV', 'DIG PROD', 'CDMP', 'INKÖP', 'MARKNAD', 'SÄLJ'];
+    const inlineActionTables = ['TODO', 'PRE DEV', 'UTVECKLING', 'SÄLJINTRO', 'CDMP', 'INKÖP', 'MARKNAD', 'SÄLJ'];
+    const utilityColumns = inlineOnlyTables.includes(tableName)
+      ? []
+      : [UI_OPEN_COLUMN, ...(tableName === TODO_TABLE ? [] : [UI_NOTES_COLUMN])];
     const columns = [
       ...tableConfig.columns.filter((column) => column.field !== 'id' && !column.hiddenInTable && column.field !== UI_TODO_COLUMN.field && column.type !== UI_TODO_COLUMN.type),
-      ...(inlineOnlyTables.includes(tableName) ? [] : [UI_OPEN_COLUMN, UI_NOTES_COLUMN]),
+      ...utilityColumns,
     ];
     if (inlineActionTables.includes(tableName)) {
       columns.push(getInlineActionsColumn());
@@ -1713,6 +1721,8 @@ export async function runPlanningApp() {
   }
 
   function getTableDisplayName(tableName, tableConfig = null) {
+    const navTitle = String(tableConfig?.navTitle || '').trim();
+    if (navTitle) return navTitle;
     const title = String(tableConfig?.title || '').trim();
     if (title) return title;
     if (tableName === 'STATISTICS') return 'FSG';
@@ -1723,7 +1733,7 @@ export async function runPlanningApp() {
     nav.innerHTML = '';
 
     tableEntries
-      .filter(([tableName]) => tableName !== 'RUTINER')
+      .filter(([tableName]) => tableName !== 'RUTINER' && tableName !== 'STATISTICS')
       .forEach(([tableName, tableConfig]) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -1900,7 +1910,9 @@ export async function runPlanningApp() {
         wrap.appendChild(createHeaderActionButton('Arkiv', openArchivePanel));
       }
 
+      if (tableName !== 'CDMP') {
       wrap.appendChild(createHeaderActionButton('Print', () => printActiveView(tableName)));
+    }
 
       return wrap;
     }
@@ -2007,7 +2019,9 @@ export async function runPlanningApp() {
       wrap.appendChild(createHeaderActionButton('Excel-plan', openSalesIntroExcelPlan));
     }
 
-    wrap.appendChild(createHeaderActionButton('Print', () => printActiveView(tableName)));
+    if (tableName !== 'CDMP') {
+      wrap.appendChild(createHeaderActionButton('Print', () => printActiveView(tableName)));
+    }
 
     if (isMoodEnabledTable(tableName)) {
       wrap.appendChild(createMoodToolbarButton(tableName));
@@ -2020,8 +2034,16 @@ export async function runPlanningApp() {
     return column?.type === 'text' && (column?.mods?.displayMode === 'textarea' || column?.mods?.multiline === true || column?.multiline === true);
   }
 
+  function isExcelLinkColumn(column) {
+    return column?.mods?.displayMode === 'excel_link';
+  }
+
+  function isCdmpProvmattorColumn(column) {
+    return column?.mods?.displayMode === 'provmattor_table';
+  }
+
   function isEditableTextColumn(column) {
-    return ['text', 'veckonummer', 'kvartal'].includes(column.type) && !isOpenColumn(column) && column?.mods?.readonly !== true;
+    return ['text', 'veckonummer', 'kvartal'].includes(column.type) && !isOpenColumn(column) && !isExcelLinkColumn(column) && !isCdmpProvmattorColumn(column) && column?.mods?.readonly !== true;
   }
 
   function isEditableDropdownColumn(column) {
@@ -2309,6 +2331,35 @@ export async function runPlanningApp() {
       } catch (syncErr) {
         console.warn('Could not ensure DIG PROD links after SÄLJINTRO date change:', syncErr.message);
       }
+      render();
+      return;
+    }
+
+    render();
+  }
+
+  async function saveDateCell(tableConfig, row, column, nextDateValue, targetDateField = null) {
+    const dateField = String(targetDateField || column?.field || '').trim();
+    if (!dateField || !row?.id) return;
+
+    const nextDate = String(nextDateValue || '').trim();
+    const previousDate = row[dateField] ?? '';
+    if (String(previousDate || '').slice(0, 10) === nextDate) return;
+
+    state.savingCell = getCellKey(row, column);
+    row[dateField] = nextDate;
+    render();
+
+    const { error } = await supabase
+      .from(tableConfig.dbTable)
+      .update({ [dateField]: nextDate || null })
+      .eq('id', row.id);
+
+    state.savingCell = null;
+
+    if (error) {
+      row[dateField] = previousDate;
+      alert(`Kunde inte spara datum: ${error.message}`);
       render();
       return;
     }
@@ -2797,6 +2848,26 @@ export async function runPlanningApp() {
 
 
 
+    if (tableName === 'CDMP') {
+      wrap.appendChild(makeButton({
+        label: '🗑',
+        title: 'Ta bort raden',
+        className: 'row-actions__button row-actions__button--danger',
+        action: async () => runRowAction(tableName, tableConfig, row, 'delete'),
+      }));
+      return wrap;
+    }
+
+    if (tableName === TODO_TABLE) {
+      wrap.appendChild(makeButton({
+        label: '🗑',
+        title: 'Ta bort TODO-raden',
+        className: 'row-actions__button row-actions__button--danger',
+        action: async () => runRowAction(tableName, tableConfig, row, 'delete'),
+      }));
+      return wrap;
+    }
+
     if (tableName === 'INKÖP' || tableName === 'MARKNAD' || tableName === 'SÄLJ') {
       wrap.appendChild(makeButton({
         label: '🗑',
@@ -2825,6 +2896,761 @@ export async function runPlanningApp() {
     return wrap;
   }
 
+
+  function getNormalizedExternalLink(rawValue) {
+    const raw = String(rawValue || '').trim();
+    if (!raw) return '';
+    const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
+    try {
+      const url = new URL(withProtocol);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+      return url.href;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function openExternalLinkInNewWindow(rawValue) {
+    const url = getNormalizedExternalLink(rawValue);
+    if (!url) {
+      alert('Länken verkar inte vara en giltig http/https-adress.');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  let activeCdmpProvmattorDatePicker = null;
+
+  function isCdmpTableConfig(tableConfig) {
+    return tableConfig?.id === 'cdmp' || tableConfig?.dbTable === 'cdmp';
+  }
+
+  function getCdmpProvmattorCount(rowId) {
+    const key = String(rowId || '').trim();
+    if (!key) return 0;
+    return Number(state.cdmpProvmattorCountsByCdmpId?.[key] || 0);
+  }
+
+  async function loadCdmpProvmattorCounts() {
+    const cdmpConfig = APP_CONFIG.tables?.CDMP;
+    const rows = state.rowsByTable?.CDMP || [];
+    if (!cdmpConfig?.dbTable || !rows.length) {
+      state.cdmpProvmattorCountsByCdmpId = {};
+      return;
+    }
+
+    const ids = rows.map((row) => row.id).filter(Boolean);
+    if (!ids.length) {
+      state.cdmpProvmattorCountsByCdmpId = {};
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('cdmp_provmattor')
+      .select('id, cdmp_id')
+      .in('cdmp_id', ids);
+
+    if (error) {
+      console.warn('Could not load CDMP provmattor counts:', error.message);
+      return;
+    }
+
+    const nextCounts = {};
+    ids.forEach((id) => { nextCounts[String(id)] = 0; });
+    (data || []).forEach((item) => {
+      const key = String(item.cdmp_id || '').trim();
+      if (!key) return;
+      nextCounts[key] = (nextCounts[key] || 0) + 1;
+    });
+    state.cdmpProvmattorCountsByCdmpId = nextCounts;
+  }
+
+  function getCurrentCdmpProvmattorRow() {
+    const rowId = String(state.cdmpProvmattorRowId || '').trim();
+    if (!rowId) return null;
+    return (state.rowsByTable?.CDMP || []).find((row) => String(row.id) === rowId) || null;
+  }
+
+  async function loadCdmpProvmattorRows(cdmpRowId) {
+    const key = String(cdmpRowId || '').trim();
+    if (!key) return [];
+
+    state.cdmpProvmattorLoading = true;
+    render();
+
+    const { data, error } = await supabase
+      .from('cdmp_provmattor')
+      .select('*')
+      .eq('cdmp_id', key)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    state.cdmpProvmattorLoading = false;
+
+    if (error) {
+      alert(`Kunde inte läsa provmattor: ${error.message}`);
+      render();
+      return [];
+    }
+
+    const rows = data || [];
+    state.cdmpProvmattorRowsByCdmpId[key] = rows;
+    state.cdmpProvmattorCountsByCdmpId[key] = rows.length;
+    render();
+    return rows;
+  }
+
+  async function openCdmpProvmattorPanel(row) {
+    if (!row?.id) return;
+    state.settingsPanelOpen = false;
+    state.linksPanelOpen = false;
+    state.messagesPanelOpen = false;
+    state.archivePanelOpen = false;
+    state.rowTodoPanelOpen = false;
+    state.notesPanelOpen = false;
+    state.columnChecklistPanelOpen = false;
+    state.detailRowId = null;
+    state.newRowDraft = null;
+    state.cdmpProvmattorPanelOpen = true;
+    state.cdmpProvmattorRowId = row.id;
+    await loadCdmpProvmattorRows(row.id);
+  }
+
+  function closeCdmpProvmattorPanel() {
+    state.cdmpProvmattorPanelOpen = false;
+    state.cdmpProvmattorRowId = null;
+    closeCdmpProvmattorDatePicker();
+    render();
+  }
+
+  function closeCdmpProvmattorDatePicker() {
+    if (!activeCdmpProvmattorDatePicker) return;
+    const { panel, outsideHandler, keyHandler } = activeCdmpProvmattorDatePicker;
+    document.removeEventListener('pointerdown', outsideHandler, true);
+    document.removeEventListener('keydown', keyHandler, true);
+    if (panel?.parentNode) panel.parentNode.removeChild(panel);
+    activeCdmpProvmattorDatePicker = null;
+  }
+
+  function parseCdmpDateValue(value) {
+    const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const day = Number(match[3]);
+    const date = new Date(year, month, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
+    return date;
+  }
+
+  function formatCdmpDateValue(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  function getCdmpISOWeekNumber(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  }
+
+  function getCdmpCalendarStartDate(monthDate) {
+    const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+    const mondayIndex = (first.getDay() + 6) % 7;
+    const start = new Date(first);
+    start.setDate(first.getDate() - mondayIndex);
+    return start;
+  }
+
+  function getCdmpMonthLabel(date) {
+    const months = ['januari', 'februari', 'mars', 'april', 'maj', 'juni', 'juli', 'augusti', 'september', 'oktober', 'november', 'december'];
+    return `${months[date.getMonth()]} ${date.getFullYear()}`;
+  }
+
+  function sameCdmpDay(a, b) {
+    return !!a && !!b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
+  function positionCdmpProvmattorDatePicker(panel, anchor) {
+    const rect = anchor.getBoundingClientRect();
+    panel.style.left = '0px';
+    panel.style.top = '0px';
+    panel.style.visibility = 'hidden';
+    document.body.appendChild(panel);
+
+    const panelRect = panel.getBoundingClientRect();
+    const viewportGap = 10;
+    const left = Math.min(Math.max(viewportGap, rect.left), Math.max(viewportGap, window.innerWidth - panelRect.width - viewportGap));
+    const below = rect.bottom + 8;
+    const above = rect.top - panelRect.height - 8;
+    const top = below + panelRect.height <= window.innerHeight - viewportGap ? below : Math.max(viewportGap, above);
+
+    panel.style.left = `${Math.round(left + window.scrollX)}px`;
+    panel.style.top = `${Math.round(top + window.scrollY)}px`;
+    panel.style.visibility = '';
+  }
+
+  function openCdmpProvmattorDatePicker(anchor, currentValue, onSelect) {
+    if (!anchor || typeof onSelect !== 'function') return;
+    closeCdmpProvmattorDatePicker();
+
+    const selectedDate = parseCdmpDateValue(getDateInputValue(currentValue));
+    const today = new Date();
+    const initialDate = selectedDate || today;
+    let visibleMonth = new Date(initialDate.getFullYear(), initialDate.getMonth(), 1);
+
+    const panel = document.createElement('div');
+    panel.className = 'status-week-datepicker';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Välj datum');
+
+    const renderCalendar = () => {
+      panel.innerHTML = '';
+
+      const header = document.createElement('div');
+      header.className = 'status-week-datepicker__header';
+
+      const prevButton = document.createElement('button');
+      prevButton.type = 'button';
+      prevButton.className = 'status-week-datepicker__nav';
+      prevButton.textContent = '‹';
+      prevButton.setAttribute('aria-label', 'Föregående månad');
+      prevButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        visibleMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1);
+        renderCalendar();
+      });
+
+      const title = document.createElement('div');
+      title.className = 'status-week-datepicker__title';
+      title.textContent = getCdmpMonthLabel(visibleMonth);
+
+      const nextButton = document.createElement('button');
+      nextButton.type = 'button';
+      nextButton.className = 'status-week-datepicker__nav';
+      nextButton.textContent = '›';
+      nextButton.setAttribute('aria-label', 'Nästa månad');
+      nextButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        visibleMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1);
+        renderCalendar();
+      });
+
+      header.appendChild(prevButton);
+      header.appendChild(title);
+      header.appendChild(nextButton);
+      panel.appendChild(header);
+
+      const grid = document.createElement('div');
+      grid.className = 'status-week-datepicker__grid';
+      ['V', 'M', 'T', 'O', 'T', 'F', 'L', 'S'].forEach((heading, index) => {
+        const cell = document.createElement('div');
+        cell.className = index === 0 ? 'status-week-datepicker__weekday status-week-datepicker__week-heading' : 'status-week-datepicker__weekday';
+        cell.textContent = heading;
+        grid.appendChild(cell);
+      });
+
+      const startDate = getCdmpCalendarStartDate(visibleMonth);
+      for (let week = 0; week < 6; week += 1) {
+        const weekStart = new Date(startDate);
+        weekStart.setDate(startDate.getDate() + week * 7);
+
+        const weekCell = document.createElement('div');
+        weekCell.className = 'status-week-datepicker__week-number';
+        weekCell.textContent = String(getCdmpISOWeekNumber(weekStart)).padStart(2, '0');
+        grid.appendChild(weekCell);
+
+        for (let day = 0; day < 7; day += 1) {
+          const cellDate = new Date(weekStart);
+          cellDate.setDate(weekStart.getDate() + day);
+          const dateValue = formatCdmpDateValue(cellDate);
+          const dayButton = document.createElement('button');
+          dayButton.type = 'button';
+          dayButton.className = 'status-week-datepicker__day';
+          if (cellDate.getMonth() !== visibleMonth.getMonth()) dayButton.classList.add('is-outside-month');
+          if (sameCdmpDay(cellDate, today)) dayButton.classList.add('is-today');
+          if (sameCdmpDay(cellDate, selectedDate)) dayButton.classList.add('is-selected');
+          dayButton.textContent = String(cellDate.getDate());
+          dayButton.setAttribute('aria-label', dateValue);
+          dayButton.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            closeCdmpProvmattorDatePicker();
+            await onSelect(dateValue);
+          });
+          grid.appendChild(dayButton);
+        }
+      }
+      panel.appendChild(grid);
+
+      const footer = document.createElement('div');
+      footer.className = 'status-week-datepicker__footer';
+      const clearButton = document.createElement('button');
+      clearButton.type = 'button';
+      clearButton.className = 'status-week-datepicker__footer-button';
+      clearButton.textContent = 'Rensa';
+      clearButton.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeCdmpProvmattorDatePicker();
+        await onSelect('');
+      });
+      const todayButton = document.createElement('button');
+      todayButton.type = 'button';
+      todayButton.className = 'status-week-datepicker__footer-button';
+      todayButton.textContent = 'Idag';
+      todayButton.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeCdmpProvmattorDatePicker();
+        await onSelect(formatCdmpDateValue(new Date()));
+      });
+      footer.appendChild(clearButton);
+      footer.appendChild(todayButton);
+      panel.appendChild(footer);
+    };
+
+    renderCalendar();
+
+    const outsideHandler = (event) => {
+      if (panel.contains(event.target) || anchor.contains(event.target)) return;
+      closeCdmpProvmattorDatePicker();
+    };
+    const keyHandler = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeCdmpProvmattorDatePicker();
+      }
+    };
+
+    activeCdmpProvmattorDatePicker = { panel, outsideHandler, keyHandler };
+    positionCdmpProvmattorDatePicker(panel, anchor);
+    document.addEventListener('pointerdown', outsideHandler, true);
+    document.addEventListener('keydown', keyHandler, true);
+  }
+
+  async function createCdmpProvmattorRow(cdmpRowId) {
+    const key = String(cdmpRowId || '').trim();
+    if (!key) return;
+    const existing = state.cdmpProvmattorRowsByCdmpId[key] || [];
+    const nextSortOrder = existing.reduce((max, item) => Math.max(max, Number(item.sort_order || 0)), 0) + 100;
+
+    const { data, error } = await supabase
+      .from('cdmp_provmattor')
+      .insert({ cdmp_id: key, namn: '', storlek: '', antal: '', prel_lev: null, sort_order: nextSortOrder })
+      .select('*')
+      .single();
+
+    if (error) {
+      alert(`Kunde inte skapa provmatta: ${error.message}`);
+      return;
+    }
+
+    state.cdmpProvmattorRowsByCdmpId[key] = [...existing, data];
+    state.cdmpProvmattorCountsByCdmpId[key] = state.cdmpProvmattorRowsByCdmpId[key].length;
+    render();
+  }
+
+  async function saveCdmpProvmattorField(cdmpRowId, itemId, field, value) {
+    const key = String(cdmpRowId || '').trim();
+    const rows = state.cdmpProvmattorRowsByCdmpId[key] || [];
+    const index = rows.findIndex((item) => String(item.id) === String(itemId));
+    if (index < 0) return;
+
+    const nextValue = field === 'prel_lev' ? (String(value || '').trim() || null) : String(value || '').trim();
+    const previousValue = rows[index][field] ?? '';
+    if (String(previousValue || '') === String(nextValue || '')) return;
+
+    rows[index] = { ...rows[index], [field]: nextValue };
+    state.cdmpProvmattorRowsByCdmpId[key] = [...rows];
+    render();
+
+    const { error } = await supabase
+      .from('cdmp_provmattor')
+      .update({ [field]: nextValue })
+      .eq('id', itemId);
+
+    if (error) {
+      rows[index] = { ...rows[index], [field]: previousValue };
+      state.cdmpProvmattorRowsByCdmpId[key] = [...rows];
+      alert(`Kunde inte spara provmatta: ${error.message}`);
+      render();
+    }
+  }
+
+  async function deleteCdmpProvmattorRow(cdmpRowId, itemId) {
+    if (!confirm('Radera provmatta?')) return;
+    const key = String(cdmpRowId || '').trim();
+    const previousRows = state.cdmpProvmattorRowsByCdmpId[key] || [];
+    state.cdmpProvmattorRowsByCdmpId[key] = previousRows.filter((item) => String(item.id) !== String(itemId));
+    state.cdmpProvmattorCountsByCdmpId[key] = state.cdmpProvmattorRowsByCdmpId[key].length;
+    render();
+
+    const { error } = await supabase
+      .from('cdmp_provmattor')
+      .delete()
+      .eq('id', itemId);
+
+    if (error) {
+      state.cdmpProvmattorRowsByCdmpId[key] = previousRows;
+      state.cdmpProvmattorCountsByCdmpId[key] = previousRows.length;
+      alert(`Kunde inte radera provmatta: ${error.message}`);
+      render();
+    }
+  }
+
+  function createCdmpProvmattorButton(row, column) {
+    const hasRows = getCdmpProvmattorCount(row?.id) > 0;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = hasRows
+      ? 'excel-link-button excel-link-button--linked provmattor-button'
+      : 'excel-link-button excel-link-button--empty provmattor-button';
+    button.title = hasRows ? 'Öppna provmattor' : 'Lägg till provmattor';
+    button.setAttribute('aria-label', hasRows ? 'Öppna provmattor' : 'Lägg till provmattor');
+    button.innerHTML = '<span class="excel-link-button__icon" aria-hidden="true">X</span>';
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await openCdmpProvmattorPanel(row);
+    });
+    return button;
+  }
+
+  function createCdmpProvmattorPanel() {
+    const row = getCurrentCdmpProvmattorRow();
+    if (!row) return document.createDocumentFragment();
+    const rowId = String(row.id);
+    const rows = state.cdmpProvmattorRowsByCdmpId[rowId] || [];
+
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay-modal provmattor-modal';
+    const dialog = document.createElement('div');
+    dialog.className = 'overlay-modal__dialog';
+    const panel = document.createElement('section');
+    panel.className = 'side-panel';
+
+    const header = document.createElement('div');
+    header.className = 'side-panel__header';
+    const heading = document.createElement('div');
+    heading.className = 'todo-modal__heading';
+    const eyebrow = document.createElement('p');
+    eyebrow.className = 'side-panel__eyebrow';
+    eyebrow.textContent = 'CDMP';
+    const title = document.createElement('h2');
+    title.className = 'side-panel__title';
+    title.textContent = 'Provmattor';
+    const text = document.createElement('p');
+    text.className = 'side-panel__text';
+    text.textContent = row.namn || 'Redigera provmattor för aktuell rad.';
+    heading.appendChild(eyebrow);
+    heading.appendChild(title);
+    heading.appendChild(text);
+
+    const headerActions = document.createElement('div');
+    headerActions.className = 'side-panel__header-actions';
+    const addButton = document.createElement('button');
+    addButton.type = 'button';
+    addButton.className = 'primary-button';
+    addButton.textContent = '+ Lägg till';
+    addButton.addEventListener('click', async () => createCdmpProvmattorRow(rowId));
+    headerActions.appendChild(addButton);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'side-panel__close side-panel__close--small';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Stäng');
+    closeButton.addEventListener('click', closeCdmpProvmattorPanel);
+
+    header.appendChild(heading);
+    header.appendChild(headerActions);
+    header.appendChild(closeButton);
+
+    const body = document.createElement('div');
+    body.className = 'side-panel__body';
+
+    if (state.cdmpProvmattorLoading) {
+      const loading = document.createElement('p');
+      loading.className = 'empty-state';
+      loading.textContent = 'Laddar provmattor...';
+      body.appendChild(loading);
+    } else {
+      const tableWrap = document.createElement('div');
+      tableWrap.className = 'provmattor-table-wrap';
+      const table = document.createElement('table');
+      table.className = 'provmattor-table';
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      ['Namn', 'Storlek', 'Antal', 'Prel LEV', ''].forEach((label) => {
+        const th = document.createElement('th');
+        th.textContent = label;
+        headRow.appendChild(th);
+      });
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      if (!rows.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 5;
+        td.className = 'empty-row';
+        td.textContent = 'Inga provmattor ännu.';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      }
+
+      rows.forEach((item) => {
+        const tr = document.createElement('tr');
+        ['namn', 'storlek', 'antal'].forEach((field) => {
+          const td = document.createElement('td');
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'cell-editor provmattor-input';
+          input.value = item[field] || '';
+          input.addEventListener('blur', async () => saveCdmpProvmattorField(rowId, item.id, field, input.value));
+          input.addEventListener('keydown', async (event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              input.blur();
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              input.value = item[field] || '';
+              input.blur();
+            }
+          });
+          td.appendChild(input);
+          tr.appendChild(td);
+        });
+
+        const dateTd = document.createElement('td');
+        const dateButton = document.createElement('button');
+        dateButton.type = 'button';
+        dateButton.className = item.prel_lev ? 'cell-chip status-week-cell__date-trigger provmattor-date-button' : 'cell-chip status-week-cell__date-trigger status-week-cell__date-trigger--empty provmattor-date-button';
+        dateButton.textContent = formatWeekFromDateValue(item.prel_lev) || '📅';
+        dateButton.title = item.prel_lev ? 'Ändra Prel LEV' : 'Välj Prel LEV';
+        dateButton.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openCdmpProvmattorDatePicker(dateButton, item.prel_lev, async (nextValue) => {
+            await saveCdmpProvmattorField(rowId, item.id, 'prel_lev', nextValue);
+          });
+        });
+        dateTd.appendChild(dateButton);
+        tr.appendChild(dateTd);
+
+        const actionTd = document.createElement('td');
+        actionTd.className = 'is-center';
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'row-actions__button row-actions__button--danger';
+        deleteButton.textContent = '✕';
+        deleteButton.setAttribute('aria-label', 'Radera provmatta');
+        deleteButton.addEventListener('click', async () => deleteCdmpProvmattorRow(rowId, item.id));
+        actionTd.appendChild(deleteButton);
+        tr.appendChild(actionTd);
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      tableWrap.appendChild(table);
+      body.appendChild(tableWrap);
+    }
+
+    panel.appendChild(header);
+    panel.appendChild(body);
+    dialog.appendChild(panel);
+    overlay.appendChild(dialog);
+    return overlay;
+  }
+
+  function openExcelLinkModal(tableConfig, row, column) {
+    if (!tableConfig || !row?.id || !column?.field) return;
+
+    const existingValue = String(row[column.field] || '').trim();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay-modal excel-link-modal';
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) overlay.remove();
+    });
+
+    const dialog = document.createElement('div');
+    dialog.className = 'overlay-modal__dialog';
+
+    const panel = document.createElement('section');
+    panel.className = 'side-panel excel-link-modal__panel';
+
+    const header = document.createElement('div');
+    header.className = 'side-panel__header';
+
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'todo-modal__heading';
+
+    const eyebrow = document.createElement('p');
+    eyebrow.className = 'side-panel__eyebrow';
+    eyebrow.textContent = 'Offert';
+
+    const title = document.createElement('h2');
+    title.className = 'side-panel__title';
+    title.textContent = existingValue ? 'Ändra Excel-länk' : 'Lägg till Excel-länk';
+
+    const help = document.createElement('p');
+    help.className = 'side-panel__text';
+    help.textContent = 'Klistra in länken till Excel-filen i SharePoint.';
+
+    titleWrap.appendChild(eyebrow);
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(help);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'side-panel__close side-panel__close--small';
+    closeButton.setAttribute('aria-label', 'Stäng');
+    closeButton.textContent = '×';
+    closeButton.addEventListener('click', () => overlay.remove());
+
+    header.appendChild(titleWrap);
+    header.appendChild(closeButton);
+
+    const body = document.createElement('div');
+    body.className = 'side-panel__body';
+
+    const field = document.createElement('label');
+    field.className = 'detail-field';
+
+    const label = document.createElement('span');
+    label.className = 'detail-field__label';
+    label.textContent = 'SharePoint-länk';
+
+    const input = document.createElement('input');
+    input.className = 'detail-field__control';
+    input.type = 'url';
+    input.inputMode = 'url';
+    input.placeholder = 'https://...';
+    input.value = existingValue;
+
+    const hint = document.createElement('span');
+    hint.className = 'detail-field__hint';
+    hint.textContent = 'Spara enbart länken. Tabellen visar symbol och färg.';
+
+    field.appendChild(label);
+    field.appendChild(input);
+    field.appendChild(hint);
+    body.appendChild(field);
+
+    const footer = document.createElement('div');
+    footer.className = 'side-panel__footer';
+
+    const saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'primary-button';
+    saveButton.textContent = 'Spara';
+
+    const clearButton = document.createElement('button');
+    clearButton.type = 'button';
+    clearButton.className = 'secondary-button secondary-button--danger';
+    clearButton.textContent = 'Rensa länk';
+    clearButton.hidden = !existingValue;
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'secondary-button';
+    cancelButton.textContent = 'Avbryt';
+    cancelButton.addEventListener('click', () => overlay.remove());
+
+    const saveLink = async (nextRawValue) => {
+      const nextValue = String(nextRawValue || '').trim();
+      if (nextValue && !getNormalizedExternalLink(nextValue)) {
+        alert('Ange en giltig http/https-länk.');
+        input.focus();
+        return;
+      }
+
+      saveButton.disabled = true;
+      clearButton.disabled = true;
+      cancelButton.disabled = true;
+      const saved = await saveCellValue(tableConfig, row, column, nextValue);
+      if (saved) {
+        overlay.remove();
+        return;
+      }
+      saveButton.disabled = false;
+      clearButton.disabled = false;
+      cancelButton.disabled = false;
+    };
+
+    saveButton.addEventListener('click', async () => saveLink(input.value));
+    clearButton.addEventListener('click', async () => saveLink(''));
+    input.addEventListener('keydown', async (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        overlay.remove();
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        await saveLink(input.value);
+      }
+    });
+
+    footer.appendChild(saveButton);
+    footer.appendChild(cancelButton);
+    footer.appendChild(clearButton);
+
+    panel.appendChild(header);
+    panel.appendChild(body);
+    panel.appendChild(footer);
+    dialog.appendChild(panel);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+  }
+
+  function createExcelLinkCellContent(row, column) {
+    const hasLink = !!String(row?.[column.field] || '').trim();
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = hasLink
+      ? 'excel-link-button excel-link-button--linked'
+      : 'excel-link-button excel-link-button--empty';
+    button.title = hasLink ? 'Öppna offert. Högerklicka för att ändra länk.' : 'Lägg till offertlänk';
+    button.setAttribute('aria-label', hasLink ? 'Öppna offertlänk' : 'Lägg till offertlänk');
+    button.innerHTML = '<span class="excel-link-button__icon" aria-hidden="true">X</span>';
+
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const active = getActiveConfig();
+      const [, tableConfig] = active || [];
+      if (hasLink) {
+        openExternalLinkInNewWindow(row[column.field]);
+        return;
+      }
+      openExcelLinkModal(tableConfig, row, column);
+    });
+
+    button.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const active = getActiveConfig();
+      const [, tableConfig] = active || [];
+      openExcelLinkModal(tableConfig, row, column);
+    });
+
+    return button;
+  }
+
   function createStaticCellContent(row, column) {
     const maybeWrapOwnerContent = (node) => {
       if (shouldShowOwnerBadge(state.activeTableName, row, column)) {
@@ -2841,6 +3667,14 @@ export async function runPlanningApp() {
       const active = getActiveConfig();
       const [, tableConfig] = active || [];
       return createInlineRowActions(state.activeTableName, tableConfig, row);
+    }
+
+    if (isExcelLinkColumn(column)) {
+      return createExcelLinkCellContent(row, column);
+    }
+
+    if (isCdmpProvmattorColumn(column)) {
+      return createCdmpProvmattorButton(row, column);
     }
 
     const rawValue = row[column.field];
@@ -2888,6 +3722,21 @@ export async function runPlanningApp() {
     }
 
     if (column.type === 'date') {
+      if (column.dateDisplayMode === 'week') {
+        const button = document.createElement('button');
+        button.type = 'button';
+        const weekLabel = formatWeekFromDateValue(text) || '📅';
+        button.className = text
+          ? 'cell-chip status-week-cell__date-trigger'
+          : 'cell-chip status-week-cell__date-trigger status-week-cell__date-trigger--empty';
+        button.textContent = weekLabel;
+        button.dataset.dateField = column.field;
+        button.dataset.dateValue = getDateInputValue(text);
+        button.setAttribute('aria-label', `${column.name}: ${text ? 'ändra' : 'välj'} datum`);
+        button.title = text ? 'Ändra datum' : 'Välj datum';
+        return maybeWrapOwnerContent(button);
+      }
+
       const span = document.createElement('span');
       const formatted = formatDateValue(text);
 
@@ -3730,6 +4579,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     createRowTodoPanel,
     createNotesPanel,
     createColumnChecklistPanel,
+    createCdmpProvmattorPanel,
     createDetailPanel,
     getFilteredRows,
     getVisibleColumns,
@@ -3761,6 +4611,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     toggleStatusCell,
     editStatusDateCell,
     saveStatusDateCell,
+    saveDateCell,
     saveStatusWeekValue,
     toggleTodoDone,
     startEditing,
@@ -3865,6 +4716,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
   await loadMessages();
   await loadModalTodoRows();
   await projectsController.loadProjects();
+  await loadCdmpProvmattorCounts();
   if (state.activeTableName) {
     await loadUnreadCountsForTable(state.activeTableName);
   }

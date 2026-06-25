@@ -3416,3 +3416,124 @@ button[aria-label="Stäng"]:active {
     width: min(292px, calc(100vw - 20px));
   }
 }
+
+/* =========================================================
+   CDMP OFFER EXCEL LINK
+   ========================================================= */
+
+.excel-link-button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.excel-link-button:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.excel-link-button--linked {
+  border-color: var(--green-line);
+  background: var(--green);
+  color: var(--green-text);
+}
+
+.excel-link-button__icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: currentColor;
+  color: var(--white);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.excel-link-button--empty .excel-link-button__icon {
+  opacity: 0.72;
+}
+
+.excel-link-modal .overlay-modal__dialog {
+  width: min(560px, calc(100vw - 48px));
+}
+
+/* =========================================================
+   CDMP PROVMATTOR
+   Modal table editor for sample rugs.
+   ========================================================= */
+
+.provmattor-button .excel-link-button__icon {
+  font-size: 10px;
+}
+
+.provmattor-modal .overlay-modal__dialog {
+  width: min(980px, calc(100vw - 48px));
+}
+
+.provmattor-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.provmattor-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.provmattor-table th,
+.provmattor-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(222, 211, 189, 0.72);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.provmattor-table th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(251, 248, 241, 0.92);
+}
+
+.provmattor-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.provmattor-input {
+  min-height: 36px;
+}
+
+.provmattor-date-button {
+  min-width: 56px;
+  border: 1px solid rgba(16, 35, 58, 0.12);
+  cursor: pointer;
+}
+
+.provmattor-date-button:hover {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+@media (max-width: 920px) {
+  .provmattor-modal .overlay-modal__dialog {
+    width: 100%;
+  }
+}

@@ -10,6 +10,22 @@ export function createSettingsController({
   openLinksPanel,
   getPdfDisplayName,
 }) {
+  function openStatisticsFromSettings() {
+    state.activeTableName = 'STATISTICS';
+    state.settingsPanelOpen = false;
+    state.settingsView = 'menu';
+    state.linksPanelOpen = false;
+    state.archivePanelOpen = false;
+    state.notesPanelOpen = false;
+    state.notesRowId = null;
+    state.rowTodoPanelOpen = false;
+    state.rowTodoRowId = null;
+    state.detailRowId = null;
+    state.newRowDraft = null;
+    render();
+  }
+
+
   function openRutinerFromSettings() {
     state.activeTableName = 'RUTINER';
     state.settingsPanelOpen = false;
@@ -542,6 +558,14 @@ export function createSettingsController({
       }));
 
       menu.appendChild(createCard({
+        title: 'FSG',
+        subtitle: 'Öppna försäljningsstatistik',
+        onClick: openStatisticsFromSettings,
+        disabled: false,
+        adminOnly: false,
+      }));
+
+      menu.appendChild(createCard({
         title: 'Rutiner',
         subtitle: 'Öppna rutiner',
         onClick: openRutinerFromSettings,
@@ -553,7 +577,7 @@ export function createSettingsController({
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=213');
+          const { signOutUser } = await import('./auth.js?v=220');
           await signOutUser();
         },
         disabled: false,

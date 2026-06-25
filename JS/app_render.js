@@ -19,6 +19,7 @@ export function createRenderController(deps) {
     createRowTodoPanel,
     createNotesPanel,
     createColumnChecklistPanel,
+    createCdmpProvmattorPanel,
     createDetailPanel,
     getFilteredRows,
     getVisibleColumns,
@@ -45,6 +46,7 @@ export function createRenderController(deps) {
     createStaticCellContent,
     toggleStatusCell,
     saveStatusDateCell,
+    saveDateCell,
     toggleTodoDone,
     startEditing,
   } = deps;
@@ -149,8 +151,9 @@ export function createRenderController(deps) {
     panel.style.visibility = '';
   }
 
-  function openStatusWeekDatePicker({ anchor, currentValue, tableConfig, row, column, dateField }) {
-    if (!anchor || !dateField || typeof saveStatusDateCell !== 'function') return;
+  function openStatusWeekDatePicker({ anchor, currentValue, tableConfig, row, column, dateField, saveDate }) {
+    const saveDateFn = typeof saveDate === 'function' ? saveDate : saveStatusDateCell;
+    if (!anchor || !dateField || typeof saveDateFn !== 'function') return;
 
     closeStatusWeekDatePicker();
 
@@ -243,7 +246,7 @@ export function createRenderController(deps) {
             event.preventDefault();
             event.stopPropagation();
             closeStatusWeekDatePicker();
-            await saveStatusDateCell(tableConfig, row, column, dateValue, dateField);
+            await saveDateFn(tableConfig, row, column, dateValue, dateField);
           });
           grid.appendChild(dayButton);
         }
@@ -262,7 +265,7 @@ export function createRenderController(deps) {
         event.preventDefault();
         event.stopPropagation();
         closeStatusWeekDatePicker();
-        await saveStatusDateCell(tableConfig, row, column, '', dateField);
+        await saveDateFn(tableConfig, row, column, '', dateField);
       });
 
       const todayButton = document.createElement('button');
@@ -273,7 +276,7 @@ export function createRenderController(deps) {
         event.preventDefault();
         event.stopPropagation();
         closeStatusWeekDatePicker();
-        await saveStatusDateCell(tableConfig, row, column, formatDateInputValue(new Date()), dateField);
+        await saveDateFn(tableConfig, row, column, formatDateInputValue(new Date()), dateField);
       });
 
       footer.appendChild(clearButton);
@@ -489,6 +492,35 @@ export function createRenderController(deps) {
           td.appendChild(createEditableDropdownControl(tableConfig, row, column));
         } else {
           td.appendChild(createStaticCellContent(row, column));
+
+          const dateTriggers = Array.from(td.querySelectorAll('[data-date-field]'));
+          dateTriggers.forEach((dateTrigger) => {
+            const openCustomDatePicker = (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const dateField = String(dateTrigger.dataset.dateField || '').trim();
+              if (!dateField) return;
+              openStatusWeekDatePicker({
+                anchor: dateTrigger,
+                currentValue: dateTrigger.dataset.dateValue || row?.[dateField] || '',
+                tableConfig,
+                row,
+                column,
+                dateField,
+                saveDate: saveDateCell,
+              });
+            };
+
+            dateTrigger.addEventListener('pointerdown', (event) => event.stopPropagation());
+            dateTrigger.addEventListener('mousedown', (event) => event.stopPropagation());
+            dateTrigger.addEventListener('click', openCustomDatePicker);
+            dateTrigger.addEventListener('keydown', (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                openCustomDatePicker(event);
+              }
+            });
+          });
+
           if (statusToggle) {
             const statusButton = td.querySelector('.status-button');
             const dateInputs = Array.from(td.querySelectorAll('[data-status-date-field]'));
@@ -511,6 +543,7 @@ export function createRenderController(deps) {
                   row,
                   column,
                   dateField,
+                  saveDate: saveStatusDateCell,
                 });
               };
 
@@ -639,6 +672,9 @@ export function createRenderController(deps) {
     } else if (state.columnChecklistPanelOpen) {
       const checklistPanel = createColumnChecklistPanel();
       if (checklistPanel) app.appendChild(checklistPanel);
+    } else if (state.cdmpProvmattorPanelOpen) {
+      const provmattorPanel = createCdmpProvmattorPanel();
+      if (provmattorPanel) app.appendChild(provmattorPanel);
     } else if (draftRow) {
       app.appendChild(createDetailPanel(tableName, tableConfig, draftRow, { isDraft: true }));
     } else if (row) {

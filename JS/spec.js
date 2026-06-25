@@ -31,8 +31,9 @@ window.PlanningSpec = (function () {
       dropdown_dev_kategori: { options: ["matta", "colonnade", "tapestry", "softAss", "packaging"], filterEnabled: true, filterOptions: ["Alla", "matta", "colonnade", "tapestry", "softAss", "packaging"] },
       dropdown_dev_syfte: { options: ["Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"] },
       dropdown_design_collection: { options: ["27-spring", "27-fall", "28-spring", "28-fall"], filterEnabled: true, filterOptions: ["All", "27-spring", "27-fall", "28-spring", "28-fall"] },
+      dropdown_cdmp_typ: { options: ["High End", "Standard", "Kontor"], filterEnabled: true, filterOptions: ["All", "High End", "Standard", "Kontor"] },
       dropdown_pre_dev_kategori: { options: ["Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"] },
-      dropdown_todo_kategori: { options: ["Privat", "Todo Planning", "Info", "Shopify", "Butler"], filterEnabled: true, filterOptions: ["Alla", "Privat", "Todo Planning", "Info", "Shopify", "Butler"] },
+      dropdown_todo_kategori: { options: ["Privat", "Todo Planning", "Info", "Shopify", "Butler", "Marknad"], filterEnabled: true, filterOptions: ["Alla", "Privat", "Todo Planning", "Info", "Shopify", "Butler", "Marknad"] },
       dropdown_saljintro_kvartal: { options: buildRollingQuarterOptions(), filterEnabled: false },
       dropdown_saljintro_vecka: { options: ["--", "v01", "v02", "v03", "v04", "v05", "v06", "v07", "v08", "v09", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48", "v49", "v50", "v51", "v52", "v53"], filterEnabled: false }
     },
@@ -100,13 +101,17 @@ window.PlanningSpec = (function () {
         categories: ["CDM Projects", "Butler", "Shopify", "Admin", "ToDo Planning", "Marknad", "Sälj"],
         columns: []
       },
+      "CDMP": { id: "cdmp", dbTable: "cdmp", title: "Cappelen Dimyr Projects", navTitle: "CDMP", columns: [
+        { name: "Namn", field: "namn", type: "text", key: true, width: PRIMARY_TITLE_WIDTH, mods: { align: "left", displayMode: "text", readonly: false } },
+        { name: "Beskrivning", field: "beskrivning", type: "text", width: "34ch", multiline: true, mods: { align: "left", displayMode: "textarea", readonly: false } },
+        { name: "Typ", field: "typ", type: "dropdown_cdmp_typ", width: "14ch", mods: { align: "left", displayMode: "select", readonly: false }, default: "High End" },
+        { name: "Offert", field: "offert", type: "text", width: "10ch", mods: { align: "center", displayMode: "excel_link", readonly: false } },
+        { name: "Provmattor", field: "provmattor", type: "text", width: "10ch", mods: { align: "center", displayMode: "provmattor_table", readonly: false } },
+        { name: "Prel Beslut", field: "prel_beslut_datum", type: "date", width: "15ch", dateDisplayMode: "week", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
+        { name: "Prel LEV", field: "prel_lev_datum", type: "date", width: "15ch", dateDisplayMode: "week", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" }
+      ]},
 
       "INKÖP": { id: "inkop", dbTable: "inkop", title: "INKÖP", columns: [
-        { name: "Status", field: "status", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "42ch", multiline: true, mods: { align: "left", displayMode: "textarea", readonly: false } },
-        { name: "Klart", field: "klart_datum", type: "date", width: "15ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" }
-      ]},
-      "MARKNAD": { id: "marknad", dbTable: "marknad", title: "MARKNAD", columns: [
         { name: "Status", field: "status", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "42ch", multiline: true, mods: { align: "left", displayMode: "textarea", readonly: false } },
         { name: "Klart", field: "klart_datum", type: "date", width: "15ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" }
@@ -139,8 +144,8 @@ window.PlanningSpec = (function () {
     "UTVECKLING": [{ produktide: "", kategori: "matta", syfte: "Anisa", beskrivning: "", collection: "27-spring", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", stort_sample: "gray", stort_sample_slut_datum: "", q_test: "gray", prissattning: "gray", is_done: false }],
     "SÄLJINTRO": [{ produkt: "", beskrivning_status: "", kategori: "matta", koll_q: "--", po_beslut: "gray", po_beslut_datum: "", po_beslut_slut_datum: "", po_lager: "gray", po_lager_datum: "", po_lager_slut_datum: "", b2b_ready: "gray", b2b_ready_datum: "", b2b_ready_slut_datum: "", shopify_ready: "gray", shopify_ready_datum: "", shopify_ready_slut_datum: "", b2b_intro: "--", is_done: false }],
     "DIG PROD": [{ produktnamn: "", kategori: "B2B-intro", beskrivning: "", p_info: "gray", ai_seo: "gray", metafalt: "gray", copy: "gray", packshot: "gray", kampanj: "gray", mail_notif: "gray", is_done: false }],
+    "CDMP": [{ namn: "", beskrivning: "", typ: "High End", offert: "", provmattor: "", prel_beslut_datum: "", prel_lev_datum: "", is_done: false }],
     "INKÖP": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
-    "MARKNAD": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
     "SÄLJ": [{ status: "gray", beskrivning: "", klart_datum: "", is_done: false }],
     "STATISTICS": [],
     "TODO": [{ kategori: "Privat", beskrivning: "", klart_datum: "-- -- -- ", is_done: false }],

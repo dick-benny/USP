@@ -76,52 +76,68 @@ export function createArchiveController({ supabase }) {
     }
   }
 
+  function isIntegerLikeId(value) {
+    return /^\d+$/.test(String(value || '').trim());
+  }
+
   async function deleteRelatedRecordsForSource(sourceTable, sourceRowId) {
     if (!sourceTable || !sourceRowId) return;
 
-    const { data: notesData, error: notesReadError } = await supabase
-      .from('planning_notes')
-      .select('id')
-      .eq('source_table', sourceTable)
-      .eq('source_row_id', sourceRowId);
+    // planning_notes.source_row_id is a bigint in the existing database, while
+    // newer tables such as TODO use UUID row ids. Querying the bigint column
+    // with a UUID makes Postgres reject the request before it can return zero
+    // matches. Skip notes cleanup for non-numeric ids; those rows cannot have
+    // planning_notes records in the current schema.
+    if (isIntegerLikeId(sourceRowId)) {
+      const { data: notesData, error: notesReadError } = await supabase
+        .from('planning_notes')
+        .select('id')
+        .eq('source_table', sourceTable)
+        .eq('source_row_id', sourceRowId);
 
-    if (notesReadError) {
-      throw new Error(`Kunde inte läsa kopplade notes: ${notesReadError.message}`);
-    }
+      if (notesReadError) {
+        throw new Error(`Kunde inte läsa kopplade notes: ${notesReadError.message}`);
+      }
 
-    const noteIds = (Array.isArray(notesData) ? notesData : [])
-      .map((item) => item.id)
-      .filter(Boolean);
+      const noteIds = (Array.isArray(notesData) ? notesData : [])
+        .map((item) => item.id)
+        .filter(Boolean);
 
-    if (noteIds.length) {
-      const { error: noteReadsError } = await supabase
-        .from('planning_note_reads')
+      if (noteIds.length) {
+        const { error: noteReadsError } = await supabase
+          .from('planning_note_reads')
+          .delete()
+          .in('note_id', noteIds);
+
+        if (noteReadsError) {
+          throw new Error(`Kunde inte ta bort note-läsningar: ${noteReadsError.message}`);
+        }
+      }
+
+      const { error: notesError } = await supabase
+        .from('planning_notes')
         .delete()
-        .in('note_id', noteIds);
+        .eq('source_table', sourceTable)
+        .eq('source_row_id', sourceRowId);
 
-      if (noteReadsError) {
-        throw new Error(`Kunde inte ta bort note-läsningar: ${noteReadsError.message}`);
+      if (notesError) {
+        throw new Error(`Kunde inte ta bort notes: ${notesError.message}`);
       }
     }
 
-    const { error: notesError } = await supabase
-      .from('planning_notes')
-      .delete()
-      .eq('source_table', sourceTable)
-      .eq('source_row_id', sourceRowId);
+    // planning_row_todos.source_row_id is also bigint in the existing schema.
+    // Skip row-ToDo cleanup for UUID/newer rows such as CDMP; otherwise Postgres
+    // rejects the query before it can return zero matches.
+    if (isIntegerLikeId(sourceRowId)) {
+      const { error: todosError } = await supabase
+        .from('planning_row_todos')
+        .delete()
+        .eq('source_table', sourceTable)
+        .eq('source_row_id', sourceRowId);
 
-    if (notesError) {
-      throw new Error(`Kunde inte ta bort notes: ${notesError.message}`);
-    }
-
-    const { error: todosError } = await supabase
-      .from('planning_row_todos')
-      .delete()
-      .eq('source_table', sourceTable)
-      .eq('source_row_id', sourceRowId);
-
-    if (todosError) {
-      throw new Error(`Kunde inte ta bort ToDos: ${todosError.message}`);
+      if (todosError) {
+        throw new Error(`Kunde inte ta bort ToDos: ${todosError.message}`);
+      }
     }
   }
 
