@@ -517,30 +517,6 @@ export function createSettingsController({
 
       if (isAdmin()) {
         menu.appendChild(createCard({
-          title: 'Match kolumn + dok',
-          subtitle: 'Öppna dokumentkopplingar',
-          onClick: openSettingsDocumentLinks,
-          disabled: false,
-          adminOnly: true,
-        }));
-
-        menu.appendChild(createCard({
-          title: 'Manage Users',
-          subtitle: 'To be continued',
-          onClick: () => alert('Manage Users — To be continued'),
-          disabled: false,
-          adminOnly: true,
-        }));
-
-        menu.appendChild(createCard({
-          title: 'Manage Links',
-          subtitle: 'Hantera länkar',
-          onClick: openSettingsLinks,
-          disabled: false,
-          adminOnly: true,
-        }));
-
-        menu.appendChild(createCard({
           title: 'Checklistor',
           subtitle: 'Hantera kolumn-checklistor',
           onClick: openSettingsChecklists,
@@ -549,13 +525,6 @@ export function createSettingsController({
         }));
       }
 
-      menu.appendChild(createCard({
-        title: 'Länkar',
-        subtitle: 'Öppna länkar',
-        onClick: openLinksPanel,
-        disabled: false,
-        adminOnly: false,
-      }));
 
       menu.appendChild(createCard({
         title: 'FSG',
@@ -577,7 +546,7 @@ export function createSettingsController({
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=220');
+          const { signOutUser } = await import('./auth.js?v=231');
           await signOutUser();
         },
         disabled: false,

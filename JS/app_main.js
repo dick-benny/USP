@@ -8,22 +8,22 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=228';
-import { createTodoController } from './app_todo.js?v=228';
-import { createRowTodoController } from './app_row_todo.js?v=228';
-import { createNotesController } from './app_notes.js?v=228';
-import { createSettingsController } from './app_settings.js?v=228';
-import { createMessagesController } from './app_messages.js?v=228';
-import { createRenderController } from './app_render.js?v=228';
-import { createDataController } from './app_data.js?v=228';
-import { createActionController } from './app_actions.js?v=228';
-import { createFilterController } from './app_filters.js?v=228';
-import { createColumnToolsController } from './app_column_tools.js?v=228';
-import { createExcelPlanController } from './app_excel_plan.js?v=228';
-import { createProjectsController } from './app_projects.js?v=228';
-import { createWorkflowController } from './app_workflows.js?v=228';
-import { createArchiveController } from './app_archive.js?v=228';
-import './app_statistics.js?v=228';
+} from './app_constants.js?v=230';
+import { createTodoController } from './app_todo.js?v=230';
+import { createRowTodoController } from './app_row_todo.js?v=230';
+import { createNotesController } from './app_notes.js?v=230';
+import { createSettingsController } from './app_settings.js?v=231';
+import { createMessagesController } from './app_messages.js?v=230';
+import { createRenderController } from './app_render.js?v=230';
+import { createDataController } from './app_data.js?v=230';
+import { createActionController } from './app_actions.js?v=230';
+import { createFilterController } from './app_filters.js?v=230';
+import { createColumnToolsController } from './app_column_tools.js?v=230';
+import { createExcelPlanController } from './app_excel_plan.js?v=230';
+import { createProjectsController } from './app_projects.js?v=232';
+import { createWorkflowController } from './app_workflows.js?v=230';
+import { createArchiveController } from './app_archive.js?v=230';
+import './app_statistics.js?v=230';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -43,6 +43,8 @@ export async function runPlanningApp() {
   const digProdEntry = digProdIndex >= 0 ? tableEntries.splice(digProdIndex, 1)[0] : null;
   const projektIndex = tableEntries.findIndex(([tableName]) => tableName === 'PROJEKT');
   const projektEntry = projektIndex >= 0 ? tableEntries.splice(projektIndex, 1)[0] : null;
+  const cdmpIndex = tableEntries.findIndex(([tableName]) => tableName === 'CDMP');
+  const cdmpEntry = cdmpIndex >= 0 ? tableEntries.splice(cdmpIndex, 1)[0] : null;
   const marknadIndex = tableEntries.findIndex(([tableName]) => tableName === 'MARKNAD');
   const marknadEntry = marknadIndex >= 0 ? tableEntries.splice(marknadIndex, 1)[0] : null;
   const saljIndex = tableEntries.findIndex(([tableName]) => tableName === 'SÄLJ');
@@ -57,6 +59,7 @@ export async function runPlanningApp() {
   const orderedEntries = [
     ...(digProdEntry ? [digProdEntry] : []),
     ...(projektEntry ? [projektEntry] : []),
+    ...(cdmpEntry ? [cdmpEntry] : []),
     ...(inkopEntry ? [inkopEntry] : []),
     ...(marknadEntry ? [marknadEntry] : []),
     ...(saljEntry ? [saljEntry] : []),
@@ -469,7 +472,6 @@ export async function runPlanningApp() {
     tableEntries,
     render,
     getCurrentUserInitials,
-    openNotesPanel,
   });
 
   function getFieldTypeConfig(typeName) {

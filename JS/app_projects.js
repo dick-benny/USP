@@ -1,4 +1,4 @@
-import { PDF_BUCKET } from './app_constants.js?v=208';
+import { PDF_BUCKET } from './app_constants.js?v=230';
 
 const PROJECT_TABLE = 'planning_projects';
 const ACTIVITY_TABLE = 'planning_project_activities';
@@ -17,6 +17,17 @@ function normalizeDate(value) {
   const raw = safeText(value);
   if (!raw || raw === '--' || raw === '-- -- --') return '';
   return raw.slice(0, 10);
+}
+
+function getNormalizedExternalLink(value) {
+  const raw = safeText(value);
+  if (!raw) return '';
+  if (!/^https?:\/\//i.test(raw)) return '';
+  try {
+    return new URL(raw).href;
+  } catch (err) {
+    return '';
+  }
 }
 
 function toNullableText(value) {
@@ -90,7 +101,6 @@ export function createProjectsController({
   tableEntries,
   render,
   getCurrentUserInitials,
-  openNotesPanel,
 }) {
   function ensureState() {
     if (!Array.isArray(state.projectRows)) state.projectRows = [];
@@ -207,10 +217,10 @@ export function createProjectsController({
   }
 
   async function saveProjectField(row, field, value) {
-    if (!row?.id) return;
+    if (!row?.id) return false;
     const previous = row[field];
     const next = value;
-    if (String(previous ?? '') === String(next ?? '')) return;
+    if (String(previous ?? '') === String(next ?? '')) return true;
 
     const cellKey = `project:${row.id}:${field}`;
     state.projectsSavingCell = cellKey;
@@ -224,8 +234,11 @@ export function createProjectsController({
     if (error) {
       updateLocalProject(row.id, { [field]: previous });
       alert(`Kunde inte spara projekt: ${error.message}`);
+      render();
+      return false;
     }
     render();
+    return true;
   }
 
   async function saveActivityField(row, field, value) {
@@ -574,78 +587,188 @@ export function createProjectsController({
     }
   }
 
-  function createDocsControl(row) {
-    const wrap = createEl('div', 'project-docs-field');
-    const currentPath = safeText(row.docs_url);
-    const displayName = getDocumentDisplayName(currentPath);
+  function openProjectDocsModal(row) {
+    if (!row?.id) return;
 
-    const info = createEl('span', displayName ? 'project-docs-name' : 'project-docs-name project-docs-name--empty', displayName || 'Inget dokument');
-    wrap.appendChild(info);
+    const existingValue = safeText(row.docs_url);
+    const existingExternalLink = getNormalizedExternalLink(existingValue);
 
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.className = 'project-docs-native';
-    fileInput.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,image/*';
-    fileInput.addEventListener('change', async () => {
-      const file = fileInput.files?.[0];
-      if (file) await replaceProjectDocument(row, file);
-      fileInput.value = '';
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay-modal excel-link-modal project-docs-link-modal';
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) overlay.remove();
     });
-    wrap.appendChild(fileInput);
 
-    const upload = document.createElement('button');
-    upload.type = 'button';
-    upload.className = 'project-docs-open';
-    upload.textContent = displayName ? 'Byt' : 'Ladda upp';
-    upload.title = displayName ? 'Byt dokument' : 'Ladda upp dokument';
-    upload.addEventListener('click', () => fileInput.click());
-    wrap.appendChild(upload);
+    const dialog = document.createElement('div');
+    dialog.className = 'overlay-modal__dialog';
 
-    if (currentPath) {
-      const open = document.createElement('button');
-      open.type = 'button';
-      open.className = 'project-docs-open';
-      open.textContent = 'Öppna';
-      open.addEventListener('click', async () => openProjectDocument(currentPath));
-      wrap.appendChild(open);
-    }
+    const panel = document.createElement('section');
+    panel.className = 'side-panel excel-link-modal__panel';
 
+    const header = document.createElement('div');
+    header.className = 'side-panel__header';
+
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'todo-modal__heading';
+
+    const eyebrow = document.createElement('p');
+    eyebrow.className = 'side-panel__eyebrow';
+    eyebrow.textContent = 'Projekt Docs';
+
+    const title = document.createElement('h2');
+    title.className = 'side-panel__title';
+    title.textContent = existingValue ? 'Ändra dokumentlänk' : 'Lägg till dokumentlänk';
+
+    const help = document.createElement('p');
+    help.className = 'side-panel__text';
+    help.textContent = 'Klistra in länken till dokumentet i SharePoint. Tabellen visar bara symbol och färg.';
+
+    titleWrap.appendChild(eyebrow);
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(help);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'side-panel__close side-panel__close--small';
+    closeButton.setAttribute('aria-label', 'Stäng');
+    closeButton.textContent = '×';
+    closeButton.addEventListener('click', () => overlay.remove());
+
+    header.appendChild(titleWrap);
+    header.appendChild(closeButton);
+
+    const body = document.createElement('div');
+    body.className = 'side-panel__body';
+
+    const field = document.createElement('label');
+    field.className = 'detail-field';
+
+    const label = document.createElement('span');
+    label.className = 'detail-field__label';
+    label.textContent = 'SharePoint-länk';
+
+    const input = document.createElement('input');
+    input.className = 'detail-field__control';
+    input.type = 'url';
+    input.inputMode = 'url';
+    input.placeholder = 'https://...';
+    input.value = existingExternalLink || '';
+
+    const hint = document.createElement('span');
+    hint.className = 'detail-field__hint';
+    hint.textContent = existingValue && !existingExternalLink
+      ? 'Befintligt uppladdat dokument kan öppnas via symbolen. Klistra in ny SharePoint-länk för att byta.'
+      : 'Spara enbart länken. Tabellen visar symbol och färg.';
+
+    field.appendChild(label);
+    field.appendChild(input);
+    field.appendChild(hint);
+    body.appendChild(field);
+
+    const footer = document.createElement('div');
+    footer.className = 'side-panel__footer';
+
+    const saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'primary-button';
+    saveButton.textContent = 'Spara';
+
+    const clearButton = document.createElement('button');
+    clearButton.type = 'button';
+    clearButton.className = 'secondary-button secondary-button--danger';
+    clearButton.textContent = 'Rensa länk';
+    clearButton.hidden = !existingValue;
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'secondary-button';
+    cancelButton.textContent = 'Avbryt';
+    cancelButton.addEventListener('click', () => overlay.remove());
+
+    const saveLink = async (nextRawValue) => {
+      const nextValue = safeText(nextRawValue);
+      if (nextValue && !getNormalizedExternalLink(nextValue)) {
+        alert('Ange en giltig http/https-länk.');
+        input.focus();
+        return;
+      }
+
+      saveButton.disabled = true;
+      clearButton.disabled = true;
+      cancelButton.disabled = true;
+      const saved = await saveProjectField(row, 'docs_url', nextValue);
+      if (saved) {
+        overlay.remove();
+        return;
+      }
+      saveButton.disabled = false;
+      clearButton.disabled = false;
+      cancelButton.disabled = false;
+    };
+
+    saveButton.addEventListener('click', async () => saveLink(input.value));
+    clearButton.addEventListener('click', async () => saveLink(''));
+    input.addEventListener('keydown', async (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        overlay.remove();
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        await saveLink(input.value);
+      }
+    });
+
+    footer.appendChild(saveButton);
+    footer.appendChild(cancelButton);
+    footer.appendChild(clearButton);
+
+    panel.appendChild(header);
+    panel.appendChild(body);
+    panel.appendChild(footer);
+    dialog.appendChild(panel);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+  }
+
+  function createDocsControl(row) {
+    const wrap = createEl('div', 'project-docs-field project-docs-field--symbol');
+    const currentValue = safeText(row.docs_url);
+    const hasLink = !!currentValue;
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = hasLink
+      ? 'excel-link-button excel-link-button--linked project-docs-link-button'
+      : 'excel-link-button excel-link-button--empty project-docs-link-button';
+    button.title = hasLink ? 'Öppna Docs. Högerklicka för att ändra länk.' : 'Lägg till Docs-länk';
+    button.setAttribute('aria-label', hasLink ? 'Öppna Docs-länk' : 'Lägg till Docs-länk');
+    button.innerHTML = '<span class="excel-link-button__icon" aria-hidden="true">X</span>';
+
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (hasLink) {
+        await openProjectDocument(currentValue);
+        return;
+      }
+      openProjectDocsModal(row);
+    });
+
+    button.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openProjectDocsModal(row);
+    });
+
+    wrap.appendChild(button);
     if (state.projectsSavingCell === `project:${row.id}:docs_url`) wrap.classList.add('is-saving');
     return wrap;
-  }
-
-  function createProjectNotesButton(row) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'notes-button';
-    button.textContent = '📝';
-    button.title = 'Notes';
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      openNotesPanel(row, {
-        sourceTable: PROJECT_TABLE,
-        title: getProjectTitle(row),
-        tableLabel: 'PROJEKT',
-      });
-    });
-    return button;
-  }
-
-  function createActivityNotesButton(row) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'notes-button';
-    button.textContent = '📝';
-    button.title = 'Notes';
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      openNotesPanel({ ...row, __projectActivity: true }, {
-        sourceTable: ACTIVITY_TABLE,
-        title: getActivityTitle(row),
-        tableLabel: 'PROJEKT / Aktivitet',
-      });
-    });
-    return button;
   }
 
   function createDeleteButton(label, onClick) {
@@ -702,15 +825,6 @@ export function createProjectsController({
     endTd.appendChild(createDateControl({ row: project, field: 'end_date', type: 'project', onSave: saveProjectField }));
     tr.appendChild(endTd);
 
-    const docsTd = document.createElement('td');
-    docsTd.appendChild(createDocsControl(project));
-    tr.appendChild(docsTd);
-
-    const notesTd = document.createElement('td');
-    notesTd.className = 'is-center';
-    notesTd.appendChild(createProjectNotesButton(project));
-    tr.appendChild(notesTd);
-
     const deleteTd = document.createElement('td');
     deleteTd.className = 'is-center';
     deleteTd.appendChild(createDeleteButton('Ta bort', async () => softDeleteProject(project)));
@@ -737,14 +851,12 @@ export function createProjectsController({
       '',
       'Start',
       'Slut',
-      '',
-      'Notes',
       'Ta bort',
     ];
 
     headers.forEach((label, index) => {
       const td = document.createElement('td');
-      if ([3, 4, 6, 7].includes(index)) td.className = 'is-center';
+      if ([3, 4, 5].includes(index)) td.className = 'is-center';
       if (index === 0) {
         const wrap = document.createElement('div');
         wrap.className = 'project-activity-header-start';
@@ -811,15 +923,6 @@ export function createProjectsController({
     endTd.className = 'is-center';
     endTd.appendChild(createDateControl({ row: activity, field: 'end_date', type: 'activity', onSave: saveActivityField }));
     tr.appendChild(endTd);
-
-    const emptyDocs = document.createElement('td');
-    emptyDocs.className = 'project-activity-empty-cell';
-    tr.appendChild(emptyDocs);
-
-    const notesTd = document.createElement('td');
-    notesTd.className = 'is-center';
-    notesTd.appendChild(createActivityNotesButton(activity));
-    tr.appendChild(notesTd);
 
     const deleteTd = document.createElement('td');
     deleteTd.className = 'is-center';
@@ -893,8 +996,6 @@ export function createProjectsController({
           <th style="width:17ch;"><div class="column-header"><span class="column-header__label">Kategori</span></div></th>
           <th class="is-center" style="width:14ch;"><div class="column-header"><span class="column-header__label">Start</span></div></th>
           <th class="is-center" style="width:14ch;"><div class="column-header"><span class="column-header__label">Slut</span></div></th>
-          <th style="width:26ch;"><div class="column-header"><span class="column-header__label">Docs</span></div></th>
-          <th class="is-center" style="width:9ch;"><div class="column-header"><span class="column-header__label">Notes</span></div></th>
           <th class="is-center" style="width:11ch;"><div class="column-header"><span class="column-header__label">Ta bort</span></div></th>
         </tr>
       </thead>
@@ -905,7 +1006,7 @@ export function createProjectsController({
     if (state.projectsLoading && !(state.projectRows || []).length) {
       const tr = document.createElement('tr');
       const td = document.createElement('td');
-      td.colSpan = 8;
+      td.colSpan = 6;
       td.className = 'empty-row';
       td.textContent = 'Laddar projekt...';
       tr.appendChild(td);
@@ -919,7 +1020,7 @@ export function createProjectsController({
       if (!projects.length) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 8;
+        td.colSpan = 6;
         td.className = 'empty-row';
         td.textContent = 'Inga projekt ännu.';
         tr.appendChild(td);
