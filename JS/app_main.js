@@ -12,7 +12,7 @@ import {
 import { createTodoController } from './app_todo.js?v=230';
 import { createRowTodoController } from './app_row_todo.js?v=230';
 import { createNotesController } from './app_notes.js?v=230';
-import { createSettingsController } from './app_settings.js?v=231';
+import { createSettingsController } from './app_settings.js?v=236';
 import { createMessagesController } from './app_messages.js?v=230';
 import { createRenderController } from './app_render.js?v=230';
 import { createDataController } from './app_data.js?v=230';
@@ -611,12 +611,29 @@ export async function runPlanningApp() {
     return tableName || '';
   }
 
-  function getMoodFilesForTable(tableName) {
-    return state.moodFilesByTable?.[tableName] || [];
+  function getMoodLinksForTable(tableName) {
+    const normalized = normalizeMoodTableName(tableName);
+    return state.moodFilesByTable?.[normalized] || [];
   }
 
-  function getMoodFileForSlot(tableName, slot) {
-    return getMoodFilesForTable(tableName).find((item) => Number(item.slot) === Number(slot)) || null;
+  function getMoodLinkUrl(item) {
+    return String(item?.storage_path || item?.url || '').trim();
+  }
+
+  function getMoodLinkName(item) {
+    return String(item?.original_name || item?.name || '').trim();
+  }
+
+  function getNextMoodSlot(tableName) {
+    const usedSlots = new Set(
+      getMoodLinksForTable(tableName)
+        .map((item) => Number(item.slot || 0))
+        .filter((value) => Number.isInteger(value) && value > 0),
+    );
+
+    let nextSlot = 1;
+    while (usedSlots.has(nextSlot)) nextSlot += 1;
+    return nextSlot;
   }
 
   async function loadMoodFiles() {
@@ -632,14 +649,14 @@ export async function runPlanningApp() {
 
       const grouped = {};
       (Array.isArray(data) ? data : []).forEach((item) => {
-        const tableName = String(item.table_name || '').trim();
+        const tableName = normalizeMoodTableName(item.table_name);
         if (!isMoodEnabledTable(tableName)) return;
         if (!grouped[tableName]) grouped[tableName] = [];
         grouped[tableName].push(item);
       });
       state.moodFilesByTable = grouped;
     } catch (err) {
-      console.warn('Could not load Mood files:', err.message);
+      console.warn('Could not load Collections links:', err.message);
       state.moodFilesByTable = {};
     }
   }
@@ -675,8 +692,8 @@ export async function runPlanningApp() {
         if (state.moodPanelOpen && state.moodPanelTableName === normalized) mountMoodPanel();
       });
     } catch (err) {
-      console.error('Could not open Mood panel:', err);
-      alert(`Kunde inte öppna Mood: ${err?.message || err}`);
+      console.error('Could not open Collections panel:', err);
+      alert(`Kunde inte öppna Collections: ${err?.message || err}`);
     }
   }
 
@@ -689,101 +706,299 @@ export async function runPlanningApp() {
     if (existingMoodPanel) existingMoodPanel.remove();
   }
 
-  async function replaceMoodFile(tableName, slot, file) {
-    if (!isAdmin()) {
-      alert('Endast admin kan ladda upp eller byta Mood-fil.');
+  function openMoodLink(item) {
+    const url = getMoodLinkUrl(item);
+    if (!url) return;
+    if (getNormalizedExternalLink(url)) {
+      openExternalLinkInNewWindow(url);
       return;
     }
-    if (!isMoodEnabledTable(tableName)) return;
-    if (!isPdfFile(file)) {
-      alert('Välj en PDF-fil.');
-      return;
+    void openPdfDocument(url, { type: 'pdf' });
+  }
+
+  async function saveMoodLink(tableName, item, nextName, nextUrl) {
+    if (!isAdmin()) {
+      alert('Endast admin kan lägga till eller ändra Collections-länkar.');
+      return false;
     }
 
-    const oldFile = getMoodFileForSlot(tableName, slot);
-    const oldPath = normalizePdfPath(oldFile?.storage_path);
+    const normalized = normalizeMoodTableName(tableName);
+    if (!isMoodEnabledTable(normalized)) return false;
+
+    const name = String(nextName || '').trim();
+    const url = String(nextUrl || '').trim();
+    if (!name) {
+      alert('Ange ett namn för länken.');
+      return false;
+    }
+    if (!getNormalizedExternalLink(url)) {
+      alert('Ange en giltig http/https-länk.');
+      return false;
+    }
 
     state.moodLoading = true;
-    render();
+    mountMoodPanel();
 
     try {
-      const storagePath = await uploadPdfFile(file, { type: 'pdf' });
       const payload = {
-        table_name: tableName,
-        slot: Number(slot),
-        storage_path: storagePath,
-        original_name: file.name || null,
+        table_name: normalized,
+        slot: Number(item?.slot || getNextMoodSlot(normalized)),
+        original_name: name,
+        storage_path: url,
         uploaded_by: window.CurrentUser?.email || window.CurrentUser?.initials || null,
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase
-        .from('planning_mood_files')
-        .upsert(payload, { onConflict: 'table_name,slot' });
-
-      if (error) throw error;
-
-      if (oldPath && oldPath !== storagePath) {
-        try {
-          await removePdfFromStorage(oldPath);
-        } catch (cleanupError) {
-          console.warn('Old Mood file cleanup failed:', cleanupError);
-        }
+      let response;
+      if (item?.id) {
+        response = await supabase
+          .from('planning_mood_files')
+          .update(payload)
+          .eq('id', item.id);
+      } else {
+        response = await supabase
+          .from('planning_mood_files')
+          .upsert(payload, { onConflict: 'table_name,slot' });
       }
 
+      if (response.error) throw response.error;
       await loadMoodFiles();
+      return true;
     } catch (err) {
-      alert(`Kunde inte spara Mood-fil: ${err.message}`);
+      alert(`Kunde inte spara Collections-länk: ${err.message}`);
+      return false;
     } finally {
       state.moodLoading = false;
-      render();
+      mountMoodPanel();
     }
   }
 
-  async function removeMoodFile(tableName, slot) {
+  async function removeMoodLink(tableName, item) {
     if (!isAdmin()) {
-      alert('Endast admin kan ta bort Mood-fil.');
+      alert('Endast admin kan ta bort Collections-länkar.');
       return;
     }
-    const item = getMoodFileForSlot(tableName, slot);
-    if (!item) return;
-    const confirmed = window.confirm('Ta bort Mood-fil?');
+    const normalized = normalizeMoodTableName(tableName);
+    if (!item || !isMoodEnabledTable(normalized)) return;
+    const confirmed = window.confirm('Ta bort Collections-länk?');
     if (!confirmed) return;
 
     state.moodLoading = true;
-    render();
+    mountMoodPanel();
 
     try {
-      const oldPath = normalizePdfPath(item.storage_path);
-      const { error } = await supabase
-        .from('planning_mood_files')
-        .delete()
-        .eq('table_name', tableName)
-        .eq('slot', Number(slot));
-
-      if (error) throw error;
-
-      if (oldPath) {
-        try {
-          await removePdfFromStorage(oldPath);
-        } catch (cleanupError) {
-          console.warn('Mood file cleanup failed:', cleanupError);
-        }
+      let query = supabase.from('planning_mood_files').delete();
+      if (item.id) {
+        query = query.eq('id', item.id);
+      } else {
+        query = query.eq('table_name', normalized).eq('slot', Number(item.slot));
       }
+      const { error } = await query;
+      if (error) throw error;
+      await loadMoodFiles();
+    } catch (err) {
+      alert(`Kunde inte ta bort Collections-länk: ${err.message}`);
+    } finally {
+      state.moodLoading = false;
+      mountMoodPanel();
+    }
+  }
+
+  async function moveMoodLink(tableName, item, direction) {
+    if (!isAdmin()) return;
+    const normalized = normalizeMoodTableName(tableName);
+    if (!item || !isMoodEnabledTable(normalized)) return;
+
+    const links = getMoodLinksForTable(normalized)
+      .slice()
+      .sort((a, b) => Number(a.slot || 0) - Number(b.slot || 0));
+    const currentIndex = links.findIndex((link) => (
+      item.id ? link.id === item.id : Number(link.slot) === Number(item.slot)
+    ));
+    if (currentIndex < 0) return;
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= links.length) return;
+
+    const current = links[currentIndex];
+    const target = links[targetIndex];
+    const currentSlot = Number(current.slot || 0);
+    const targetSlot = Number(target.slot || 0);
+    if (!currentSlot || !targetSlot) return;
+
+    const tempSlot = Math.max(...links.map((link) => Number(link.slot || 0)), 0) + 1000;
+
+    state.moodLoading = true;
+    mountMoodPanel();
+
+    try {
+      let first = supabase.from('planning_mood_files').update({ slot: tempSlot, updated_at: new Date().toISOString() });
+      first = current.id ? first.eq('id', current.id) : first.eq('table_name', normalized).eq('slot', currentSlot);
+      let response = await first;
+      if (response.error) throw response.error;
+
+      let second = supabase.from('planning_mood_files').update({ slot: currentSlot, updated_at: new Date().toISOString() });
+      second = target.id ? second.eq('id', target.id) : second.eq('table_name', normalized).eq('slot', targetSlot);
+      response = await second;
+      if (response.error) throw response.error;
+
+      let third = supabase.from('planning_mood_files').update({ slot: targetSlot, updated_at: new Date().toISOString() });
+      third = current.id ? third.eq('id', current.id) : third.eq('table_name', normalized).eq('slot', tempSlot);
+      response = await third;
+      if (response.error) throw response.error;
 
       await loadMoodFiles();
     } catch (err) {
-      alert(`Kunde inte ta bort Mood-fil: ${err.message}`);
+      alert(`Kunde inte sortera Collections-länkar: ${err.message}`);
     } finally {
       state.moodLoading = false;
-      render();
+      mountMoodPanel();
     }
+  }
+
+  function openMoodLinkModal(tableName, item = null) {
+    if (!isAdmin()) return;
+    const normalized = normalizeMoodTableName(tableName);
+    if (!isMoodEnabledTable(normalized)) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay-modal mood-link-modal';
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) overlay.remove();
+    });
+
+    const dialog = document.createElement('div');
+    dialog.className = 'overlay-modal__dialog';
+
+    const panel = document.createElement('section');
+    panel.className = 'side-panel mood-link-modal__panel';
+
+    const header = document.createElement('div');
+    header.className = 'side-panel__header';
+
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'todo-modal__heading';
+
+    const eyebrow = document.createElement('p');
+    eyebrow.className = 'side-panel__eyebrow';
+    eyebrow.textContent = `Collections – ${getMoodViewLabel(normalized)}`;
+
+    const title = document.createElement('h2');
+    title.className = 'side-panel__title';
+    title.textContent = item ? 'Ändra länk' : 'Lägg till länk';
+
+    const help = document.createElement('p');
+    help.className = 'side-panel__text';
+    help.textContent = 'Ange namn och länkadress. Användare ser bara namnet.';
+
+    titleWrap.appendChild(eyebrow);
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(help);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'side-panel__close side-panel__close--small';
+    closeButton.setAttribute('aria-label', 'Stäng');
+    closeButton.textContent = '×';
+    closeButton.addEventListener('click', () => overlay.remove());
+
+    header.appendChild(titleWrap);
+    header.appendChild(closeButton);
+
+    const body = document.createElement('div');
+    body.className = 'side-panel__body';
+
+    const nameField = document.createElement('label');
+    nameField.className = 'detail-field';
+    const nameLabel = document.createElement('span');
+    nameLabel.className = 'detail-field__label';
+    nameLabel.textContent = 'Namn';
+    const nameInput = document.createElement('input');
+    nameInput.className = 'detail-field__control';
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Ex. Moodboard';
+    nameInput.value = getMoodLinkName(item);
+    nameField.appendChild(nameLabel);
+    nameField.appendChild(nameInput);
+
+    const urlField = document.createElement('label');
+    urlField.className = 'detail-field';
+    const urlLabel = document.createElement('span');
+    urlLabel.className = 'detail-field__label';
+    urlLabel.textContent = 'Länkadress';
+    const urlInput = document.createElement('input');
+    urlInput.className = 'detail-field__control';
+    urlInput.type = 'url';
+    urlInput.inputMode = 'url';
+    urlInput.placeholder = 'https://...';
+    urlInput.value = getMoodLinkUrl(item);
+    urlField.appendChild(urlLabel);
+    urlField.appendChild(urlInput);
+
+    body.appendChild(nameField);
+    body.appendChild(urlField);
+
+    const footer = document.createElement('div');
+    footer.className = 'side-panel__footer';
+
+    const saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'primary-button';
+    saveButton.textContent = 'Spara';
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'secondary-button';
+    cancelButton.textContent = 'Avbryt';
+    cancelButton.addEventListener('click', () => overlay.remove());
+
+    const runSave = async () => {
+      saveButton.disabled = true;
+      cancelButton.disabled = true;
+      const saved = await saveMoodLink(normalized, item, nameInput.value, urlInput.value);
+      if (saved) {
+        overlay.remove();
+        return;
+      }
+      saveButton.disabled = false;
+      cancelButton.disabled = false;
+    };
+
+    saveButton.addEventListener('click', runSave);
+    [nameInput, urlInput].forEach((input) => {
+      input.addEventListener('keydown', async (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          overlay.remove();
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          await runSave();
+        }
+      });
+    });
+
+    footer.appendChild(saveButton);
+    footer.appendChild(cancelButton);
+
+    panel.appendChild(header);
+    panel.appendChild(body);
+    panel.appendChild(footer);
+    dialog.appendChild(panel);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    setTimeout(() => {
+      nameInput.focus();
+      nameInput.select();
+    }, 0);
   }
 
   function createMoodPanel() {
     if (!state.moodPanelOpen || !isMoodEnabledTable(state.moodPanelTableName)) return null;
 
     const tableName = state.moodPanelTableName;
+    const links = getMoodLinksForTable(tableName);
     const overlay = document.createElement('div');
     overlay.className = 'side-panel-overlay';
     overlay.style.position = 'fixed';
@@ -805,116 +1020,139 @@ export async function runPlanningApp() {
     dialog.style.background = '#fff';
     dialog.style.boxShadow = '0 24px 80px rgba(15, 23, 42, 0.24)';
     dialog.style.padding = '24px';
-    dialog.setAttribute('aria-label', `Mood ${getMoodViewLabel(tableName)}`);
+    dialog.setAttribute('aria-label', `Collections ${getMoodViewLabel(tableName)}`);
 
     const header = document.createElement('div');
     header.className = 'side-panel__header';
 
-    const title = document.createElement('div');
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'todo-modal__heading';
+
+    const eyebrow = document.createElement('p');
+    eyebrow.className = 'side-panel__eyebrow';
+    eyebrow.textContent = 'Collections';
+
+    const title = document.createElement('h2');
     title.className = 'side-panel__title';
-    title.textContent = `Mood – ${getMoodViewLabel(tableName)}`;
-    header.appendChild(title);
+    title.textContent = getMoodViewLabel(tableName);
+
+    const help = document.createElement('p');
+    help.className = 'side-panel__text';
+    help.textContent = isAdmin()
+      ? 'Lägg till eller hantera dokumentlänkar. Användare ser bara länkarnas namn.'
+      : 'Öppna dokumentlänkar.';
+
+    titleWrap.appendChild(eyebrow);
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(help);
+    header.appendChild(titleWrap);
+
+    const headerActions = document.createElement('div');
+    headerActions.className = 'side-panel__header-actions';
+
+    if (isAdmin()) {
+      const addButton = document.createElement('button');
+      addButton.type = 'button';
+      addButton.className = 'primary-button';
+      addButton.disabled = state.moodLoading;
+      addButton.textContent = '+ Lägg till';
+      addButton.addEventListener('click', () => openMoodLinkModal(tableName));
+      headerActions.appendChild(addButton);
+    }
 
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
     closeButton.className = 'side-panel__close';
     closeButton.textContent = '×';
-    closeButton.setAttribute('aria-label', 'Stäng Mood');
+    closeButton.setAttribute('aria-label', 'Stäng Collections');
     closeButton.addEventListener('click', closeMoodPanel);
-    header.appendChild(closeButton);
+    headerActions.appendChild(closeButton);
+    header.appendChild(headerActions);
 
     const body = document.createElement('div');
     body.className = 'side-panel__body';
 
-    const intro = document.createElement('p');
-    intro.className = 'empty-state';
-    intro.textContent = isAdmin()
-      ? 'Adminläge: ladda upp, byt eller ta bort upp till två Mood-PDF:er för vyn.'
-      : 'Du kan öppna Mood-PDF:er. Uppladdning och byte visas bara för admin.';
-    body.appendChild(intro);
+    if (!links.length) {
+      const empty = document.createElement('p');
+      empty.className = 'empty-state';
+      empty.textContent = isAdmin() ? 'Inga Collections-länkar ännu. Lägg till första länken.' : 'Inga Collections-länkar är publicerade ännu.';
+      body.appendChild(empty);
+    } else {
+      const list = document.createElement('div');
+      list.className = 'settings-list__rows mood-link-list';
 
-    [1, 2].forEach((slot) => {
-      const item = getMoodFileForSlot(tableName, slot);
-      const displayName = item?.original_name || getPdfDisplayName(item?.storage_path) || '';
+      links.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'settings-list__row mood-link-row';
 
-      const field = document.createElement('div');
-      field.className = 'detail-field detail-field--pdf';
+        const info = document.createElement('div');
+        info.className = 'settings-list__info';
 
-      const label = document.createElement('span');
-      label.className = 'detail-field__label';
-      label.textContent = `Mood ${slot}`;
-      field.appendChild(label);
+        const linkButton = document.createElement('button');
+        linkButton.type = 'button';
+        linkButton.className = 'message-card__row-link mood-link-row__name';
+        linkButton.textContent = getMoodLinkName(item) || 'Namnlös länk';
+        linkButton.title = 'Öppna länk i nytt fönster';
+        linkButton.addEventListener('click', () => openMoodLink(item));
+        info.appendChild(linkButton);
 
-      const wrap = document.createElement('div');
-      wrap.className = 'rutiner-pdf-field';
+        row.appendChild(info);
 
-      const info = document.createElement('div');
-      info.className = 'rutiner-pdf-field__info';
+        if (isAdmin()) {
+          const actions = document.createElement('div');
+          actions.className = 'settings-list__actions';
 
-      const name = document.createElement('div');
-      name.className = displayName ? 'rutiner-pdf-field__name' : 'rutiner-pdf-field__name rutiner-pdf-field__name--empty';
-      name.textContent = displayName || 'Ingen fil uppladdad';
-      info.appendChild(name);
+          const sortedLinks = links
+            .slice()
+            .sort((a, b) => Number(a.slot || 0) - Number(b.slot || 0));
+          const rowIndex = sortedLinks.findIndex((link) => (
+            item.id ? link.id === item.id : Number(link.slot) === Number(item.slot)
+          ));
 
-      const helper = document.createElement('div');
-      helper.className = 'rutiner-pdf-field__helper';
-      helper.textContent = displayName ? 'PDF-fil kopplad till denna vy.' : 'Ingen Mood-PDF är kopplad ännu.';
-      info.appendChild(helper);
+          const upButton = document.createElement('button');
+          upButton.type = 'button';
+          upButton.className = 'secondary-button';
+          upButton.disabled = state.moodLoading || rowIndex <= 0;
+          upButton.textContent = '↑';
+          upButton.title = 'Flytta upp';
+          upButton.setAttribute('aria-label', 'Flytta upp');
+          upButton.addEventListener('click', () => moveMoodLink(tableName, item, 'up'));
+          actions.appendChild(upButton);
 
-      const actions = document.createElement('div');
-      actions.className = 'rutiner-pdf-field__actions';
+          const downButton = document.createElement('button');
+          downButton.type = 'button';
+          downButton.className = 'secondary-button';
+          downButton.disabled = state.moodLoading || rowIndex < 0 || rowIndex >= sortedLinks.length - 1;
+          downButton.textContent = '↓';
+          downButton.title = 'Flytta ned';
+          downButton.setAttribute('aria-label', 'Flytta ned');
+          downButton.addEventListener('click', () => moveMoodLink(tableName, item, 'down'));
+          actions.appendChild(downButton);
 
-      if (displayName) {
-        const openButton = document.createElement('button');
-        openButton.type = 'button';
-        openButton.className = 'secondary-button';
-        openButton.textContent = 'Öppna PDF';
-        openButton.addEventListener('click', async () => {
-          await openPdfDocument(item.storage_path, { type: 'pdf' });
-        });
-        actions.appendChild(openButton);
-      }
+          const editButton = document.createElement('button');
+          editButton.type = 'button';
+          editButton.className = 'secondary-button';
+          editButton.disabled = state.moodLoading;
+          editButton.textContent = 'Ändra';
+          editButton.addEventListener('click', () => openMoodLinkModal(tableName, item));
+          actions.appendChild(editButton);
 
-      if (isAdmin()) {
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = 'application/pdf,.pdf';
-        fileInput.style.display = 'none';
-        fileInput.addEventListener('change', async () => {
-          const file = fileInput.files?.[0];
-          if (!file) return;
-          await replaceMoodFile(tableName, slot, file);
-          fileInput.value = '';
-        });
-
-        const uploadButton = document.createElement('button');
-        uploadButton.type = 'button';
-        uploadButton.className = 'secondary-button';
-        uploadButton.disabled = state.moodLoading;
-        uploadButton.textContent = displayName ? 'Byt fil' : 'Ladda upp PDF';
-        uploadButton.addEventListener('click', () => fileInput.click());
-        actions.appendChild(uploadButton);
-
-        if (displayName) {
           const removeButton = document.createElement('button');
           removeButton.type = 'button';
           removeButton.className = 'secondary-button secondary-button--danger';
           removeButton.disabled = state.moodLoading;
-          removeButton.textContent = 'Ta bort fil';
-          removeButton.addEventListener('click', async () => {
-            await removeMoodFile(tableName, slot);
-          });
+          removeButton.textContent = 'Ta bort';
+          removeButton.addEventListener('click', async () => removeMoodLink(tableName, item));
           actions.appendChild(removeButton);
+
+          row.appendChild(actions);
         }
 
-        wrap.appendChild(fileInput);
-      }
+        list.appendChild(row);
+      });
 
-      wrap.appendChild(info);
-      wrap.appendChild(actions);
-      field.appendChild(wrap);
-      body.appendChild(field);
-    });
+      body.appendChild(list);
+    }
 
     dialog.appendChild(header);
     dialog.appendChild(body);
@@ -4658,7 +4896,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     moodButton.type = 'button';
     moodButton.className = 'secondary-button';
     moodButton.dataset.action = 'mood';
-    moodButton.textContent = 'Mood';
+    moodButton.textContent = 'Collections';
     return bindMoodButton(moodButton, tableName);
   }
 

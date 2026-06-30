@@ -3537,3 +3537,99 @@ button[aria-label="Stäng"]:active {
     width: 100%;
   }
 }
+
+/* =========================================================
+   SETTINGS CHECKLIST TABLE v233
+   Checklist admin now follows the same row-based pattern as app tables.
+   ========================================================= */
+
+.settings-checklist-card {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-checklist-table-wrap {
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+}
+
+.settings-checklist-table {
+  min-width: 920px;
+  table-layout: fixed;
+}
+
+.settings-checklist-table th:nth-child(1),
+.settings-checklist-table td:nth-child(1) {
+  width: 18%;
+}
+
+.settings-checklist-table th:nth-child(2),
+.settings-checklist-table td:nth-child(2) {
+  width: 20%;
+}
+
+.settings-checklist-table th:nth-child(3),
+.settings-checklist-table td:nth-child(3) {
+  width: 26%;
+}
+
+.settings-checklist-table th:nth-child(4),
+.settings-checklist-table td:nth-child(4),
+.settings-checklist-table th:nth-child(5),
+.settings-checklist-table td:nth-child(5) {
+  width: 12%;
+}
+
+.settings-checklist-table th:nth-child(6),
+.settings-checklist-table td:nth-child(6) {
+  width: 12%;
+}
+
+.settings-checklist__select,
+.settings-checklist-table .detail-field__control {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.settings-checklist__points-button {
+  width: auto;
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.settings-checklist-points-overlay {
+  z-index: 55;
+  background: rgba(16, 35, 58, 0.22);
+}
+
+.settings-checklist-points-modal {
+  width: min(760px, calc(100vw - 48px));
+}
+
+.settings-checklist-points-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.settings-checklist-point-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+@media (max-width: 720px) {
+  .settings-checklist-points-modal {
+    width: 100%;
+  }
+
+  .settings-checklist-point-row {
+    grid-template-columns: 1fr;
+  }
+}

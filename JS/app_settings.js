@@ -428,6 +428,303 @@ export function createSettingsController({
 
 
   
+
+  function getChecklistDraft() {
+    if (!state.settingsChecklistDraft) {
+      state.settingsChecklistDraft = null;
+    }
+    return state.settingsChecklistDraft;
+  }
+
+  function getChecklistPointsDraft() {
+    if (!Array.isArray(state.settingsChecklistPointsDraft)) {
+      state.settingsChecklistPointsDraft = [];
+    }
+    return state.settingsChecklistPointsDraft;
+  }
+
+  function splitChecklistBody(body) {
+    return String(body || '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  function buildChecklistBody(points) {
+    return (points || [])
+      .map((point) => String(point?.text ?? point ?? '').trim())
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  function getChecklistColumnName(tableName, columnField) {
+    const column = getSettingsColumnOptions(tableName).find((item) => item.field === columnField);
+    return column?.name || columnField || 'Välj kolumn';
+  }
+
+  function startNewChecklistFromSettings() {
+    if (!isAdmin()) return alert('Endast admin kan skapa checklistor.');
+    state.settingsChecklistDraft = {
+      id: '__new__',
+      table_name: '',
+      column_field: '',
+      title: '',
+      body: '',
+      sort_order: 100,
+      is_active: true,
+      isNew: true,
+    };
+    render();
+  }
+
+  function cancelNewChecklistFromSettings() {
+    state.settingsChecklistDraft = null;
+    render();
+  }
+
+  async function createChecklistFromDraft() {
+    const draft = getChecklistDraft();
+    if (!draft) return;
+
+    const tableName = String(draft.table_name || '').trim();
+    const columnField = String(draft.column_field || '').trim();
+    const title = String(draft.title || '').trim();
+    const body = String(draft.body || '').trim();
+    const sortOrder = Number.parseInt(String(draft.sort_order ?? '100').trim(), 10);
+
+    if (!tableName) return alert('Välj tabell.');
+    if (!columnField) return alert('Välj kolumn.');
+    if (!title) return alert('Ange titel.');
+
+    state.settingsLoading = true;
+    render();
+
+    try {
+      const payload = {
+        table_name: tableName,
+        column_field: columnField,
+        title,
+        body,
+        sort_order: Number.isFinite(sortOrder) ? sortOrder : 100,
+        is_active: draft.is_active !== false,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('planning_column_checklists')
+        .upsert(payload, { onConflict: 'table_name,column_field' });
+
+      if (error) throw error;
+
+      state.settingsChecklistDraft = null;
+      await loadColumnChecklists();
+    } catch (err) {
+      alert(`Kunde inte skapa checklistan: ${err.message}`);
+    } finally {
+      state.settingsLoading = false;
+      render();
+    }
+  }
+
+  async function updateChecklistFieldFromSettings(item, patch) {
+    if (!item?.id || !patch || typeof patch !== 'object') return;
+    if (!isAdmin()) return alert('Endast admin kan redigera checklistor.');
+
+    const payload = {
+      ...patch,
+      updated_at: new Date().toISOString(),
+    };
+
+    state.settingsLoading = true;
+    render();
+
+    try {
+      const { error } = await supabase
+        .from('planning_column_checklists')
+        .update(payload)
+        .eq('id', item.id);
+
+      if (error) throw error;
+      await loadColumnChecklists();
+    } catch (err) {
+      alert(`Kunde inte uppdatera checklistan: ${err.message}`);
+    } finally {
+      state.settingsLoading = false;
+      render();
+    }
+  }
+
+  function openChecklistPointsEditor(item) {
+    const target = item?.isNew ? getChecklistDraft() : item;
+    if (!target) return;
+    state.settingsChecklistPointsOpen = true;
+    state.settingsChecklistPointsItemId = String(target.id || '__new__');
+    state.settingsChecklistPointsDraft = splitChecklistBody(target.body).map((text) => ({ text }));
+    if (!state.settingsChecklistPointsDraft.length) {
+      state.settingsChecklistPointsDraft.push({ text: '' });
+    }
+    render();
+  }
+
+  function closeChecklistPointsEditor() {
+    state.settingsChecklistPointsOpen = false;
+    state.settingsChecklistPointsItemId = '';
+    state.settingsChecklistPointsDraft = [];
+    render();
+  }
+
+  function getChecklistPointsTarget() {
+    const targetId = String(state.settingsChecklistPointsItemId || '');
+    if (!targetId) return null;
+    if (targetId === '__new__') return getChecklistDraft();
+    return (state.columnChecklistsList || []).find((item) => String(item.id) === targetId) || null;
+  }
+
+  async function persistChecklistPointsFromSettings() {
+    const target = getChecklistPointsTarget();
+    if (!target) return;
+    const body = buildChecklistBody(getChecklistPointsDraft());
+
+    if (String(target.id || '') === '__new__') {
+      target.body = body;
+      render();
+      return;
+    }
+
+    await updateChecklistFieldFromSettings(target, { body });
+  }
+
+  async function saveChecklistPointsFromSettings() {
+    await persistChecklistPointsFromSettings();
+    closeChecklistPointsEditor();
+  }
+
+  function createChecklistTableSelect(value, onChange) {
+    const select = document.createElement('select');
+    select.className = 'detail-field__control settings-checklist__select';
+    select.innerHTML = '<option value="">Välj tabell</option>';
+    getSettingsTableOptions().forEach((name) => {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name;
+      if (value === name) option.selected = true;
+      select.appendChild(option);
+    });
+    select.addEventListener('change', () => onChange(select.value));
+    return select;
+  }
+
+  function createChecklistColumnSelect(tableName, value, onChange) {
+    const select = document.createElement('select');
+    select.className = 'detail-field__control settings-checklist__select';
+    select.innerHTML = '<option value="">Välj kolumn</option>';
+    getSettingsColumnOptions(tableName).forEach((column) => {
+      const option = document.createElement('option');
+      option.value = column.field;
+      option.textContent = column.name;
+      if (value === column.field) option.selected = true;
+      select.appendChild(option);
+    });
+    select.addEventListener('change', () => onChange(select.value));
+    return select;
+  }
+
+
+  function createChecklistPointsModal() {
+    const target = getChecklistPointsTarget();
+    const points = getChecklistPointsDraft();
+
+    const modal = document.createElement('div');
+    modal.className = 'overlay-modal settings-checklist-points-overlay';
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    });
+
+    const panel = document.createElement('aside');
+    panel.className = 'side-panel overlay-modal__dialog settings-checklist-points-modal';
+
+    const header = document.createElement('div');
+    header.className = 'side-panel__header';
+    const heading = document.createElement('div');
+    heading.innerHTML = `
+      <p class="side-panel__eyebrow">Checklistor</p>
+      <h2 class="side-panel__title">${target?.title || 'Punkter'}</h2>
+      <p class="side-panel__text">Lägg till, ändra eller ta bort punkter i checklistan.</p>
+    `;
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'side-panel__close';
+    closeButton.textContent = 'Stäng';
+    closeButton.addEventListener('click', closeChecklistPointsEditor);
+    header.appendChild(heading);
+    header.appendChild(closeButton);
+
+    const body = document.createElement('div');
+    body.className = 'side-panel__body';
+
+    const card = document.createElement('section');
+    card.className = 'detail-card';
+
+    const list = document.createElement('div');
+    list.className = 'settings-checklist-points-list';
+
+    points.forEach((point, index) => {
+      const row = document.createElement('div');
+      row.className = 'settings-checklist-point-row';
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'detail-field__control';
+      input.value = point.text || '';
+      input.placeholder = `Punkt ${index + 1}`;
+      input.addEventListener('input', () => {
+        points[index].text = input.value;
+      });
+      input.addEventListener('blur', async () => {
+        points[index].text = input.value;
+        await persistChecklistPointsFromSettings();
+      });
+
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'secondary-button secondary-button--danger';
+      deleteButton.textContent = 'Ta bort';
+      deleteButton.disabled = points.length <= 1;
+      deleteButton.addEventListener('click', async () => {
+        points.splice(index, 1);
+        if (!points.length) points.push({ text: '' });
+        await persistChecklistPointsFromSettings();
+        render();
+      });
+
+      row.appendChild(input);
+      row.appendChild(deleteButton);
+      list.appendChild(row);
+    });
+
+    const addButton = document.createElement('button');
+    addButton.type = 'button';
+    addButton.className = 'secondary-button';
+    addButton.textContent = '+ Lägg till punkt';
+    addButton.addEventListener('click', () => {
+      points.push({ text: '' });
+      render();
+    });
+
+    card.appendChild(list);
+    card.appendChild(addButton);
+    body.appendChild(card);
+
+    panel.appendChild(header);
+    panel.appendChild(body);
+    modal.appendChild(panel);
+    return modal;
+  }
+
+
   function createSettingsPanel() {
     const overlay = document.createElement('div');
     overlay.className = 'overlay-modal';
@@ -546,7 +843,7 @@ export function createSettingsController({
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=231');
+          const { signOutUser } = await import('./auth.js?v=236');
           await signOutUser();
         },
         disabled: false,
@@ -555,190 +852,49 @@ export function createSettingsController({
 
       body.appendChild(menu);
     } else {
-      const backRow = document.createElement('div');
-      backRow.className = 'settings-back-row';
+      if (state.settingsView !== 'checklists') {
+        const backRow = document.createElement('div');
+        backRow.className = 'settings-back-row';
 
-      const backButton = document.createElement('button');
-      backButton.type = 'button';
-      backButton.className = 'secondary-button';
-      backButton.textContent = '← Tillbaka';
-      backButton.addEventListener('click', openSettingsMenu);
-      backRow.appendChild(backButton);
-      body.appendChild(backRow);
+        const backButton = document.createElement('button');
+        backButton.type = 'button';
+        backButton.className = 'secondary-button';
+        backButton.textContent = '← Tillbaka';
+        backButton.addEventListener('click', openSettingsMenu);
+        backRow.appendChild(backButton);
+        body.appendChild(backRow);
+      }
 
       if (state.settingsView === 'checklists') {
-        const formCard = document.createElement('section');
-        formCard.className = 'detail-card settings-form';
-
-        const formTitle = document.createElement('h3');
-        formTitle.className = 'detail-card__title';
-        formTitle.textContent = state.settingsDraft.checklistId ? 'Redigera checklist' : 'Ny checklist';
-        if (state.settingsDraft.checklistId) {
-          formTitle.classList.add('is-editing');
-        }
-
-        const tableLabel = document.createElement('label');
-        tableLabel.className = 'detail-field';
-        const tableText = document.createElement('span');
-        tableText.className = 'detail-field__label';
-        tableText.textContent = 'Tabell';
-        const tableSelect = document.createElement('select');
-        tableSelect.className = 'detail-field__control';
-        tableSelect.innerHTML = '<option value="">Välj tabell</option>';
-        getSettingsTableOptions().forEach((name) => {
-          const option = document.createElement('option');
-          option.value = name;
-          option.textContent = name;
-          if (state.settingsDraft.checklistTableName === name) option.selected = true;
-          tableSelect.appendChild(option);
-        });
-        tableSelect.addEventListener('change', () => {
-          state.settingsDraft.checklistTableName = tableSelect.value;
-          state.settingsDraft.checklistColumnField = '';
-          render();
-        });
-        tableLabel.appendChild(tableText);
-        tableLabel.appendChild(tableSelect);
-
-        const columnLabel = document.createElement('label');
-        columnLabel.className = 'detail-field';
-        const columnText = document.createElement('span');
-        columnText.className = 'detail-field__label';
-        columnText.textContent = 'Kolumn';
-        const columnSelect = document.createElement('select');
-        columnSelect.className = 'detail-field__control';
-        columnSelect.innerHTML = '<option value="">Välj kolumn</option>';
-        getSettingsColumnOptions(state.settingsDraft.checklistTableName).forEach((column) => {
-          const option = document.createElement('option');
-          option.value = column.field;
-          option.textContent = column.name;
-          if (state.settingsDraft.checklistColumnField === column.field) option.selected = true;
-          columnSelect.appendChild(option);
-        });
-        columnSelect.addEventListener('change', () => {
-          state.settingsDraft.checklistColumnField = columnSelect.value;
-        });
-        columnLabel.appendChild(columnText);
-        columnLabel.appendChild(columnSelect);
-
-        const titleField = document.createElement('label');
-        titleField.className = 'detail-field';
-        const titleText = document.createElement('span');
-        titleText.className = 'detail-field__label';
-        titleText.textContent = 'Titel';
-        const titleInput = document.createElement('input');
-        titleInput.className = 'detail-field__control';
-        titleInput.type = 'text';
-        titleInput.value = state.settingsDraft.checklistTitle || '';
-        titleInput.addEventListener('input', () => {
-          state.settingsDraft.checklistTitle = titleInput.value;
-        });
-        titleField.appendChild(titleText);
-        titleField.appendChild(titleInput);
-
-        const bodyField = document.createElement('label');
-        bodyField.className = 'detail-field';
-        const bodyText = document.createElement('span');
-        bodyText.className = 'detail-field__label';
-        bodyText.textContent = 'Punkter - en per rad';
-        const bodyInput = document.createElement('textarea');
-        bodyInput.className = 'detail-field__control notes-form__body todo-modal__textarea';
-        bodyInput.rows = 8;
-        bodyInput.value = state.settingsDraft.checklistBody || '';
-        bodyInput.addEventListener('input', () => {
-          state.settingsDraft.checklistBody = bodyInput.value;
-        });
-        bodyField.appendChild(bodyText);
-        bodyField.appendChild(bodyInput);
-
-        const sortField = document.createElement('label');
-        sortField.className = 'detail-field';
-        const sortText = document.createElement('span');
-        sortText.className = 'detail-field__label';
-        sortText.textContent = 'Ordning';
-        const sortInput = document.createElement('input');
-        sortInput.className = 'detail-field__control';
-        sortInput.type = 'number';
-        sortInput.value = state.settingsDraft.checklistSortOrder || '100';
-        sortInput.addEventListener('input', () => {
-          state.settingsDraft.checklistSortOrder = sortInput.value;
-        });
-        sortField.appendChild(sortText);
-        sortField.appendChild(sortInput);
-
-        const activeField = document.createElement('label');
-        activeField.className = 'detail-field';
-        const activeWrap = document.createElement('div');
-        activeWrap.className = 'settings-checkbox-row';
-        const activeInput = document.createElement('input');
-        activeInput.type = 'checkbox';
-        activeInput.checked = !!state.settingsDraft.checklistIsActive;
-        activeInput.addEventListener('change', () => {
-          state.settingsDraft.checklistIsActive = activeInput.checked;
-        });
-        const activeLabel = document.createElement('span');
-        activeLabel.className = 'detail-field__label';
-        activeLabel.textContent = 'Aktiv';
-        activeWrap.appendChild(activeInput);
-        activeWrap.appendChild(activeLabel);
-        activeField.appendChild(activeWrap);
-
-        const footer = document.createElement('div');
-        footer.className = 'side-panel__footer';
-
-        const saveButton = document.createElement('button');
-        saveButton.type = 'button';
-        saveButton.className = 'primary-button';
-        saveButton.textContent = state.settingsLoading ? 'Sparar...' : 'Spara';
-        saveButton.disabled = state.settingsLoading || !isAdmin();
-        saveButton.addEventListener('click', async () => {
-          await saveChecklistFromSettings();
-        });
-
-        const resetButton = document.createElement('button');
-        resetButton.type = 'button';
-        resetButton.className = 'secondary-button';
-        resetButton.textContent = 'Rensa';
-        resetButton.addEventListener('click', () => {
-          resetChecklistDraft();
-          render();
-        });
-
-        footer.appendChild(saveButton);
-        footer.appendChild(resetButton);
-
-        formCard.appendChild(formTitle);
-        formCard.appendChild(tableLabel);
-        formCard.appendChild(columnLabel);
-        formCard.appendChild(titleField);
-        formCard.appendChild(bodyField);
-        formCard.appendChild(sortField);
-        formCard.appendChild(activeField);
-        formCard.appendChild(footer);
-
         const listCard = document.createElement('section');
-        listCard.className = 'detail-card settings-list';
+        listCard.className = 'detail-card settings-list settings-checklist-card';
 
         const listHeader = document.createElement('div');
         listHeader.className = 'settings-list__header';
 
         const listTitle = document.createElement('h3');
         listTitle.className = 'detail-card__title';
-        listTitle.textContent = `Befintliga checklistor (${(state.columnChecklistsList || []).length})`;
+        listTitle.textContent = 'Checklistor';
 
-        const refreshButton = document.createElement('button');
-        refreshButton.type = 'button';
-        refreshButton.className = 'secondary-button';
-        refreshButton.textContent = state.columnChecklistsLoading ? 'Laddar...' : 'Uppdatera';
-        refreshButton.disabled = !!state.columnChecklistsLoading;
-        refreshButton.addEventListener('click', async () => {
-          await loadColumnChecklists();
-          render();
-        });
+        const headerActions = document.createElement('div');
+        headerActions.className = 'settings-list__actions';
 
+        const newButton = document.createElement('button');
+        newButton.type = 'button';
+        newButton.className = 'primary-button';
+        newButton.textContent = '+ Ny rad';
+        newButton.disabled = !isAdmin() || !!getChecklistDraft() || state.settingsLoading;
+        newButton.addEventListener('click', startNewChecklistFromSettings);
+
+        headerActions.appendChild(newButton);
         listHeader.appendChild(listTitle);
-        listHeader.appendChild(refreshButton);
+        listHeader.appendChild(headerActions);
         listCard.appendChild(listHeader);
+
+        const hint = document.createElement('p');
+        hint.className = 'detail-card__text';
+        hint.textContent = 'Redigera checklistor inline. Klicka på en rad för att redigera punkter.';
+        listCard.appendChild(hint);
 
         if (state.columnChecklistsError) {
           const error = document.createElement('p');
@@ -747,94 +903,150 @@ export function createSettingsController({
           listCard.appendChild(error);
         }
 
-        const rows = state.columnChecklistsList || [];
         if (state.columnChecklistsLoading) {
           const loading = document.createElement('p');
           loading.className = 'empty-state';
           loading.textContent = 'Laddar checklistor...';
           listCard.appendChild(loading);
-        } else if (!rows.length) {
-          const empty = document.createElement('p');
-          empty.className = 'empty-state';
-          empty.textContent = 'Inga checklistor visas. Om checklist finns i DB: kör SQL-filen planning_column_checklists_policy_fix.sql och tryck Uppdatera.';
-          listCard.appendChild(empty);
         } else {
-          const list = document.createElement('div');
-          list.className = 'settings-list__rows';
+          const tableWrap = document.createElement('div');
+          tableWrap.className = 'table-wrap settings-checklist-table-wrap';
 
-          rows.forEach((item) => {
-            const row = document.createElement('div');
-            row.className = 'settings-list__row';
+          const table = document.createElement('table');
+          table.className = 'data-table settings-checklist-table';
+          table.innerHTML = `
+            <thead>
+              <tr>
+                <th>Tabell</th>
+                <th>Kolumn</th>
+                <th>Titel</th>
+                <th class="is-center">Åtgärder</th>
+              </tr>
+            </thead>
+          `;
 
-            const info = document.createElement('div');
-            info.className = 'settings-list__info';
+          const tbody = document.createElement('tbody');
 
-            const title = document.createElement('div');
-            title.className = 'settings-list__title';
-            title.textContent = item.title || 'Utan titel';
+          const renderChecklistRow = (item, { isDraft = false } = {}) => {
+            const row = document.createElement('tr');
+            row.classList.add('settings-checklist-row');
+            row.title = 'Klicka på raden för att redigera punkter';
+            row.style.cursor = 'pointer';
+            row.addEventListener('click', (event) => {
+              if (!isAdmin()) return;
+              if (event.target.closest('button, input, select, textarea, a')) return;
+              openChecklistPointsEditor(item);
+            });
+            if (isDraft) row.classList.add('is-editing');
 
-            const subtitle = document.createElement('div');
-            subtitle.className = 'settings-list__meta';
-            subtitle.textContent = `${item.table_name} · ${item.column_field} · ${item.is_active ? 'aktiv' : 'inaktiv'}`;
+            const tableCell = document.createElement('td');
+            tableCell.appendChild(createChecklistTableSelect(item.table_name || '', async (value) => {
+              if (isDraft) {
+                item.table_name = value;
+                item.column_field = '';
+                render();
+                return;
+              }
+              const firstColumn = getSettingsColumnOptions(value)[0]?.field || '';
+              await updateChecklistFieldFromSettings(item, { table_name: value, column_field: firstColumn });
+            }));
 
-            info.appendChild(title);
-            info.appendChild(subtitle);
+            const columnCell = document.createElement('td');
+            columnCell.appendChild(createChecklistColumnSelect(item.table_name || '', item.column_field || '', async (value) => {
+              if (isDraft) {
+                item.column_field = value;
+                return;
+              }
+              await updateChecklistFieldFromSettings(item, { column_field: value });
+            }));
 
+            const titleCell = document.createElement('td');
+            const titleInput = document.createElement('input');
+            titleInput.type = 'text';
+            titleInput.className = 'detail-field__control';
+            titleInput.value = item.title || '';
+            titleInput.placeholder = 'Titel';
+            titleInput.addEventListener('input', () => {
+              if (isDraft) item.title = titleInput.value;
+            });
+            if (!isDraft) {
+              titleInput.addEventListener('blur', async () => {
+                const value = titleInput.value.trim();
+                if (value && value !== String(item.title || '')) {
+                  await updateChecklistFieldFromSettings(item, { title: value });
+                }
+              });
+            }
+            titleCell.appendChild(titleInput);
+
+            const actionsCell = document.createElement('td');
+            actionsCell.className = 'is-center';
             const actions = document.createElement('div');
-            actions.className = 'settings-list__actions';
+            actions.className = 'row-actions row-actions--inline';
 
-            const editButton = document.createElement('button');
-            editButton.type = 'button';
-            editButton.className = 'secondary-button';
-            editButton.textContent = 'Redigera';
-            editButton.addEventListener('click', () => {
-              if (!isAdmin()) {
-                alert('Endast admin kan redigera checklistor.');
-                return;
-              }
-              editChecklistFromSettings(item);
+            if (isDraft) {
+              const saveButton = document.createElement('button');
+              saveButton.type = 'button';
+              saveButton.className = 'row-actions__button';
+              saveButton.textContent = state.settingsLoading ? 'Sparar...' : 'Spara';
+              saveButton.disabled = state.settingsLoading || !isAdmin();
+              saveButton.addEventListener('click', createChecklistFromDraft);
+
+              const cancelButton = document.createElement('button');
+              cancelButton.type = 'button';
+              cancelButton.className = 'row-actions__button row-actions__button--danger';
+              cancelButton.textContent = 'Avbryt';
+              cancelButton.addEventListener('click', cancelNewChecklistFromSettings);
+
+              actions.appendChild(saveButton);
+              actions.appendChild(cancelButton);
+            } else {
+              const deleteButton = document.createElement('button');
+              deleteButton.type = 'button';
+              deleteButton.className = 'row-actions__button row-actions__button--danger';
+              deleteButton.textContent = '🗑';
+              deleteButton.title = 'Ta bort checklista';
+              deleteButton.disabled = !isAdmin() || state.settingsLoading;
+              deleteButton.addEventListener('click', async () => {
+                await deleteChecklistFromSettings(item);
+              });
+              actions.appendChild(deleteButton);
+            }
+
+            actionsCell.appendChild(actions);
+
+            row.appendChild(tableCell);
+            row.appendChild(columnCell);
+            row.appendChild(titleCell);
+            row.appendChild(actionsCell);
+            return row;
+          };
+
+          const draft = getChecklistDraft();
+          if (draft) {
+            tbody.appendChild(renderChecklistRow(draft, { isDraft: true }));
+          }
+
+          const rows = state.columnChecklistsList || [];
+          if (!rows.length && !draft) {
+            const emptyRow = document.createElement('tr');
+            const emptyCell = document.createElement('td');
+            emptyCell.colSpan = 4;
+            emptyCell.className = 'empty-row';
+            emptyCell.textContent = 'Inga checklistor ännu. Klicka på + Ny rad för att skapa en.';
+            emptyRow.appendChild(emptyCell);
+            tbody.appendChild(emptyRow);
+          } else {
+            rows.forEach((item) => {
+              tbody.appendChild(renderChecklistRow(item));
             });
+          }
 
-            const activeButton = document.createElement('button');
-            activeButton.type = 'button';
-            activeButton.className = 'secondary-button';
-            activeButton.textContent = item.is_active ? 'Inaktivera' : 'Aktivera';
-            activeButton.disabled = !isAdmin() || state.settingsLoading;
-            activeButton.addEventListener('click', async () => {
-              await setChecklistActiveFromSettings(item, !item.is_active);
-            });
-
-            const deleteButton = document.createElement('button');
-            deleteButton.type = 'button';
-            deleteButton.className = 'secondary-button secondary-button--danger';
-            deleteButton.textContent = 'Ta bort';
-            deleteButton.disabled = !isAdmin() || state.settingsLoading;
-            deleteButton.addEventListener('click', async () => {
-              await deleteChecklistFromSettings(item);
-            });
-
-            actions.appendChild(editButton);
-            actions.appendChild(activeButton);
-            actions.appendChild(deleteButton);
-
-            row.classList.add('settings-list__row--clickable');
-            info.addEventListener('click', () => {
-              if (!isAdmin()) {
-                alert('Endast admin kan redigera checklistor.');
-                return;
-              }
-              editChecklistFromSettings(item);
-            });
-
-            row.appendChild(info);
-            row.appendChild(actions);
-            list.appendChild(row);
-          });
-
-          listCard.appendChild(list);
+          table.appendChild(tbody);
+          tableWrap.appendChild(table);
+          listCard.appendChild(tableWrap);
         }
 
-        body.appendChild(formCard);
         body.appendChild(listCard);
       } else if (state.settingsView === 'links') {
         const formCard = document.createElement('section');
@@ -1187,6 +1399,9 @@ export function createSettingsController({
     dialog.appendChild(header);
     dialog.appendChild(body);
     overlay.appendChild(dialog);
+    if (state.settingsChecklistPointsOpen) {
+      overlay.appendChild(createChecklistPointsModal());
+    }
     return overlay;
   }
 

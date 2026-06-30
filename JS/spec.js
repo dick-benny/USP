@@ -89,7 +89,7 @@ window.PlanningSpec = (function () {
         { name: "Packshot", field: "packshot", type: "status", width: "9ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Bilder/AI", field: "kampanj", type: "status", width: "10ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Mail/Notif.", field: "mail_notif", type: "status", width: "11ch", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "Klart", field: "klart", type: "status", width: "9ch", weekFromSaljintro: true, dateDisplayMode: "weekValue", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
+        { name: "DEADLINE", field: "klart", type: "status", width: "9ch", weekFromSaljintro: true, dateDisplayMode: "weekValue", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Klart datum", field: "klart_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: true }, default: "" }
       ]},
       "PROJEKT": {
