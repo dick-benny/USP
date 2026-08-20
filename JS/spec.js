@@ -30,7 +30,7 @@ window.PlanningSpec = (function () {
       dropdown_product_kategori: { options: ["matta", "colonnade", "tapestry", "SoftAss", "packaging"], filterEnabled: true, filterOptions: ["Alla", "matta", "colonnade", "tapestry", "SoftAss", "packaging"] },
       dropdown_dev_kategori: { options: ["matta", "colonnade", "tapestry", "softAss", "packaging"], filterEnabled: true, filterOptions: ["Alla", "matta", "colonnade", "tapestry", "softAss", "packaging"] },
       dropdown_dev_syfte: { options: ["Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"] },
-      dropdown_design_collection: { options: ["27-spring", "27-fall", "28-spring", "28-fall"], filterEnabled: true, filterOptions: ["All", "27-spring", "27-fall", "28-spring", "28-fall"] },
+      dropdown_design_collection: { options: ["26-FALL", "27-spring", "27-fall", "28-spring", "28-fall"], filterEnabled: true, filterOptions: ["All", "26-FALL", "27-spring", "27-fall", "28-spring", "28-fall"] },
       dropdown_cdmp_typ: { options: ["High End", "Standard", "Kontor"], filterEnabled: true, filterOptions: ["All", "High End", "Standard", "Kontor"] },
       dropdown_pre_dev_kategori: { options: ["Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"], filterEnabled: true, filterOptions: ["Alla", "Anisa", "Dream Home", "Iera Living", "Khanna", "Texti Alpacca"] },
       dropdown_todo_kategori: { options: ["Privat", "Todo Planning", "Info", "Shopify", "Butler", "Marknad"], filterEnabled: true, filterOptions: ["Alla", "Privat", "Todo Planning", "Info", "Shopify", "Butler", "Marknad"] },
