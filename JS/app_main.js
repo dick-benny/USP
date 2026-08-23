@@ -3237,6 +3237,22 @@ export async function runPlanningApp() {
     return normalizeDigProdIntroCategory(row?.kategori) || 'B2B-intro';
   }
 
+  function getDigprodPlanMilestone(row) {
+    const saljRow = getSaljintroRowForDigProdRow(row);
+    if (getDigprodPlanIntroType(row) === 'B2C-intro') {
+      return {
+        label: 'Lager Lev',
+        note: 'Från Säljintro',
+        value: saljRow?.po_lager_slut_datum || '',
+      };
+    }
+    return {
+      label: 'Sample Lev',
+      note: 'Från Säljintro',
+      value: saljRow?.po_beslut_slut_datum || '',
+    };
+  }
+
   async function loadDigprodPlanCounts() {
     const rows = state.rowsByTable?.['DIG PROD'] || [];
     if (!rows.length) {
@@ -3474,7 +3490,7 @@ export async function runPlanningApp() {
     }
   }
 
-  function createDigprodPlanPrintView(row, rows, sampleLev) {
+  function createDigprodPlanPrintView(row, rows, milestone) {
     const article = document.createElement('article');
     article.className = 'digprod-plan-print';
 
@@ -3497,9 +3513,9 @@ export async function runPlanningApp() {
     const sampleBox = document.createElement('div');
     sampleBox.className = 'digprod-plan-print__sample';
     const sampleLabel = document.createElement('span');
-    sampleLabel.textContent = 'Sample Lev';
+    sampleLabel.textContent = milestone.label;
     const sampleValue = document.createElement('strong');
-    sampleValue.textContent = formatWeekFromDateValue(sampleLev) || '—';
+    sampleValue.textContent = formatWeekFromDateValue(milestone.value) || '—';
     sampleBox.appendChild(sampleLabel);
     sampleBox.appendChild(sampleValue);
 
@@ -3522,7 +3538,7 @@ export async function runPlanningApp() {
     const tbody = document.createElement('tbody');
     const sampleRow = document.createElement('tr');
     sampleRow.className = 'digprod-plan-print__sample-row';
-    ['Sample Lev', 'Från Säljintro', formatWeekFromDateValue(sampleLev) || '—', ''].forEach((value) => {
+    [milestone.label, milestone.note, formatWeekFromDateValue(milestone.value) || '—', ''].forEach((value) => {
       const td = document.createElement('td');
       td.textContent = value;
       sampleRow.appendChild(td);
@@ -3561,7 +3577,7 @@ export async function runPlanningApp() {
 
     const footer = document.createElement('footer');
     footer.className = 'digprod-plan-print__footer';
-    footer.textContent = 'Status speglas från DIG PROD. Sample Lev hämtas från Säljintro.';
+    footer.textContent = `Status speglas från DIG PROD. ${milestone.label} hämtas från Säljintro.`;
     article.appendChild(footer);
 
     return article;
@@ -3576,8 +3592,7 @@ export async function runPlanningApp() {
     if (!row) return document.createDocumentFragment();
     const rowId = getDigprodPlanSourceKey(row.id);
     const rows = getDigprodPlanRows(rowId);
-    const saljRow = getSaljintroRowForDigProdRow(row);
-    const sampleLev = saljRow?.po_beslut_slut_datum || '';
+    const milestone = getDigprodPlanMilestone(row);
     const showOwnerControls = isAdmin();
 
     const overlay = document.createElement('div');
@@ -3650,14 +3665,14 @@ export async function runPlanningApp() {
       const sampleTr = document.createElement('tr');
       sampleTr.className = 'digprod-plan-sample-row';
       const sampleActivity = document.createElement('td');
-      sampleActivity.textContent = 'Sample Lev';
+      sampleActivity.textContent = milestone.label;
       const sampleStatus = document.createElement('td');
       const sampleChip = document.createElement('span');
       sampleChip.className = 'cell-chip';
-      sampleChip.textContent = 'Från Säljintro';
+      sampleChip.textContent = milestone.note;
       sampleStatus.appendChild(sampleChip);
       const sampleDate = document.createElement('td');
-      sampleDate.textContent = formatWeekFromDateValue(sampleLev) || '--';
+      sampleDate.textContent = formatWeekFromDateValue(milestone.value) || '--';
       sampleTr.appendChild(sampleActivity);
       sampleTr.appendChild(sampleStatus);
       sampleTr.appendChild(sampleDate);
@@ -3729,7 +3744,7 @@ export async function runPlanningApp() {
     panel.appendChild(body);
     dialog.appendChild(panel);
     if (!state.digprodPlanLoading) {
-      dialog.appendChild(createDigprodPlanPrintView(row, rows, sampleLev));
+      dialog.appendChild(createDigprodPlanPrintView(row, rows, milestone));
     }
     overlay.appendChild(dialog);
     return overlay;
@@ -4283,9 +4298,6 @@ export async function runPlanningApp() {
     panel.appendChild(header);
     panel.appendChild(body);
     dialog.appendChild(panel);
-    if (!state.digprodPlanLoading) {
-      dialog.appendChild(createDigprodPlanPrintView(row, rows, sampleLev));
-    }
     overlay.appendChild(dialog);
     return overlay;
   }
