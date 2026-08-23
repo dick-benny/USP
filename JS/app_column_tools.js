@@ -81,17 +81,30 @@ async function loadColumnChecklists() {
   }
 }
 
+function getChecklistContextTableName(tableName) {
+  if (tableName !== 'DIG PROD') return tableName;
+
+  const category = String(state.filtersByTable?.[tableName]?.kategori || '').trim();
+  if (category === 'B2B-intro') return 'B2B Intro';
+  if (category === 'B2C-intro') return 'B2C Intro';
+  return tableName;
+}
+
 function getColumnChecklistForColumn(tableName, column) {
-  return state.columnChecklistsByTable?.[tableName]?.[column.field] || null;
+  const contextTableName = getChecklistContextTableName(tableName);
+  return state.columnChecklistsByTable?.[contextTableName]?.[column.field]
+    || state.columnChecklistsByTable?.[tableName]?.[column.field]
+    || null;
 }
 
 function openColumnChecklist(tableName, column) {
   const checklist = getColumnChecklistForColumn(tableName, column);
   if (!checklist) return;
+  const contextTableName = getChecklistContextTableName(tableName);
 
   state.columnChecklistPanelOpen = true;
   state.columnChecklistActive = {
-    tableName,
+    tableName: checklist.table_name || contextTableName,
     columnName: column.name,
     columnField: column.field,
     checklist,
@@ -122,7 +135,7 @@ function createChecklistBadge(tableName, column) {
   badge.type = 'button';
   badge.className = 'column-checklist-badge';
   badge.textContent = '✓';
-  badge.title = String(checklist.title || 'Visa checklist').trim() || 'Visa checklist';
+  badge.title = String(column.name || 'Visa checklist').trim() || 'Visa checklist';
   badge.setAttribute('aria-label', `Visa checklist för ${column.name}`);
   badge.addEventListener('click', (event) => {
     event.preventDefault();
@@ -161,7 +174,7 @@ function createColumnChecklistPanel() {
   header.className = 'side-panel__header';
 
   const heading = document.createElement('div');
-  const title = String(checklist.title || active.columnName || 'Checklist').trim();
+  const title = String(active.columnName || 'Checklist').trim();
   heading.innerHTML = `
     <p class="side-panel__eyebrow">${active.tableName} · ${active.columnName}</p>
     <h2 class="side-panel__title">${title}</h2>

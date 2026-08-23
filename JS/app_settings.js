@@ -105,19 +105,44 @@ export function createSettingsController({
   }
 
   
+  const CHECKLIST_VIRTUAL_TABLES = {
+    'B2B Intro': { sourceTable: 'DIG PROD', category: 'B2B-intro' },
+    'B2C Intro': { sourceTable: 'DIG PROD', category: 'B2C-intro' },
+  };
+
   function getSettingsTableOptions() {
-    return tableEntries
+    const names = tableEntries
       .map(([tableName]) => tableName)
       .filter((tableName) => tableName !== 'RUTINER');
+
+    const withVirtualDigprod = [];
+    names.forEach((name) => {
+      withVirtualDigprod.push(name);
+      if (name === 'DIG PROD') {
+        withVirtualDigprod.push('B2B Intro', 'B2C Intro');
+      }
+    });
+
+    return withVirtualDigprod;
   }
 
   
   function getSettingsColumnOptions(tableName) {
-    const active = tableEntries.find(([name]) => name === tableName);
+    const virtual = CHECKLIST_VIRTUAL_TABLES[tableName] || null;
+    const sourceTableName = virtual?.sourceTable || tableName;
+    const active = tableEntries.find(([name]) => name === sourceTableName);
     if (!active) return [];
     const [, tableConfig] = active;
+
     return tableConfig.columns
       .filter((column) => column.field !== 'id')
+      .filter((column) => {
+        if (!virtual) return true;
+        if (column.hiddenInTable) return false;
+        if (column.field === 'kategori') return false;
+        const categories = Array.isArray(column.digprodCategories) ? column.digprodCategories : null;
+        return !categories || !categories.length || categories.includes(virtual.category);
+      })
       .map((column) => ({
         field: column.field,
         name: column.name,
@@ -316,7 +341,6 @@ export function createSettingsController({
 
     if (!tableName) return alert('Välj tabell.');
     if (!columnField) return alert('Välj kolumn.');
-    if (!title) return alert('Ange titel.');
     if (!body) return alert('Ange minst en punkt.');
 
     state.settingsLoading = true;
@@ -488,13 +512,12 @@ export function createSettingsController({
 
     const tableName = String(draft.table_name || '').trim();
     const columnField = String(draft.column_field || '').trim();
-    const title = String(draft.title || '').trim();
+    const title = getChecklistColumnName(tableName, columnField);
     const body = String(draft.body || '').trim();
     const sortOrder = Number.parseInt(String(draft.sort_order ?? '100').trim(), 10);
 
     if (!tableName) return alert('Välj tabell.');
     if (!columnField) return alert('Välj kolumn.');
-    if (!title) return alert('Ange titel.');
 
     state.settingsLoading = true;
     render();
@@ -651,7 +674,7 @@ export function createSettingsController({
     const heading = document.createElement('div');
     heading.innerHTML = `
       <p class="side-panel__eyebrow">Checklistor</p>
-      <h2 class="side-panel__title">${target?.title || 'Punkter'}</h2>
+      <h2 class="side-panel__title">${getChecklistColumnName(target?.table_name || '', target?.column_field || '')}</h2>
       <p class="side-panel__text">Lägg till, ändra eller ta bort punkter i checklistan.</p>
     `;
     const closeButton = document.createElement('button');
@@ -843,7 +866,7 @@ export function createSettingsController({
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=236');
+          const { signOutUser } = await import('./auth.js?v=248');
           await signOutUser();
         },
         disabled: false,
@@ -893,7 +916,7 @@ export function createSettingsController({
 
         const hint = document.createElement('p');
         hint.className = 'detail-card__text';
-        hint.textContent = 'Redigera checklistor inline. Klicka på en rad för att redigera punkter.';
+        hint.textContent = 'Välj tabell och kolumn. Kolumnnamnet används som titel när checklistan visas. Använd Edit för att redigera punkter.';
         listCard.appendChild(hint);
 
         if (state.columnChecklistsError) {
@@ -919,7 +942,6 @@ export function createSettingsController({
               <tr>
                 <th>Tabell</th>
                 <th>Kolumn</th>
-                <th>Titel</th>
                 <th class="is-center">Åtgärder</th>
               </tr>
             </thead>
@@ -930,13 +952,6 @@ export function createSettingsController({
           const renderChecklistRow = (item, { isDraft = false } = {}) => {
             const row = document.createElement('tr');
             row.classList.add('settings-checklist-row');
-            row.title = 'Klicka på raden för att redigera punkter';
-            row.style.cursor = 'pointer';
-            row.addEventListener('click', (event) => {
-              if (!isAdmin()) return;
-              if (event.target.closest('button, input, select, textarea, a')) return;
-              openChecklistPointsEditor(item);
-            });
             if (isDraft) row.classList.add('is-editing');
 
             const tableCell = document.createElement('td');
@@ -944,40 +959,30 @@ export function createSettingsController({
               if (isDraft) {
                 item.table_name = value;
                 item.column_field = '';
+                item.title = '';
                 render();
                 return;
               }
               const firstColumn = getSettingsColumnOptions(value)[0]?.field || '';
-              await updateChecklistFieldFromSettings(item, { table_name: value, column_field: firstColumn });
+              await updateChecklistFieldFromSettings(item, {
+                table_name: value,
+                column_field: firstColumn,
+                title: getChecklistColumnName(value, firstColumn),
+              });
             }));
 
             const columnCell = document.createElement('td');
             columnCell.appendChild(createChecklistColumnSelect(item.table_name || '', item.column_field || '', async (value) => {
               if (isDraft) {
                 item.column_field = value;
+                item.title = getChecklistColumnName(item.table_name || '', value);
                 return;
               }
-              await updateChecklistFieldFromSettings(item, { column_field: value });
-            }));
-
-            const titleCell = document.createElement('td');
-            const titleInput = document.createElement('input');
-            titleInput.type = 'text';
-            titleInput.className = 'detail-field__control';
-            titleInput.value = item.title || '';
-            titleInput.placeholder = 'Titel';
-            titleInput.addEventListener('input', () => {
-              if (isDraft) item.title = titleInput.value;
-            });
-            if (!isDraft) {
-              titleInput.addEventListener('blur', async () => {
-                const value = titleInput.value.trim();
-                if (value && value !== String(item.title || '')) {
-                  await updateChecklistFieldFromSettings(item, { title: value });
-                }
+              await updateChecklistFieldFromSettings(item, {
+                column_field: value,
+                title: getChecklistColumnName(item.table_name || '', value),
               });
-            }
-            titleCell.appendChild(titleInput);
+            }));
 
             const actionsCell = document.createElement('td');
             actionsCell.className = 'is-center';
@@ -1001,6 +1006,16 @@ export function createSettingsController({
               actions.appendChild(saveButton);
               actions.appendChild(cancelButton);
             } else {
+              const editButton = document.createElement('button');
+              editButton.type = 'button';
+              editButton.className = 'row-actions__button';
+              editButton.textContent = 'Edit';
+              editButton.title = 'Redigera punkter';
+              editButton.disabled = !isAdmin() || state.settingsLoading;
+              editButton.addEventListener('click', () => {
+                openChecklistPointsEditor(item);
+              });
+
               const deleteButton = document.createElement('button');
               deleteButton.type = 'button';
               deleteButton.className = 'row-actions__button row-actions__button--danger';
@@ -1010,6 +1025,7 @@ export function createSettingsController({
               deleteButton.addEventListener('click', async () => {
                 await deleteChecklistFromSettings(item);
               });
+              actions.appendChild(editButton);
               actions.appendChild(deleteButton);
             }
 
@@ -1017,7 +1033,6 @@ export function createSettingsController({
 
             row.appendChild(tableCell);
             row.appendChild(columnCell);
-            row.appendChild(titleCell);
             row.appendChild(actionsCell);
             return row;
           };

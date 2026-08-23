@@ -31,19 +31,21 @@ export function createWorkflowController(context) {
     const [, digProdConfig] = digProdEntry;
     const ownerInitials = saljintroRow.owner_initials || getCurrentUserInitials();
 
-    const beskrivning = String(saljintroRow?.beskrivning_status || '').trim();
-
     const payload = ['B2B-intro', 'B2C-intro'].map((kategori) => ({
       produktnamn: produkt,
       kategori,
-      beskrivning,
-      p_info: 'gray',
-      ai_seo: 'gray',
-      metafalt: 'gray',
-      copy: 'gray',
+      kommentar: '',
+      spec_produkt: 'gray',
+      spec_variant: 'gray',
+      text_copy: 'gray',
+      bild: 'gray',
+      copy_to_b2c: 'gray',
       packshot: 'gray',
+      miljo: 'gray',
       kampanj: 'gray',
-      mail_notif: 'gray',
+      media: 'gray',
+      update_b2b: 'gray',
+      utskick: 'gray',
       klart: 'gray',
       klart_datum: null,
       owner_initials: ownerInitials,

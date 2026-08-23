@@ -20,6 +20,7 @@ export function createRenderController(deps) {
     createNotesPanel,
     createColumnChecklistPanel,
     createCdmpProvmattorPanel,
+    createDigprodPlanPanel,
     createDetailPanel,
     getFilteredRows,
     getVisibleColumns,
@@ -675,6 +676,9 @@ export function createRenderController(deps) {
     } else if (state.cdmpProvmattorPanelOpen) {
       const provmattorPanel = createCdmpProvmattorPanel();
       if (provmattorPanel) app.appendChild(provmattorPanel);
+    } else if (state.digprodPlanPanelOpen) {
+      const planPanel = createDigprodPlanPanel();
+      if (planPanel) app.appendChild(planPanel);
     } else if (draftRow) {
       app.appendChild(createDetailPanel(tableName, tableConfig, draftRow, { isDraft: true }));
     } else if (row) {

@@ -12,16 +12,16 @@ import {
 import { createTodoController } from './app_todo.js?v=230';
 import { createRowTodoController } from './app_row_todo.js?v=230';
 import { createNotesController } from './app_notes.js?v=230';
-import { createSettingsController } from './app_settings.js?v=236';
+import { createSettingsController } from './app_settings.js?v=251';
 import { createMessagesController } from './app_messages.js?v=230';
-import { createRenderController } from './app_render.js?v=230';
+import { createRenderController } from './app_render.js?v=244';
 import { createDataController } from './app_data.js?v=230';
 import { createActionController } from './app_actions.js?v=230';
 import { createFilterController } from './app_filters.js?v=230';
-import { createColumnToolsController } from './app_column_tools.js?v=230';
+import { createColumnToolsController } from './app_column_tools.js?v=248';
 import { createExcelPlanController } from './app_excel_plan.js?v=230';
 import { createProjectsController } from './app_projects.js?v=232';
-import { createWorkflowController } from './app_workflows.js?v=230';
+import { createWorkflowController } from './app_workflows.js?v=251';
 import { createArchiveController } from './app_archive.js?v=230';
 import './app_statistics.js?v=230';
 
@@ -163,6 +163,11 @@ export async function runPlanningApp() {
     cdmpProvmattorRowsByCdmpId: {},
     cdmpProvmattorCountsByCdmpId: {},
     cdmpProvmattorLoading: false,
+    digprodPlanPanelOpen: false,
+    digprodPlanRowId: null,
+    digprodPlanRowsBySourceId: {},
+    digprodPlanCountsBySourceId: {},
+    digprodPlanLoading: false,
   };
 
 
@@ -409,6 +414,18 @@ export async function runPlanningApp() {
     return ['Allmänt'];
   }
 
+  function getActiveDigProdIntroCategory() {
+    const value = String(state.filtersByTable?.['DIG PROD']?.kategori || 'B2B-intro').trim();
+    return normalizeDigProdIntroCategory(value) || 'B2B-intro';
+  }
+
+  function isColumnVisibleForActiveDigProdCategory(column) {
+    if (state.activeTableName !== 'DIG PROD') return true;
+    const categories = Array.isArray(column?.digprodCategories) ? column.digprodCategories : null;
+    if (!categories || !categories.length) return true;
+    return categories.includes(getActiveDigProdIntroCategory());
+  }
+
   function getVisibleColumns(tableConfig) {
     const hiddenRowTodoTables = ['PRE DEV', 'UTVECKLING', 'SÄLJINTRO', 'DIG PROD'];
     const tableName = state.activeTableName;
@@ -418,7 +435,7 @@ export async function runPlanningApp() {
       ? []
       : [UI_OPEN_COLUMN, ...(tableName === TODO_TABLE ? [] : [UI_NOTES_COLUMN])];
     const columns = [
-      ...tableConfig.columns.filter((column) => column.field !== 'id' && !column.hiddenInTable && column.field !== UI_TODO_COLUMN.field && column.type !== UI_TODO_COLUMN.type),
+      ...tableConfig.columns.filter((column) => column.field !== 'id' && !column.hiddenInTable && column.field !== UI_TODO_COLUMN.field && column.type !== UI_TODO_COLUMN.type && isColumnVisibleForActiveDigProdCategory(column)),
       ...utilityColumns,
     ];
     if (inlineActionTables.includes(tableName)) {
@@ -2282,8 +2299,12 @@ export async function runPlanningApp() {
     return column?.mods?.displayMode === 'provmattor_table';
   }
 
+  function isDigprodPlanColumn(column) {
+    return column?.type === 'digprod_plan' || column?.mods?.displayMode === 'digprod_plan';
+  }
+
   function isEditableTextColumn(column) {
-    return ['text', 'veckonummer', 'kvartal'].includes(column.type) && !isOpenColumn(column) && !isExcelLinkColumn(column) && !isCdmpProvmattorColumn(column) && column?.mods?.readonly !== true;
+    return ['text', 'veckonummer', 'kvartal'].includes(column.type) && !isOpenColumn(column) && !isExcelLinkColumn(column) && !isCdmpProvmattorColumn(column) && !isDigprodPlanColumn(column) && column?.mods?.readonly !== true;
   }
 
   function isEditableDropdownColumn(column) {
@@ -2360,7 +2381,7 @@ export async function runPlanningApp() {
 
     const payload = {};
     tableConfig.columns.forEach((column) => {
-      if (column.field === 'id') return;
+      if (column.field === 'id' || isDigprodPlanColumn(column)) return;
       let value = draftRow[column.field];
       if (column.type === 'status') value = normalizeStatusValue(value);
       if (column.type === 'date') value = String(value || '').trim() || null;
@@ -3159,6 +3180,561 @@ export async function runPlanningApp() {
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
+
+  const DIGPROD_STATUS_LABELS = { gray: 'Grå', yellow: 'Gul', green: 'Grön', red: 'Röd' };
+
+  const DIGPROD_B2B_PLAN_ACTIVITY_FIELDS = [
+    { field: 'spec_produkt', label: 'SPEC PRODUKT' },
+    { field: 'spec_variant', label: 'SPEC VARIANT' },
+    { field: 'text_copy', label: 'TEXT COPY' },
+    { field: 'bild', label: 'BILD' },
+    { field: 'copy_to_b2c', label: 'COPY TO B2C' },
+    { field: 'utskick', label: 'UTSKICK' },
+  ];
+
+  const DIGPROD_B2C_PLAN_ACTIVITY_FIELDS = [
+    { field: 'packshot', label: 'PACKSHOT' },
+    { field: 'miljo', label: 'MILJÖ' },
+    { field: 'kampanj', label: 'KAMPANJ' },
+    { field: 'media', label: 'MEDIA' },
+    { field: 'update_b2b', label: 'UPDATE B2B' },
+    { field: 'utskick', label: 'UTSKICK' },
+  ];
+
+  function getDigprodPlanActivityFields(row) {
+    return getDigprodPlanIntroType(row) === 'B2C-intro'
+      ? DIGPROD_B2C_PLAN_ACTIVITY_FIELDS
+      : DIGPROD_B2B_PLAN_ACTIVITY_FIELDS;
+  }
+
+  function getDigprodPlanSourceKey(rowId) {
+    return String(rowId || '').trim();
+  }
+
+  function getDigprodPlanCount(rowId) {
+    const key = getDigprodPlanSourceKey(rowId);
+    if (!key) return 0;
+    return Number(state.digprodPlanCountsBySourceId?.[key] || 0);
+  }
+
+  function getCurrentDigprodPlanRow() {
+    const rowId = getDigprodPlanSourceKey(state.digprodPlanRowId);
+    if (!rowId) return null;
+    return (state.rowsByTable?.['DIG PROD'] || []).find((row) => String(row.id) === rowId) || null;
+  }
+
+  function getDigprodPlanRows(rowId) {
+    const key = getDigprodPlanSourceKey(rowId);
+    return key ? (state.digprodPlanRowsBySourceId[key] || []) : [];
+  }
+
+  function getDigprodPlanItem(rowId, activityKey) {
+    const key = String(activityKey || '').trim();
+    return getDigprodPlanRows(rowId).find((item) => String(item.activity_key || '').trim() === key) || null;
+  }
+
+  function getDigprodPlanIntroType(row) {
+    return normalizeDigProdIntroCategory(row?.kategori) || 'B2B-intro';
+  }
+
+  async function loadDigprodPlanCounts() {
+    const rows = state.rowsByTable?.['DIG PROD'] || [];
+    if (!rows.length) {
+      state.digprodPlanCountsBySourceId = {};
+      return;
+    }
+
+    const ids = rows.map((row) => getDigprodPlanSourceKey(row.id)).filter(Boolean);
+    if (!ids.length) {
+      state.digprodPlanCountsBySourceId = {};
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('digprod_intro_plan')
+      .select('id, source_row_id, due_date, owners')
+      .eq('source_table', 'dig_prod')
+      .in('source_row_id', ids);
+
+    if (error) {
+      console.warn('Could not load DIG PROD plan counts:', error.message);
+      return;
+    }
+
+    const counts = {};
+    ids.forEach((id) => { counts[id] = 0; });
+    (data || []).forEach((item) => {
+      const key = getDigprodPlanSourceKey(item.source_row_id);
+      if (!key) return;
+      const owners = Array.isArray(item.owners) ? item.owners.filter(Boolean) : [];
+      if (item.due_date || owners.length) counts[key] = (counts[key] || 0) + 1;
+    });
+    state.digprodPlanCountsBySourceId = counts;
+  }
+
+  async function loadDigprodPlanRows(rowId) {
+    const key = getDigprodPlanSourceKey(rowId);
+    if (!key) return [];
+
+    state.digprodPlanLoading = true;
+    render();
+
+    const { data, error } = await supabase
+      .from('digprod_intro_plan')
+      .select('*')
+      .eq('source_table', 'dig_prod')
+      .eq('source_row_id', key)
+      .order('sort_order', { ascending: true })
+      .order('activity_label', { ascending: true });
+
+    state.digprodPlanLoading = false;
+
+    if (error) {
+      alert(`Kunde inte läsa tidplan: ${error.message}`);
+      render();
+      return [];
+    }
+
+    const rows = data || [];
+    state.digprodPlanRowsBySourceId[key] = rows;
+    state.digprodPlanCountsBySourceId[key] = rows.filter((item) => {
+      const owners = Array.isArray(item.owners) ? item.owners.filter(Boolean) : [];
+      return item.due_date || owners.length;
+    }).length;
+    render();
+    return rows;
+  }
+
+  async function openDigprodPlanPanel(row) {
+    if (!row?.id) return;
+    state.settingsPanelOpen = false;
+    state.linksPanelOpen = false;
+    state.messagesPanelOpen = false;
+    state.archivePanelOpen = false;
+    state.rowTodoPanelOpen = false;
+    state.notesPanelOpen = false;
+    state.columnChecklistPanelOpen = false;
+    state.cdmpProvmattorPanelOpen = false;
+    state.detailRowId = null;
+    state.newRowDraft = null;
+    state.digprodPlanPanelOpen = true;
+    state.digprodPlanRowId = row.id;
+    document.body?.classList?.add('is-digprod-plan-print-ready');
+    await loadDigprodPlanRows(row.id);
+  }
+
+  function closeDigprodPlanPanel() {
+    document.body?.classList?.remove('is-digprod-plan-print-ready');
+    state.digprodPlanPanelOpen = false;
+    state.digprodPlanRowId = null;
+    closeCdmpProvmattorDatePicker();
+    render();
+  }
+
+  async function upsertDigprodPlanItem(row, activity, patch) {
+    if (!row?.id || !activity?.field) return;
+    const key = getDigprodPlanSourceKey(row.id);
+    const previousRows = getDigprodPlanRows(key);
+    const existing = previousRows.find((item) => String(item.activity_key) === String(activity.field));
+    const nextOwners = Array.isArray(patch.owners) ? patch.owners.map((item) => String(item || '').trim()).filter(Boolean) : undefined;
+    const payload = {
+      source_table: 'dig_prod',
+      source_row_id: key,
+      intro_type: getDigprodPlanIntroType(row),
+      activity_key: activity.field,
+      activity_label: activity.label,
+      sort_order: getDigprodPlanActivityFields(row).findIndex((item) => item.field === activity.field) * 100 + 100,
+      ...(Object.prototype.hasOwnProperty.call(patch, 'due_date') ? { due_date: String(patch.due_date || '').trim() || null } : {}),
+      ...(nextOwners !== undefined ? { owners: nextOwners } : {}),
+    };
+
+    let optimisticRows;
+    if (existing) {
+      optimisticRows = previousRows.map((item) => String(item.id) === String(existing.id) ? { ...item, ...payload } : item);
+    } else {
+      optimisticRows = [...previousRows, { ...payload, id: `local-${Date.now()}` }];
+    }
+    state.digprodPlanRowsBySourceId[key] = optimisticRows;
+    state.digprodPlanCountsBySourceId[key] = optimisticRows.filter((item) => {
+      const owners = Array.isArray(item.owners) ? item.owners.filter(Boolean) : [];
+      return item.due_date || owners.length;
+    }).length;
+    render();
+
+    const query = supabase
+      .from('digprod_intro_plan')
+      .upsert(payload, { onConflict: 'source_table,source_row_id,activity_key' })
+      .select('*')
+      .single();
+
+    const { data, error } = await query;
+    if (error) {
+      state.digprodPlanRowsBySourceId[key] = previousRows;
+      state.digprodPlanCountsBySourceId[key] = previousRows.filter((item) => {
+        const owners = Array.isArray(item.owners) ? item.owners.filter(Boolean) : [];
+        return item.due_date || owners.length;
+      }).length;
+      alert(`Kunde inte spara tidplan: ${error.message}`);
+      render();
+      return;
+    }
+
+    const refreshedRows = state.digprodPlanRowsBySourceId[key] || [];
+    const replaced = refreshedRows.some((item) => String(item.activity_key) === String(activity.field));
+    state.digprodPlanRowsBySourceId[key] = replaced
+      ? refreshedRows.map((item) => String(item.activity_key) === String(activity.field) ? data : item)
+      : [...refreshedRows, data];
+    state.digprodPlanCountsBySourceId[key] = state.digprodPlanRowsBySourceId[key].filter((item) => {
+      const owners = Array.isArray(item.owners) ? item.owners.filter(Boolean) : [];
+      return item.due_date || owners.length;
+    }).length;
+    render();
+  }
+
+  function createDigprodPlanButton(row, column) {
+    const hasPlan = getDigprodPlanCount(row?.id) > 0;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'digprod-plan-icon-button';
+    button.title = hasPlan ? 'Öppna tidplan' : 'Skapa tidplan';
+    button.setAttribute('aria-label', hasPlan ? 'Öppna tidplan' : 'Skapa tidplan');
+    button.innerHTML = '<span class="digprod-plan-icon" aria-hidden="true">📋</span>';
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await openDigprodPlanPanel(row);
+    });
+    return button;
+  }
+
+  function createDigprodPlanStatusCell(row, activity) {
+    const value = normalizeStatusValue(row?.[activity.field] || 'gray');
+    const span = document.createElement('span');
+    span.className = `cell-chip status-button--${value}`;
+    span.textContent = DIGPROD_STATUS_LABELS[value] || value;
+    return span;
+  }
+
+  function createDigprodPlanOwnersDisplay(selectedOwners) {
+    const owners = (Array.isArray(selectedOwners) ? selectedOwners : [])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean);
+    const span = document.createElement('span');
+    span.className = owners.length ? 'cell-text' : 'cell-text cell-text--muted';
+    span.textContent = owners.join(', ');
+    return span;
+  }
+
+  function createDigprodPlanOwnersControl(row, activity, selectedOwners) {
+    const selectedSet = new Set((Array.isArray(selectedOwners) ? selectedOwners : []).map((item) => String(item || '').trim()).filter(Boolean));
+    const details = document.createElement('details');
+    details.className = 'digprod-plan-owner-dropdown';
+
+    const summary = document.createElement('summary');
+    summary.className = 'digprod-plan-owner-dropdown__summary';
+    const selectedText = Array.from(selectedSet).join(', ');
+    summary.textContent = selectedText || '';
+    summary.title = selectedText ? `Ansvarig: ${selectedText}` : 'Välj ansvarig';
+    summary.setAttribute('aria-label', selectedText ? `Ansvarig: ${selectedText}` : 'Välj ansvarig');
+    details.appendChild(summary);
+
+    const menu = document.createElement('div');
+    menu.className = 'digprod-plan-owner-dropdown__menu';
+    getOwnerOptions('').forEach((initials) => {
+      const label = document.createElement('label');
+      label.className = 'digprod-plan-owner-option';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = initials;
+      input.checked = selectedSet.has(initials);
+      input.addEventListener('change', async () => {
+        const nextOwners = Array.from(menu.querySelectorAll('input[type="checkbox"]'))
+          .filter((item) => item.checked)
+          .map((item) => item.value);
+        summary.textContent = nextOwners.join(', ') || '';
+        summary.title = nextOwners.length ? `Ansvarig: ${nextOwners.join(', ')}` : 'Välj ansvarig';
+        summary.setAttribute('aria-label', nextOwners.length ? `Ansvarig: ${nextOwners.join(', ')}` : 'Välj ansvarig');
+        await upsertDigprodPlanItem(row, activity, { owners: nextOwners });
+      });
+      const text = document.createElement('span');
+      text.textContent = initials;
+      label.appendChild(input);
+      label.appendChild(text);
+      menu.appendChild(label);
+    });
+    details.appendChild(menu);
+    return details;
+  }
+
+  function getDigprodPlanPrintDate() {
+    try {
+      return new Intl.DateTimeFormat('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    } catch (err) {
+      return new Date().toISOString().slice(0, 10);
+    }
+  }
+
+  function createDigprodPlanPrintView(row, rows, sampleLev) {
+    const article = document.createElement('article');
+    article.className = 'digprod-plan-print';
+
+    const header = document.createElement('header');
+    header.className = 'digprod-plan-print__header';
+
+    const titleBlock = document.createElement('div');
+    const eyebrow = document.createElement('p');
+    eyebrow.className = 'digprod-plan-print__eyebrow';
+    eyebrow.textContent = 'Cappelen Dimyr – DIG PROD';
+    const title = document.createElement('h1');
+    title.textContent = 'Tidplan';
+    const meta = document.createElement('p');
+    meta.className = 'digprod-plan-print__meta';
+    meta.textContent = `Produkt: ${row.produktnamn || '—'} · Intro: ${getDigprodPlanIntroType(row)} · Utskriven: ${getDigprodPlanPrintDate()}`;
+    titleBlock.appendChild(eyebrow);
+    titleBlock.appendChild(title);
+    titleBlock.appendChild(meta);
+
+    const sampleBox = document.createElement('div');
+    sampleBox.className = 'digprod-plan-print__sample';
+    const sampleLabel = document.createElement('span');
+    sampleLabel.textContent = 'Sample Lev';
+    const sampleValue = document.createElement('strong');
+    sampleValue.textContent = formatWeekFromDateValue(sampleLev) || '—';
+    sampleBox.appendChild(sampleLabel);
+    sampleBox.appendChild(sampleValue);
+
+    header.appendChild(titleBlock);
+    header.appendChild(sampleBox);
+    article.appendChild(header);
+
+    const table = document.createElement('table');
+    table.className = 'digprod-plan-print__table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    ['Aktivitet', 'Status', 'Klart', 'Ansvar'].forEach((label) => {
+      const th = document.createElement('th');
+      th.textContent = label;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    const sampleRow = document.createElement('tr');
+    sampleRow.className = 'digprod-plan-print__sample-row';
+    ['Sample Lev', 'Från Säljintro', formatWeekFromDateValue(sampleLev) || '—', ''].forEach((value) => {
+      const td = document.createElement('td');
+      td.textContent = value;
+      sampleRow.appendChild(td);
+    });
+    tbody.appendChild(sampleRow);
+
+    getDigprodPlanActivityFields(row).forEach((activity) => {
+      const item = rows.find((entry) => String(entry.activity_key || '').trim() === activity.field) || {};
+      const statusValue = normalizeStatusValue(row?.[activity.field] || 'gray');
+      const owners = Array.isArray(item.owners) ? item.owners.map((owner) => String(owner || '').trim()).filter(Boolean).join(', ') : '';
+      const tr = document.createElement('tr');
+
+      const activityTd = document.createElement('td');
+      activityTd.textContent = activity.label;
+      tr.appendChild(activityTd);
+
+      const statusTd = document.createElement('td');
+      const statusSpan = document.createElement('span');
+      statusSpan.className = `digprod-plan-print__status digprod-plan-print__status--${statusValue}`;
+      statusSpan.textContent = DIGPROD_STATUS_LABELS[statusValue] || statusValue;
+      statusTd.appendChild(statusSpan);
+      tr.appendChild(statusTd);
+
+      const dueTd = document.createElement('td');
+      dueTd.textContent = formatWeekFromDateValue(item.due_date) || '—';
+      tr.appendChild(dueTd);
+
+      const ownerTd = document.createElement('td');
+      ownerTd.textContent = owners || '—';
+      tr.appendChild(ownerTd);
+
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    article.appendChild(table);
+
+    const footer = document.createElement('footer');
+    footer.className = 'digprod-plan-print__footer';
+    footer.textContent = 'Status speglas från DIG PROD. Sample Lev hämtas från Säljintro.';
+    article.appendChild(footer);
+
+    return article;
+  }
+
+  function printDigprodPlan() {
+    window.setTimeout(() => window.print(), 0);
+  }
+
+  function createDigprodPlanPanel() {
+    const row = getCurrentDigprodPlanRow();
+    if (!row) return document.createDocumentFragment();
+    const rowId = getDigprodPlanSourceKey(row.id);
+    const rows = getDigprodPlanRows(rowId);
+    const saljRow = getSaljintroRowForDigProdRow(row);
+    const sampleLev = saljRow?.po_beslut_slut_datum || '';
+    const showOwnerControls = isAdmin();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay-modal digprod-plan-modal';
+    const dialog = document.createElement('div');
+    dialog.className = 'overlay-modal__dialog';
+    const panel = document.createElement('section');
+    panel.className = 'side-panel digprod-plan-panel';
+
+    const header = document.createElement('div');
+    header.className = 'side-panel__header';
+    const heading = document.createElement('div');
+    heading.className = 'todo-modal__heading';
+    const eyebrow = document.createElement('p');
+    eyebrow.className = 'side-panel__eyebrow';
+    eyebrow.textContent = 'DIG PROD';
+    const title = document.createElement('h2');
+    title.className = 'side-panel__title';
+    title.textContent = `Tidplan – ${row.produktnamn || 'produkt'}`;
+    const text = document.createElement('p');
+    text.className = 'side-panel__text';
+    text.textContent = 'Status speglas från DIG PROD-kolumnerna. Klart hanteras här. Ansvar visas för alla; admin sätter ansvarig längst till höger.';
+    heading.appendChild(eyebrow);
+    heading.appendChild(title);
+    heading.appendChild(text);
+
+    const headerActions = document.createElement('div');
+    headerActions.className = 'side-panel__header-actions';
+    const printButton = document.createElement('button');
+    printButton.type = 'button';
+    printButton.className = 'secondary-button';
+    printButton.textContent = 'Print / PDF';
+    printButton.addEventListener('click', printDigprodPlan);
+    headerActions.appendChild(printButton);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'side-panel__close side-panel__close--small';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Stäng');
+    closeButton.addEventListener('click', closeDigprodPlanPanel);
+    header.appendChild(heading);
+    header.appendChild(headerActions);
+    header.appendChild(closeButton);
+
+    const body = document.createElement('div');
+    body.className = 'side-panel__body';
+
+    if (state.digprodPlanLoading) {
+      const loading = document.createElement('p');
+      loading.className = 'empty-state';
+      loading.textContent = 'Laddar tidplan...';
+      body.appendChild(loading);
+    } else {
+      const tableWrap = document.createElement('div');
+      tableWrap.className = 'digprod-plan-table-wrap';
+      const table = document.createElement('table');
+      table.className = 'digprod-plan-table';
+      const thead = document.createElement('thead');
+      const headRow = document.createElement('tr');
+      (showOwnerControls ? ['Aktivitet', 'Status', 'Klart', 'Ansvar', 'Ansvarig'] : ['Aktivitet', 'Status', 'Klart', 'Ansvar']).forEach((label) => {
+        const th = document.createElement('th');
+        th.textContent = label;
+        headRow.appendChild(th);
+      });
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+      const tbody = document.createElement('tbody');
+
+      const sampleTr = document.createElement('tr');
+      sampleTr.className = 'digprod-plan-sample-row';
+      const sampleActivity = document.createElement('td');
+      sampleActivity.textContent = 'Sample Lev';
+      const sampleStatus = document.createElement('td');
+      const sampleChip = document.createElement('span');
+      sampleChip.className = 'cell-chip';
+      sampleChip.textContent = 'Från Säljintro';
+      sampleStatus.appendChild(sampleChip);
+      const sampleDate = document.createElement('td');
+      sampleDate.textContent = formatWeekFromDateValue(sampleLev) || '--';
+      sampleTr.appendChild(sampleActivity);
+      sampleTr.appendChild(sampleStatus);
+      sampleTr.appendChild(sampleDate);
+      const sampleOwners = document.createElement('td');
+      sampleOwners.textContent = '';
+      sampleTr.appendChild(sampleOwners);
+      if (showOwnerControls) {
+        const sampleOwnerAction = document.createElement('td');
+        sampleOwnerAction.textContent = '';
+        sampleTr.appendChild(sampleOwnerAction);
+      }
+      tbody.appendChild(sampleTr);
+
+      const spacerTr = document.createElement('tr');
+      spacerTr.className = 'digprod-plan-spacer-row';
+      const spacerTd = document.createElement('td');
+      spacerTd.colSpan = showOwnerControls ? 5 : 4;
+      spacerTd.innerHTML = '&nbsp;';
+      spacerTr.appendChild(spacerTd);
+      tbody.appendChild(spacerTr);
+
+      getDigprodPlanActivityFields(row).forEach((activity) => {
+        const item = rows.find((entry) => String(entry.activity_key || '').trim() === activity.field) || {};
+        const tr = document.createElement('tr');
+
+        const activityTd = document.createElement('td');
+        activityTd.textContent = activity.label;
+        tr.appendChild(activityTd);
+
+        const statusTd = document.createElement('td');
+        statusTd.appendChild(createDigprodPlanStatusCell(row, activity));
+        tr.appendChild(statusTd);
+
+        const dueTd = document.createElement('td');
+        const dueButton = document.createElement('button');
+        dueButton.type = 'button';
+        dueButton.className = item.due_date ? 'cell-chip status-week-cell__date-trigger digprod-plan-date-button' : 'cell-chip status-week-cell__date-trigger status-week-cell__date-trigger--empty digprod-plan-date-button';
+        dueButton.textContent = formatWeekFromDateValue(item.due_date) || '📅';
+        dueButton.title = item.due_date ? 'Ändra Klart' : 'Välj Klart';
+        dueButton.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openCdmpProvmattorDatePicker(dueButton, item.due_date, async (nextValue) => {
+            await upsertDigprodPlanItem(row, activity, { due_date: nextValue });
+          });
+        });
+        dueTd.appendChild(dueButton);
+        tr.appendChild(dueTd);
+
+        const ownersDisplayTd = document.createElement('td');
+        ownersDisplayTd.appendChild(createDigprodPlanOwnersDisplay(item.owners));
+        tr.appendChild(ownersDisplayTd);
+
+        if (showOwnerControls) {
+          const ownersActionTd = document.createElement('td');
+          ownersActionTd.appendChild(createDigprodPlanOwnersControl(row, activity, item.owners));
+          tr.appendChild(ownersActionTd);
+        }
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      tableWrap.appendChild(table);
+      body.appendChild(tableWrap);
+    }
+
+    panel.appendChild(header);
+    panel.appendChild(body);
+    dialog.appendChild(panel);
+    if (!state.digprodPlanLoading) {
+      dialog.appendChild(createDigprodPlanPrintView(row, rows, sampleLev));
+    }
+    overlay.appendChild(dialog);
+    return overlay;
+  }
+
   let activeCdmpProvmattorDatePicker = null;
 
   function isCdmpTableConfig(tableConfig) {
@@ -3707,6 +4283,9 @@ export async function runPlanningApp() {
     panel.appendChild(header);
     panel.appendChild(body);
     dialog.appendChild(panel);
+    if (!state.digprodPlanLoading) {
+      dialog.appendChild(createDigprodPlanPrintView(row, rows, sampleLev));
+    }
     overlay.appendChild(dialog);
     return overlay;
   }
@@ -3915,6 +4494,10 @@ export async function runPlanningApp() {
 
     if (isCdmpProvmattorColumn(column)) {
       return createCdmpProvmattorButton(row, column);
+    }
+
+    if (isDigprodPlanColumn(column)) {
+      return createDigprodPlanButton(row, column);
     }
 
     const rawValue = row[column.field];
@@ -4820,6 +5403,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     createNotesPanel,
     createColumnChecklistPanel,
     createCdmpProvmattorPanel,
+    createDigprodPlanPanel,
     createDetailPanel,
     getFilteredRows,
     getVisibleColumns,
@@ -4957,6 +5541,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
   await loadModalTodoRows();
   await projectsController.loadProjects();
   await loadCdmpProvmattorCounts();
+  await loadDigprodPlanCounts();
   if (state.activeTableName) {
     await loadUnreadCountsForTable(state.activeTableName);
   }
