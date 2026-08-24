@@ -2130,22 +2130,23 @@ button[aria-label="Stäng"]:active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-left: 4px;
-  padding: 0 2px;
+  margin-left: 6px;
+  padding: 0 3px;
   border: 0;
   background: transparent;
-  color: var(--green-text);
-  font-size: 12px;
-  font-weight: 800;
+  color: #008f5f;
+  font-size: 15px;
+  font-weight: 900;
   line-height: 1;
   cursor: pointer;
-  opacity: 0.78;
+  opacity: 0.96;
   vertical-align: baseline;
 }
 
 .column-checklist-badge:hover {
+  color: #00724d;
   opacity: 1;
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.08);
 }
 
 .checklist-card {
@@ -4005,4 +4006,19 @@ button[aria-label="Stäng"]:active {
     background: #ffffff !important;
     color: #111111 !important;
   }
+}
+
+/* =========================================================
+   SORTABLE TABLE HEADERS
+   ========================================================= */
+
+.data-table th.is-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.data-table th.is-sortable:hover .column-header__label {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
