@@ -69,7 +69,7 @@ async function getProfile(userId) {
 async function loadAppIfNeeded() {
   if (appLoaded) return;
   appLoaded = true;
-  await import('./app.js?v=253');
+  await import('./app.js?v=256');
 }
 
 async function enterApp(user) {

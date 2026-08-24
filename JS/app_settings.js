@@ -711,10 +711,42 @@ export function createSettingsController({
         await persistChecklistPointsFromSettings();
       });
 
+      const actions = document.createElement('div');
+      actions.className = 'row-actions row-actions--inline settings-checklist-point-actions';
+
+      const upButton = document.createElement('button');
+      upButton.type = 'button';
+      upButton.className = 'row-actions__button';
+      upButton.textContent = '↑';
+      upButton.title = 'Flytta upp';
+      upButton.disabled = index === 0;
+      upButton.addEventListener('click', async () => {
+        if (index <= 0) return;
+        const [moved] = points.splice(index, 1);
+        points.splice(index - 1, 0, moved);
+        await persistChecklistPointsFromSettings();
+        render();
+      });
+
+      const downButton = document.createElement('button');
+      downButton.type = 'button';
+      downButton.className = 'row-actions__button';
+      downButton.textContent = '↓';
+      downButton.title = 'Flytta ned';
+      downButton.disabled = index >= points.length - 1;
+      downButton.addEventListener('click', async () => {
+        if (index >= points.length - 1) return;
+        const [moved] = points.splice(index, 1);
+        points.splice(index + 1, 0, moved);
+        await persistChecklistPointsFromSettings();
+        render();
+      });
+
       const deleteButton = document.createElement('button');
       deleteButton.type = 'button';
-      deleteButton.className = 'secondary-button secondary-button--danger';
-      deleteButton.textContent = 'Ta bort';
+      deleteButton.className = 'row-actions__button row-actions__button--danger';
+      deleteButton.textContent = '🗑';
+      deleteButton.title = 'Ta bort punkt';
       deleteButton.disabled = points.length <= 1;
       deleteButton.addEventListener('click', async () => {
         points.splice(index, 1);
@@ -723,8 +755,12 @@ export function createSettingsController({
         render();
       });
 
+      actions.appendChild(upButton);
+      actions.appendChild(downButton);
+      actions.appendChild(deleteButton);
+
       row.appendChild(input);
-      row.appendChild(deleteButton);
+      row.appendChild(actions);
       list.appendChild(row);
     });
 

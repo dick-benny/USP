@@ -8,22 +8,22 @@ import {
   OWNER_TABLES,
   PDF_BUCKET,
   PDF_PREFIX,
-} from './app_constants.js?v=230';
-import { createTodoController } from './app_todo.js?v=230';
-import { createRowTodoController } from './app_row_todo.js?v=230';
-import { createNotesController } from './app_notes.js?v=230';
-import { createSettingsController } from './app_settings.js?v=251';
-import { createMessagesController } from './app_messages.js?v=230';
-import { createRenderController } from './app_render.js?v=244';
-import { createDataController } from './app_data.js?v=230';
-import { createActionController } from './app_actions.js?v=230';
-import { createFilterController } from './app_filters.js?v=230';
-import { createColumnToolsController } from './app_column_tools.js?v=248';
-import { createExcelPlanController } from './app_excel_plan.js?v=230';
-import { createProjectsController } from './app_projects.js?v=232';
-import { createWorkflowController } from './app_workflows.js?v=251';
-import { createArchiveController } from './app_archive.js?v=230';
-import './app_statistics.js?v=230';
+} from './app_constants.js?v=254';
+import { createTodoController } from './app_todo.js?v=254';
+import { createRowTodoController } from './app_row_todo.js?v=254';
+import { createNotesController } from './app_notes.js?v=254';
+import { createSettingsController } from './app_settings.js?v=256';
+import { createMessagesController } from './app_messages.js?v=254';
+import { createRenderController } from './app_render.js?v=254';
+import { createDataController } from './app_data.js?v=254';
+import { createActionController } from './app_actions.js?v=254';
+import { createFilterController } from './app_filters.js?v=254';
+import { createColumnToolsController } from './app_column_tools.js?v=254';
+import { createExcelPlanController } from './app_excel_plan.js?v=254';
+import { createProjectsController } from './app_projects.js?v=254';
+import { createWorkflowController } from './app_workflows.js?v=254';
+import { createArchiveController } from './app_archive.js?v=254';
+import './app_statistics.js?v=254';
 
 export async function runPlanningApp() {
   const spec = window.PlanningSpec;
@@ -3186,18 +3186,15 @@ export async function runPlanningApp() {
   const DIGPROD_B2B_PLAN_ACTIVITY_FIELDS = [
     { field: 'spec_produkt', label: 'SPEC PRODUKT' },
     { field: 'spec_variant', label: 'SPEC VARIANT' },
-    { field: 'text_copy', label: 'TEXT COPY' },
-    { field: 'bild', label: 'BILD' },
-    { field: 'copy_to_b2c', label: 'COPY TO B2C' },
+    { field: 'text_copy', label: 'PDP COPY' },
+    { field: 'copy_to_b2c', label: 'BRANDBOOK' },
     { field: 'utskick', label: 'UTSKICK' },
   ];
 
   const DIGPROD_B2C_PLAN_ACTIVITY_FIELDS = [
     { field: 'packshot', label: 'PACKSHOT' },
-    { field: 'miljo', label: 'MILJÖ' },
     { field: 'kampanj', label: 'KAMPANJ' },
-    { field: 'media', label: 'MEDIA' },
-    { field: 'update_b2b', label: 'UPDATE B2B' },
+    { field: 'media', label: 'MEDIA/PRESS' },
     { field: 'utskick', label: 'UTSKICK' },
   ];
 
