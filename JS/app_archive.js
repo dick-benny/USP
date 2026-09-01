@@ -14,7 +14,7 @@ export function createArchiveController({ supabase }) {
 
   function shouldUseDirectArchive(tableConfig) {
     const dbTable = String(tableConfig?.dbTable || '').trim().toLowerCase();
-    return ['inkop', 'marknad', 'salj', 'dig_prod'].includes(dbTable);
+    return ['inkop', 'marknad', 'salj', 'dig_prod', 'lanseringsplan'].includes(dbTable);
   }
 
   async function archiveRowDirectly(tableConfig, row, archiveReason = 'archived', note = null) {

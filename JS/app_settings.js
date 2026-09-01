@@ -41,6 +41,37 @@ export function createSettingsController({
     render();
   }
 
+  function openTableFromSettings(tableName) {
+    const exists = tableEntries.some(([name]) => name === tableName);
+    if (!exists) {
+      alert(`${tableName} finns inte i appens vylista.`);
+      return;
+    }
+
+    state.activeTableName = tableName;
+    state.settingsPanelOpen = false;
+    state.settingsView = 'menu';
+    state.linksPanelOpen = false;
+    state.archivePanelOpen = false;
+    state.notesPanelOpen = false;
+    state.notesRowId = null;
+    state.rowTodoPanelOpen = false;
+    state.rowTodoRowId = null;
+    state.detailRowId = null;
+    state.newRowDraft = null;
+    state.columnChecklistPanelOpen = false;
+    state.columnChecklistActive = null;
+    render();
+  }
+
+  function openSaljintroFromSettings() {
+    openTableFromSettings('SÄLJINTRO');
+  }
+
+  function openDigProdFromSettings() {
+    openTableFromSettings('DIG PROD');
+  }
+
   
   function openSettingsMenu() {
     state.linksPanelOpen = false;
@@ -871,6 +902,22 @@ export function createSettingsController({
         return card;
       };
 
+      menu.appendChild(createCard({
+        title: 'Säljintro',
+        subtitle: 'Öppna Säljintro',
+        onClick: openSaljintroFromSettings,
+        disabled: false,
+        adminOnly: false,
+      }));
+
+      menu.appendChild(createCard({
+        title: 'DIG PROD',
+        subtitle: 'Öppna DIG PROD / B2B Intro / B2C Intro',
+        onClick: openDigProdFromSettings,
+        disabled: false,
+        adminOnly: false,
+      }));
+
       if (isAdmin()) {
         menu.appendChild(createCard({
           title: 'Checklistor',
@@ -902,7 +949,7 @@ export function createSettingsController({
         title: 'Logout',
         subtitle: 'Logga ut från appen',
         onClick: async () => {
-          const { signOutUser } = await import('./auth.js?v=248');
+          const { signOutUser } = await import('./auth.js?v=279');
           await signOutUser();
         },
         disabled: false,

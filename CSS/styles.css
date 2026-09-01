@@ -1991,6 +1991,38 @@ body {
 
 
 /* =========================================================
+   SÄLJINTRO PRINT STATUS COLORS
+   Preserve the same status colors used in the table when printing Säljintro.
+   ========================================================= */
+
+@media print {
+  body.is-saljintro-print-ready .status-button--gray {
+    background: var(--status-gray-bg) !important;
+    border-color: var(--status-gray-line) !important;
+    color: var(--status-gray-text) !important;
+  }
+
+  body.is-saljintro-print-ready .status-button--yellow {
+    background: var(--status-yellow-bg) !important;
+    border-color: var(--status-yellow-line) !important;
+    color: var(--status-yellow-text) !important;
+  }
+
+  body.is-saljintro-print-ready .status-button--green {
+    background: var(--status-green-bg) !important;
+    border-color: var(--status-green-line) !important;
+    color: var(--status-green-text) !important;
+  }
+
+  body.is-saljintro-print-ready .status-button--red {
+    background: var(--status-red-bg) !important;
+    border-color: var(--status-red-line) !important;
+    color: var(--status-red-text) !important;
+  }
+}
+
+
+/* =========================================================
    OWNER BADGES
    Initial badge before first/key column text.
    Admin can change owner via dropdown.
@@ -3285,6 +3317,52 @@ button[aria-label="Stäng"]:active {
   padding-right: 8px;
 }
 
+
+/* =========================================================
+   v269 row action dropdown overlay
+   Keeps the three-dot menu from shifting table layout.
+   ========================================================= */
+
+.row-actions__menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.row-actions__menu > summary {
+  list-style: none;
+}
+
+.row-actions__menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.row-actions__menu-content {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 120;
+  min-width: 150px;
+  padding: 6px 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--white);
+  box-shadow: 0 12px 30px rgba(64, 48, 31, 0.16);
+  text-align: left;
+}
+
+.row-actions__menu:not([open]) .row-actions__menu-content {
+  display: none;
+}
+
+.row-actions__menu-item:hover {
+  background: rgba(222, 211, 189, 0.35) !important;
+}
+
+.row-actions__menu-item--danger:hover {
+  background: rgba(163, 75, 60, 0.08) !important;
+}
+
 /* =========================================================
    CUSTOM WEEK DATEPICKER
    Shows ISO week numbers in a fixed left column.
@@ -4021,4 +4099,111 @@ button[aria-label="Stäng"]:active {
   color: var(--text);
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* =========================================================
+   LANSERINGSPLAN – INLINE NEW ROW PANEL
+   ========================================================= */
+
+.inline-new-row-panel {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(220px, 320px) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.inline-new-row-panel[hidden] {
+  display: none !important;
+}
+
+.inline-new-row-panel__field {
+  min-width: 0;
+}
+
+.inline-new-row-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 920px) {
+  .inline-new-row-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* v274 Lanseringsplan DIG PROD intro modal */
+.lanseringsplan-intro-modal--wide .overlay-modal__dialog {
+  width: min(1380px, calc(100vw - 32px));
+}
+
+.lanseringsplan-intro-modal__panel {
+  width: 100%;
+}
+
+.lanseringsplan-intro-modal__table-wrap {
+  overflow: auto;
+}
+
+.lanseringsplan-intro-modal__table {
+  min-width: 1120px;
+}
+
+.lanseringsplan-intro-modal__table th .column-header__content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.lanseringsplan-intro-modal__table th .column-checklist-badge {
+  margin-left: 2px;
+}
+
+/* =========================================================
+   v276 floating row action menu
+   Renders the Lanseringsplan three-dot menu outside table overflow.
+   ========================================================= */
+
+.row-actions__floating-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 170px;
+  padding: 6px 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--white);
+  box-shadow: 0 14px 34px rgba(64, 48, 31, 0.2);
+  text-align: left;
+}
+
+.row-actions__floating-menu-item {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.row-actions__floating-menu-item:hover {
+  background: rgba(222, 211, 189, 0.35);
+}
+
+.row-actions__floating-menu-item--danger {
+  color: #b42318;
+}
+
+.row-actions__floating-menu-item--danger:hover {
+  background: rgba(163, 75, 60, 0.08);
 }
