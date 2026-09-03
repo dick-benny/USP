@@ -240,6 +240,7 @@ export async function runPlanningApp() {
     lanseringsplanIntroSourceId: null,
     digprodPlanRowsBySourceId: {},
     digprodPlanCountsBySourceId: {},
+    digprodPlanDeadlinesBySourceId: {},
     digprodPlanLoading: false,
     lanseringsplanTimeRules: {},
     lanseringsplanTimeRulesLoading: false,
@@ -2194,6 +2195,7 @@ export async function runPlanningApp() {
 
 
   const LANSERINGSPLAN_TIME_RULES_TABLE = 'lanseringsplan_tidsregler';
+  const LANSERINGSPLAN_ROW_TIME_RULES_TABLE = 'lanseringsplan_row_tidsregler';
   const LANSERINGSPLAN_TIME_RULE_DEFS = [
     {
       key: 'b2c_from_po_lager',
@@ -2245,6 +2247,60 @@ export async function runPlanningApp() {
 
   function getLanseringsplanTimeRules() {
     return { ...getLanseringsplanDefaultTimeRules(), ...(state.lanseringsplanTimeRules || {}) };
+  }
+
+  function buildLanseringsplanTimeRulesFromRows(rows, fallbackRules = null) {
+    const fallback = fallbackRules || getLanseringsplanTimeRules();
+    const nextRules = { ...fallback };
+    (rows || []).forEach((item) => {
+      const key = String(item?.rule_key || '').trim();
+      if (!LANSERINGSPLAN_TIME_RULE_DEFS.some((rule) => rule.key === key)) return;
+      nextRules[key] = clampLanseringsplanWeeks(item?.weeks, fallback[key] || 1);
+    });
+    return nextRules;
+  }
+
+  async function loadLanseringsplanRowTimeRules(rowId) {
+    const fallback = getLanseringsplanTimeRules();
+    if (!rowId) return fallback;
+
+    const { data, error } = await supabase
+      .from(LANSERINGSPLAN_ROW_TIME_RULES_TABLE)
+      .select('rule_key, weeks')
+      .eq('lanseringsplan_id', rowId);
+
+    if (error) throw error;
+
+    return buildLanseringsplanTimeRulesFromRows(data, fallback);
+  }
+
+  async function saveLanseringsplanRowTimeRules(rowId, nextRules) {
+    if (!rowId) throw new Error('Saknar Lanseringsplan-rad för tidsregler.');
+
+    const merged = { ...getLanseringsplanTimeRules(), ...(nextRules || {}) };
+    const payload = LANSERINGSPLAN_TIME_RULE_DEFS.map((rule) => ({
+      lanseringsplan_id: rowId,
+      rule_key: rule.key,
+      label: rule.label,
+      weeks: clampLanseringsplanWeeks(merged[rule.key], rule.defaultWeeks),
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { error } = await supabase
+      .from(LANSERINGSPLAN_ROW_TIME_RULES_TABLE)
+      .upsert(payload, { onConflict: 'lanseringsplan_id,rule_key' });
+
+    if (error) throw error;
+  }
+
+  async function loadLanseringsplanRowsWithCustomTimeRules() {
+    const { data, error } = await supabase
+      .from(LANSERINGSPLAN_ROW_TIME_RULES_TABLE)
+      .select('lanseringsplan_id');
+
+    if (error) throw error;
+
+    return new Set((data || []).map((item) => String(item?.lanseringsplan_id || '')).filter(Boolean));
   }
 
   async function loadLanseringsplanTimeRules() {
@@ -2320,11 +2376,11 @@ export async function runPlanningApp() {
     return formatISODateOnly(date);
   }
 
-  function calculateLanseringsplanDatesFromAnchor(anchorField, anchorDateValue) {
+  function calculateLanseringsplanDatesFromAnchor(anchorField, anchorDateValue, rulesOverride = null) {
     const anchorDate = String(anchorDateValue || '').slice(0, 10);
     if (!LANSERINGSPLAN_DATE_FIELDS.includes(anchorField) || !parseISODateOnly(anchorDate)) return null;
 
-    const rules = getLanseringsplanTimeRules();
+    const rules = rulesOverride || getLanseringsplanTimeRules();
     const b2cFromPoLager = clampLanseringsplanWeeks(rules.b2c_from_po_lager, 1);
     const b2cFromFullsize = clampLanseringsplanWeeks(rules.b2c_from_fullsize, 1);
     const b2bFromPoSample = clampLanseringsplanWeeks(rules.b2b_from_po_sample, 1);
@@ -2416,7 +2472,8 @@ export async function runPlanningApp() {
 
   async function applyLanseringsplanTimeRulesToRow(row, anchorField, anchorDateValue, options = {}) {
     if (!row?.id) return { recalculated: false, changedCount: 0, reason: 'missing_row' };
-    const nextDates = calculateLanseringsplanDatesFromAnchor(anchorField, anchorDateValue);
+    const rules = await loadLanseringsplanRowTimeRules(row.id);
+    const nextDates = calculateLanseringsplanDatesFromAnchor(anchorField, anchorDateValue, rules);
     if (!nextDates) return { recalculated: false, changedCount: 0, reason: 'missing_date' };
 
     const changedCount = calculateLanseringsplanChangedDateCount(row, nextDates, anchorField);
@@ -2434,6 +2491,9 @@ export async function runPlanningApp() {
   }
 
   async function recalculateLanseringsplanRowsFromB2C() {
+    const customRuleRowIds = await loadLanseringsplanRowsWithCustomTimeRules();
+    const defaultRules = getLanseringsplanTimeRules();
+
     const { data, error } = await supabase
       .from('lanseringsplan')
       .select('id, po_sample_slut_datum, b2b_slut_datum, po_lager_slut_datum, fullsize_slut_datum, b2c_slut_datum');
@@ -2443,13 +2503,18 @@ export async function runPlanningApp() {
     let recalculatedRows = 0;
     let changedDateCount = 0;
     let skippedRows = 0;
+    let skippedCustomRows = 0;
 
     for (const row of data || []) {
+      if (customRuleRowIds.has(String(row.id))) {
+        skippedCustomRows += 1;
+        continue;
+      }
       if (!parseISODateOnly(row.b2c_slut_datum)) {
         skippedRows += 1;
         continue;
       }
-      const nextDates = calculateLanseringsplanDatesFromAnchor('b2c_slut_datum', row.b2c_slut_datum);
+      const nextDates = calculateLanseringsplanDatesFromAnchor('b2c_slut_datum', row.b2c_slut_datum, defaultRules);
       if (!nextDates) {
         skippedRows += 1;
         continue;
@@ -2459,7 +2524,17 @@ export async function runPlanningApp() {
       changedDateCount += result.changedCount || 0;
     }
 
-    return { recalculatedRows, changedDateCount, skippedRows };
+    return { recalculatedRows, changedDateCount, skippedRows, skippedCustomRows };
+  }
+
+  async function recalculateLanseringsplanSingleRowFromB2C(row, rulesOverride = null) {
+    if (!row?.id || !parseISODateOnly(row.b2c_slut_datum)) {
+      return { recalculated: false, changedCount: 0, reason: 'missing_b2c' };
+    }
+    const nextDates = calculateLanseringsplanDatesFromAnchor('b2c_slut_datum', row.b2c_slut_datum, rulesOverride || getLanseringsplanTimeRules());
+    if (!nextDates) return { recalculated: false, changedCount: 0, reason: 'missing_b2c' };
+    const result = await updateLanseringsplanRowDates(row, nextDates);
+    return { recalculated: true, changedCount: result.changedCount || 0 };
   }
 
   function createLanseringsplanWeekSelect(value) {
@@ -2475,11 +2550,14 @@ export async function runPlanningApp() {
     return select;
   }
 
-  async function openLanseringsplanTimeRulesModal() {
+  async function openLanseringsplanTimeRulesModal(row = null) {
+    const rowId = row?.id || null;
+    const isRowSpecific = Boolean(rowId);
     if (state.lanseringsplanTimeRulesLoading) return;
     if (!state.lanseringsplanTimeRules || !Object.keys(state.lanseringsplanTimeRules).length) {
       await loadLanseringsplanTimeRules();
     }
+    const rowRules = isRowSpecific ? await loadLanseringsplanRowTimeRules(rowId) : null;
 
     const overlay = document.createElement('div');
     overlay.className = 'overlay-modal lanseringsplan-time-rules-modal';
@@ -2507,11 +2585,13 @@ export async function runPlanningApp() {
 
     const title = document.createElement('h2');
     title.className = 'side-panel__title';
-    title.textContent = 'Tidsregler';
+    title.textContent = isRowSpecific ? `Tidsregler – ${row?.produkt || 'rad'}` : 'Tidsregler';
 
     const help = document.createElement('p');
     help.className = 'side-panel__text';
-    help.textContent = 'Ange hur många veckor som ska användas för att beräkna Fullsize, PO-Lager, B2B och PO-Sample när B2C-veckan sätts.';
+    help.textContent = isRowSpecific
+      ? 'Reglerna sparas bara för denna rad. Om raden saknar egna regler visas default-reglerna som startvärden.'
+      : 'Default-reglerna används för nya rader och för rader som inte har egna tidsregler.';
 
     titleWrap.append(eyebrow, title, help);
 
@@ -2544,7 +2624,7 @@ export async function runPlanningApp() {
 
     const tbody = document.createElement('tbody');
     const selectsByKey = {};
-    const currentRules = getLanseringsplanTimeRules();
+    const currentRules = rowRules || getLanseringsplanTimeRules();
     LANSERINGSPLAN_TIME_RULE_DEFS.forEach((rule) => {
       const tr = document.createElement('tr');
       const labelTd = document.createElement('td');
@@ -2594,17 +2674,32 @@ export async function runPlanningApp() {
       saveButton.textContent = 'Sparar...';
 
       try {
-        await saveLanseringsplanTimeRules(nextRules);
-        const result = await recalculateLanseringsplanRowsFromB2C();
+        let result;
+        if (isRowSpecific) {
+          await saveLanseringsplanRowTimeRules(rowId, nextRules);
+          const savedRules = await loadLanseringsplanRowTimeRules(rowId);
+          result = await recalculateLanseringsplanSingleRowFromB2C(row, savedRules);
+        } else {
+          await saveLanseringsplanTimeRules(nextRules);
+          result = await recalculateLanseringsplanRowsFromB2C();
+        }
         closeModal();
         await loadTableRowsFromData(state, 'LANSERINGSPLAN', APP_CONFIG.tables.LANSERINGSPLAN);
         render();
-        if ((result.changedDateCount || 0) > 0) {
-          alert(`Tidsregler sparades. ${result.changedDateCount} veckonummer räknades om på ${result.recalculatedRows} rader.`);
+        if (isRowSpecific) {
+          if (result?.recalculated && (result.changedCount || 0) > 0) {
+            alert(`Tidsregler för raden sparades. ${result.changedCount} veckonummer räknades om.`);
+          } else if (result?.recalculated) {
+            alert('Tidsregler för raden sparades. Inga veckonummer behövde ändras.');
+          } else {
+            alert('Tidsregler för raden sparades. Raden kunde inte räknas om eftersom B2C-vecka saknas.');
+          }
+        } else if ((result.changedDateCount || 0) > 0) {
+          alert(`Default-tidsregler sparades. ${result.changedDateCount} veckonummer räknades om på ${result.recalculatedRows} rader.`);
         } else if ((result.recalculatedRows || 0) > 0) {
-          alert(`Tidsregler sparades. Inga veckonummer behövde ändras på ${result.recalculatedRows} rader.`);
+          alert(`Default-tidsregler sparades. Inga veckonummer behövde ändras på ${result.recalculatedRows} rader.`);
         } else {
-          alert('Tidsregler sparades. Inga rader kunde räknas om eftersom B2C-vecka saknas.');
+          alert('Default-tidsregler sparades. Inga rader kunde räknas om eftersom B2C-vecka saknas eller raderna har egna tidsregler.');
         }
       } catch (error) {
         alert(`Kunde inte spara tidsregler eller räkna om veckonummer: ${error.message}`);
@@ -4068,6 +4163,163 @@ export async function runPlanningApp() {
     )) || null;
   }
 
+  async function createDigProdIntroRowsFromLanseringsplan(lanseringsplanRow) {
+    const digProdConfig = APP_CONFIG.tables?.['DIG PROD'];
+    if (!digProdConfig?.dbTable) {
+      alert('Kunde inte hitta DIG PROD.');
+      return;
+    }
+
+    const productName = String(lanseringsplanRow?.produkt || '').trim();
+    if (!productName) {
+      alert('Lanseringsplan-raden saknar Produkt och kan därför inte skapa DIG PROD-rader.');
+      return;
+    }
+
+    const targets = [
+      { category: 'B2B-intro', label: 'B2B Intro' },
+      { category: 'B2C-intro', label: 'B2C Intro' },
+    ];
+    const createdLabels = [];
+    const existingLabels = [];
+
+    try {
+      for (const target of targets) {
+        const existing = findDigProdIntroRowForLanseringsplan(lanseringsplanRow, target.category);
+        if (existing?.id) {
+          existingLabels.push(target.label);
+          continue;
+        }
+
+        const created = await createInlineNewRow('DIG PROD', digProdConfig, {
+          produktnamn: productName,
+          kategori: target.category,
+          kommentar: '',
+        });
+
+        if (created?.id) createdLabels.push(target.label);
+      }
+    } catch (err) {
+      alert(`Kunde inte skapa DIG PROD-rader: ${err.message || err}`);
+      return;
+    }
+
+    if (createdLabels.length) {
+      const existingText = existingLabels.length ? ` (${existingLabels.join(' och ')} fanns redan)` : '';
+      alert(`Skapade ${createdLabels.join(' och ')} i DIG PROD för ${productName}.${existingText}`);
+      return;
+    }
+
+    alert(`B2B Intro och B2C Intro finns redan i DIG PROD för ${productName}.`);
+  }
+
+  function getDigProdIntroRowsForLanseringsplan(lanseringsplanRow) {
+    const productKey = normalizeLanseringsplanProductName(lanseringsplanRow?.produkt);
+    if (!productKey) return [];
+
+    return (state.rowsByTable?.['DIG PROD'] || []).filter((candidate) => {
+      const category = normalizeDigProdIntroCategory(candidate?.kategori);
+      return (
+        (category === 'B2B-intro' || category === 'B2C-intro') &&
+        normalizeLanseringsplanProductName(candidate?.produktnamn) === productKey
+      );
+    });
+  }
+
+  async function deleteLanseringsplanRowWithDigProdIntroRows(lanseringsplanRow) {
+    const lanseringsplanConfig = APP_CONFIG.tables?.['LANSERINGSPLAN'];
+    const digProdConfig = APP_CONFIG.tables?.['DIG PROD'];
+    const productName = String(lanseringsplanRow?.produkt || '').trim();
+
+    if (!lanseringsplanConfig?.dbTable || !digProdConfig?.dbTable || !lanseringsplanRow?.id) {
+      alert('Kunde inte hitta rätt tabeller/rad för borttagning.');
+      return;
+    }
+
+    const digProdRows = getDigProdIntroRowsForLanseringsplan(lanseringsplanRow);
+    const extraText = digProdRows.length
+      ? `\n\nÄven ${digProdRows.length} rad(er) i DIG PROD / B2B Intro och B2C Intro för samma produkt tas bort.`
+      : '\n\nInga kopplade B2B/B2C Intro-rader hittades i DIG PROD.';
+
+    const confirmed = window.confirm(`Ta bort raden i Lanseringsplan för ${productName || 'denna produkt'}?${extraText}`);
+    if (!confirmed) return;
+
+    try {
+      if (digProdRows.length) {
+        const digProdIds = digProdRows.map((item) => item.id).filter(Boolean);
+        for (const digProdRow of digProdRows) {
+          await deleteRelatedRecordsForSource('DIG PROD', digProdRow.id);
+        }
+
+        const { error: digProdError } = await supabase
+          .from(digProdConfig.dbTable)
+          .delete()
+          .in('id', digProdIds);
+
+        if (digProdError) throw digProdError;
+
+        state.rowsByTable['DIG PROD'] = (state.rowsByTable?.['DIG PROD'] || []).filter((candidate) => (
+          !digProdIds.some((id) => String(id) === String(candidate.id))
+        ));
+      }
+
+      await deleteRelatedRecordsForSource('LANSERINGSPLAN', lanseringsplanRow.id);
+
+      const { error: lanseringsplanError } = await supabase
+        .from(lanseringsplanConfig.dbTable)
+        .delete()
+        .eq('id', lanseringsplanRow.id);
+
+      if (lanseringsplanError) throw lanseringsplanError;
+
+      state.rowsByTable['LANSERINGSPLAN'] = (state.rowsByTable?.['LANSERINGSPLAN'] || []).filter((candidate) => (
+        String(candidate.id) !== String(lanseringsplanRow.id)
+      ));
+
+      alert(digProdRows.length
+        ? `Raden i Lanseringsplan och ${digProdRows.length} kopplad(e) DIG PROD-rad(er) togs bort.`
+        : 'Raden i Lanseringsplan togs bort.');
+      render();
+    } catch (err) {
+      alert(`Kunde inte ta bort Lanseringsplan/DIG PROD-rader: ${err.message || err}`);
+    }
+  }
+
+  async function createLanseringsplanFromDesign(designRow) {
+    const lanseringsplanConfig = APP_CONFIG.tables?.['LANSERINGSPLAN'];
+    if (!lanseringsplanConfig?.dbTable) {
+      alert('Kunde inte hitta Lanseringsplan.');
+      return null;
+    }
+
+    const produkt = String(designRow?.produktide || '').trim();
+    const collection = String(designRow?.collection || '').trim() || '27-spring';
+
+    if (!produkt) {
+      alert('Design-raden saknar Namn/Produkt och kan därför inte kopieras till Lanseringsplan.');
+      return null;
+    }
+
+    const fullsizeDate = String(designRow?.stort_sample_slut_datum || '').slice(0, 10);
+
+    try {
+      const createdRow = await createInlineNewRow('LANSERINGSPLAN', lanseringsplanConfig, {
+        produkt,
+        collection,
+        fullsize: normalizeStatusValue(designRow?.stort_sample || 'gray'),
+        fullsize_slut_datum: fullsizeDate,
+      });
+
+      if (createdRow?.id) {
+        alert(`Kopia skapad i Lanseringsplan för ${produkt}.`);
+      }
+      return createdRow || null;
+    } catch (err) {
+      alert(`Kunde inte skapa kopia i Lanseringsplan: ${err.message || err}`);
+      return null;
+    }
+  }
+
   async function openLanseringsplanDigProdIntroModal(lanseringsplanRow, introType) {
     const label = introType === 'B2C-intro' ? 'B2C Intro' : 'B2B Intro';
     const productName = String(lanseringsplanRow?.produkt || '').trim();
@@ -4136,22 +4388,35 @@ export async function runPlanningApp() {
     }
 
     if (tableName === 'UTVECKLING') {
-      wrap.appendChild(makeButton({
-        label: 'Arkiv',
-        title: 'Lägg raden i Arkiv',
-        action: async () => runRowAction(tableName, tableConfig, row, 'archive'),
-      }));
-      wrap.appendChild(makeButton({
-        label: 'Säljintro',
-        title: 'Skapa rad i Säljintro och lägg denna rad i Arkiv',
-        action: async () => createSaljintroFromUtveckling(row),
-      }));
-      wrap.appendChild(makeButton({
-        label: '🗑',
-        title: 'Ta bort raden',
-        className: 'row-actions__button row-actions__button--danger',
-        action: async () => runRowAction(tableName, tableConfig, row, 'delete'),
-      }));
+      const moreButton = document.createElement('button');
+      moreButton.type = 'button';
+      moreButton.className = 'row-actions__button row-actions__menu-trigger';
+      moreButton.textContent = '...';
+      moreButton.title = 'Fler åtgärder';
+      moreButton.setAttribute('aria-label', 'Fler åtgärder');
+      moreButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openFloatingActionMenu(moreButton, [
+          {
+            label: 'Arkiv',
+            title: 'Lägg raden i Arkiv',
+            action: async () => runRowAction(tableName, tableConfig, row, 'archive'),
+          },
+          {
+            label: 'Ta bort',
+            title: 'Ta bort raden',
+            danger: true,
+            action: async () => runRowAction(tableName, tableConfig, row, 'delete'),
+          },
+          {
+            label: 'Kopia lansering',
+            title: 'Skapa kopia i Lanseringsplan',
+            action: async () => createLanseringsplanFromDesign(row),
+          },
+        ]);
+      });
+      wrap.appendChild(moreButton);
       return wrap;
     }
 
@@ -4181,9 +4446,9 @@ export async function runPlanningApp() {
         event.stopPropagation();
         openFloatingActionMenu(moreButton, [
           {
-            label: 'Skapa Dig plan',
-            title: 'Skapa Dig plan-funktion kommer senare',
-            action: async () => alert('Skapa Dig plan-funktion kommer senare.'),
+            label: 'Skapa Dig Prod',
+            title: 'Skapa B2B Intro och B2C Intro i DIG PROD',
+            action: async () => createDigProdIntroRowsFromLanseringsplan(row),
           },
           {
             label: 'Arkiv',
@@ -4192,9 +4457,14 @@ export async function runPlanningApp() {
           },
           {
             label: 'Ta bort',
-            title: 'Ta bort raden',
+            title: 'Ta bort raden och kopplade B2B/B2C Intro-rader i DIG PROD',
             danger: true,
-            action: async () => runRowAction(tableName, tableConfig, row, 'delete'),
+            action: async () => deleteLanseringsplanRowWithDigProdIntroRows(row),
+          },
+          {
+            label: 'Tidsregler',
+            title: 'Redigera tidsregler för denna rad',
+            action: async () => openLanseringsplanTimeRulesModal(row),
           },
         ]);
       });
@@ -4343,6 +4613,76 @@ export async function runPlanningApp() {
     };
   }
 
+  function getDigprodPlanDeadlineField(row) {
+    return getDigprodPlanIntroType(row) === 'B2C-intro' ? 'b2c_slut_datum' : 'b2b_slut_datum';
+  }
+
+  function getDigprodPlanDeadlineLabel(row) {
+    return getDigprodPlanIntroType(row) === 'B2C-intro' ? 'B2C' : 'B2B';
+  }
+
+  function getDigprodPlanDeadlineKey(rowId) {
+    return getDigprodPlanSourceKey(rowId);
+  }
+
+  function findLanseringsplanRowForDigprodRow(row) {
+    const productKey = normalizeLanseringsplanProductName(row?.produktnamn);
+    if (!productKey) return null;
+    return (state.rowsByTable?.['LANSERINGSPLAN'] || []).find((candidate) => (
+      normalizeLanseringsplanProductName(candidate?.produkt) === productKey
+    )) || null;
+  }
+
+  function getDigprodPlanDeadline(row) {
+    const key = getDigprodPlanDeadlineKey(row?.id);
+    const cached = key ? state.digprodPlanDeadlinesBySourceId?.[key] : null;
+    if (cached) return cached;
+    const lanseringsplanRow = findLanseringsplanRowForDigprodRow(row);
+    const field = getDigprodPlanDeadlineField(row);
+    return {
+      label: getDigprodPlanDeadlineLabel(row),
+      value: lanseringsplanRow?.[field] || '',
+    };
+  }
+
+  async function loadDigprodPlanDeadline(row) {
+    const key = getDigprodPlanDeadlineKey(row?.id);
+    if (!key) return null;
+    const field = getDigprodPlanDeadlineField(row);
+    const fromState = findLanseringsplanRowForDigprodRow(row);
+    if (fromState) {
+      const deadline = { label: getDigprodPlanDeadlineLabel(row), value: fromState?.[field] || '' };
+      state.digprodPlanDeadlinesBySourceId[key] = deadline;
+      return deadline;
+    }
+
+    const productName = String(row?.produktnamn || '').trim();
+    if (!productName) {
+      const deadline = { label: getDigprodPlanDeadlineLabel(row), value: '' };
+      state.digprodPlanDeadlinesBySourceId[key] = deadline;
+      return deadline;
+    }
+
+    const { data, error } = await supabase
+      .from('lanseringsplan')
+      .select(`id, produkt, b2b_slut_datum, b2c_slut_datum`)
+      .ilike('produkt', productName)
+      .limit(5);
+
+    if (error) {
+      console.warn('Could not load Lanseringsplan deadline for DIG PROD plan:', error.message);
+      const deadline = { label: getDigprodPlanDeadlineLabel(row), value: '' };
+      state.digprodPlanDeadlinesBySourceId[key] = deadline;
+      return deadline;
+    }
+
+    const normalizedProduct = normalizeLanseringsplanProductName(productName);
+    const match = (data || []).find((candidate) => normalizeLanseringsplanProductName(candidate?.produkt) === normalizedProduct) || (data || [])[0] || null;
+    const deadline = { label: getDigprodPlanDeadlineLabel(row), value: match?.[field] || '' };
+    state.digprodPlanDeadlinesBySourceId[key] = deadline;
+    return deadline;
+  }
+
   async function loadDigprodPlanCounts() {
     const rows = state.rowsByTable?.['DIG PROD'] || [];
     if (!rows.length) {
@@ -4428,6 +4768,7 @@ export async function runPlanningApp() {
     state.digprodPlanPanelOpen = true;
     state.digprodPlanRowId = row.id;
     document.body?.classList?.add('is-digprod-plan-print-ready');
+    await loadDigprodPlanDeadline(row);
     await loadDigprodPlanRows(row.id);
   }
 
@@ -4584,7 +4925,7 @@ export async function runPlanningApp() {
     }
   }
 
-  function createDigprodPlanPrintView(row, rows, milestone) {
+  function createDigprodPlanPrintView(row, rows, deadline) {
     const article = document.createElement('article');
     article.className = 'digprod-plan-print';
 
@@ -4599,22 +4940,22 @@ export async function runPlanningApp() {
     title.textContent = 'Tidplan';
     const meta = document.createElement('p');
     meta.className = 'digprod-plan-print__meta';
-    meta.textContent = `Produkt: ${row.produktnamn || '—'} · Intro: ${getDigprodPlanIntroType(row)} · Utskriven: ${getDigprodPlanPrintDate()}`;
+    meta.textContent = `Produkt: ${row.produktnamn || '—'} · Intro: ${getDigprodPlanIntroType(row)} · DEADLINE: ${formatWeekFromDateValue(deadline?.value) || '—'} · Utskriven: ${getDigprodPlanPrintDate()}`;
     titleBlock.appendChild(eyebrow);
     titleBlock.appendChild(title);
     titleBlock.appendChild(meta);
 
-    const sampleBox = document.createElement('div');
-    sampleBox.className = 'digprod-plan-print__sample';
-    const sampleLabel = document.createElement('span');
-    sampleLabel.textContent = milestone.label;
-    const sampleValue = document.createElement('strong');
-    sampleValue.textContent = formatWeekFromDateValue(milestone.value) || '—';
-    sampleBox.appendChild(sampleLabel);
-    sampleBox.appendChild(sampleValue);
+    const deadlineBox = document.createElement('div');
+    deadlineBox.className = 'digprod-plan-print__sample';
+    const deadlineLabel = document.createElement('span');
+    deadlineLabel.textContent = 'DEADLINE';
+    const deadlineValue = document.createElement('strong');
+    deadlineValue.textContent = formatWeekFromDateValue(deadline?.value) || '—';
+    deadlineBox.appendChild(deadlineLabel);
+    deadlineBox.appendChild(deadlineValue);
 
     header.appendChild(titleBlock);
-    header.appendChild(sampleBox);
+    header.appendChild(deadlineBox);
     article.appendChild(header);
 
     const table = document.createElement('table');
@@ -4630,14 +4971,6 @@ export async function runPlanningApp() {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    const sampleRow = document.createElement('tr');
-    sampleRow.className = 'digprod-plan-print__sample-row';
-    [milestone.label, milestone.note, formatWeekFromDateValue(milestone.value) || '—', ''].forEach((value) => {
-      const td = document.createElement('td');
-      td.textContent = value;
-      sampleRow.appendChild(td);
-    });
-    tbody.appendChild(sampleRow);
 
     getDigprodPlanActivityFields(row).forEach((activity) => {
       const item = rows.find((entry) => String(entry.activity_key || '').trim() === activity.field) || {};
@@ -4671,7 +5004,7 @@ export async function runPlanningApp() {
 
     const footer = document.createElement('footer');
     footer.className = 'digprod-plan-print__footer';
-    footer.textContent = `Status speglas från DIG PROD. ${milestone.label} hämtas från Säljintro.`;
+    footer.textContent = `Status speglas från DIG PROD. DEADLINE hämtas från ${deadline?.label || 'Lanseringsplan'} i Lanseringsplan.`;
     article.appendChild(footer);
 
     return article;
@@ -4871,7 +5204,7 @@ export async function runPlanningApp() {
     if (!row) return document.createDocumentFragment();
     const rowId = getDigprodPlanSourceKey(row.id);
     const rows = getDigprodPlanRows(rowId);
-    const milestone = getDigprodPlanMilestone(row);
+    const deadline = getDigprodPlanDeadline(row);
     const showOwnerControls = isAdmin();
 
     const overlay = document.createElement('div');
@@ -4890,10 +5223,10 @@ export async function runPlanningApp() {
     eyebrow.textContent = 'DIG PROD';
     const title = document.createElement('h2');
     title.className = 'side-panel__title';
-    title.textContent = `Tidplan – ${row.produktnamn || 'produkt'}`;
+    title.textContent = `Tidplan – ${row.produktnamn || 'produkt'} · DEADLINE ${formatWeekFromDateValue(deadline?.value) || '—'}`;
     const text = document.createElement('p');
     text.className = 'side-panel__text';
-    text.textContent = 'Status speglas från DIG PROD-kolumnerna. Klart hanteras här. Ansvar visas för alla; admin sätter ansvarig längst till höger.';
+    text.textContent = `Status speglas från DIG PROD-kolumnerna. DEADLINE hämtas från ${deadline?.label || 'B2B/B2C'} i Lanseringsplan. Klart hanteras här. Ansvar visas för alla; admin sätter ansvarig längst till höger.`;
     heading.appendChild(eyebrow);
     heading.appendChild(title);
     heading.appendChild(text);
@@ -4941,37 +5274,6 @@ export async function runPlanningApp() {
       table.appendChild(thead);
       const tbody = document.createElement('tbody');
 
-      const sampleTr = document.createElement('tr');
-      sampleTr.className = 'digprod-plan-sample-row';
-      const sampleActivity = document.createElement('td');
-      sampleActivity.textContent = milestone.label;
-      const sampleStatus = document.createElement('td');
-      const sampleChip = document.createElement('span');
-      sampleChip.className = 'cell-chip';
-      sampleChip.textContent = milestone.note;
-      sampleStatus.appendChild(sampleChip);
-      const sampleDate = document.createElement('td');
-      sampleDate.textContent = formatWeekFromDateValue(milestone.value) || '--';
-      sampleTr.appendChild(sampleActivity);
-      sampleTr.appendChild(sampleStatus);
-      sampleTr.appendChild(sampleDate);
-      const sampleOwners = document.createElement('td');
-      sampleOwners.textContent = '';
-      sampleTr.appendChild(sampleOwners);
-      if (showOwnerControls) {
-        const sampleOwnerAction = document.createElement('td');
-        sampleOwnerAction.textContent = '';
-        sampleTr.appendChild(sampleOwnerAction);
-      }
-      tbody.appendChild(sampleTr);
-
-      const spacerTr = document.createElement('tr');
-      spacerTr.className = 'digprod-plan-spacer-row';
-      const spacerTd = document.createElement('td');
-      spacerTd.colSpan = showOwnerControls ? 5 : 4;
-      spacerTd.innerHTML = '&nbsp;';
-      spacerTr.appendChild(spacerTd);
-      tbody.appendChild(spacerTr);
 
       getDigprodPlanActivityFields(row).forEach((activity) => {
         const item = rows.find((entry) => String(entry.activity_key || '').trim() === activity.field) || {};
@@ -5023,7 +5325,7 @@ export async function runPlanningApp() {
     panel.appendChild(body);
     dialog.appendChild(panel);
     if (!state.digprodPlanLoading) {
-      dialog.appendChild(createDigprodPlanPrintView(row, rows, milestone));
+      dialog.appendChild(createDigprodPlanPrintView(row, rows, deadline));
     }
     overlay.appendChild(dialog);
     return overlay;
@@ -6420,17 +6722,6 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
 
       if (tableName !== 'RUTINER') {
         headerActions.appendChild(createMessageButtonForRow(tableName, row));
-      }
-
-      if (tableName === 'UTVECKLING') {
-        const saljintroButton = document.createElement('button');
-        saljintroButton.type = 'button';
-        saljintroButton.className = 'secondary-button';
-        saljintroButton.textContent = 'SÄLJINTRO';
-        saljintroButton.addEventListener('click', async () => {
-          await createSaljintroFromUtveckling(row);
-        });
-        headerActions.appendChild(saljintroButton);
       }
 
       if (actions.primary && !['PRE DEV','UTVECKLING'].includes(tableName)) {
