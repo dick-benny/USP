@@ -12,9 +12,8 @@ import {
 import { createTodoController } from './app_todo.js?v=254';
 import { createRowTodoController } from './app_row_todo.js?v=254';
 import { createNotesController } from './app_notes.js?v=254';
-import { createSettingsController } from './app_settings.js?v=279';
-import { createMessagesController } from './app_messages.js?v=254';
-import { createRenderController } from './app_render.js?v=254';
+import { createSettingsController } from './app_settings.js?v=286';
+import { createRenderController } from './app_render.js?v=290';
 import { createDataController } from './app_data.js?v=254';
 import { createActionController } from './app_actions.js?v=254';
 import { createFilterController } from './app_filters.js?v=254';
@@ -30,7 +29,6 @@ export async function runPlanningApp() {
   const app = document.getElementById('app');
   const nav = document.getElementById('tableNav');
   const settingsButton = document.getElementById('settingsButton') || document.getElementById('userBadge');
-  const userArea = document.querySelector('.topbar__user');
 
   if (!spec || !spec.APP_CONFIG || !spec.APP_CONFIG.tables) {
     app.innerHTML = '<p class="empty-state">Kunde inte läsa spec.js.</p>';
@@ -38,38 +36,6 @@ export async function runPlanningApp() {
   }
 
   const { APP_CONFIG, SAMPLE_ROWS = {} } = spec;
-  const tableEntries = Object.entries(APP_CONFIG.tables);
-  const digProdIndex = tableEntries.findIndex(([tableName]) => tableName === 'DIG PROD');
-  const digProdEntry = digProdIndex >= 0 ? tableEntries.splice(digProdIndex, 1)[0] : null;
-  const projektIndex = tableEntries.findIndex(([tableName]) => tableName === 'PROJEKT');
-  const projektEntry = projektIndex >= 0 ? tableEntries.splice(projektIndex, 1)[0] : null;
-  const cdmpIndex = tableEntries.findIndex(([tableName]) => tableName === 'CDMP');
-  const cdmpEntry = cdmpIndex >= 0 ? tableEntries.splice(cdmpIndex, 1)[0] : null;
-  const marknadIndex = tableEntries.findIndex(([tableName]) => tableName === 'MARKNAD');
-  const marknadEntry = marknadIndex >= 0 ? tableEntries.splice(marknadIndex, 1)[0] : null;
-  const saljIndex = tableEntries.findIndex(([tableName]) => tableName === 'SÄLJ');
-  const saljEntry = saljIndex >= 0 ? tableEntries.splice(saljIndex, 1)[0] : null;
-  const inkopIndex = tableEntries.findIndex(([tableName]) => tableName === 'INKÖP');
-  const inkopEntry = inkopIndex >= 0 ? tableEntries.splice(inkopIndex, 1)[0] : null;
-
-  const insertIndex = tableEntries.findIndex(
-    ([tableName]) => tableName === 'SÄLJINTRO'
-  );
-
-  const orderedEntries = [
-    ...(digProdEntry ? [digProdEntry] : []),
-    ...(projektEntry ? [projektEntry] : []),
-    ...(cdmpEntry ? [cdmpEntry] : []),
-    ...(inkopEntry ? [inkopEntry] : []),
-    ...(marknadEntry ? [marknadEntry] : []),
-    ...(saljEntry ? [saljEntry] : []),
-  ];
-
-  if (insertIndex >= 0) {
-    tableEntries.splice(insertIndex + 1, 0, ...orderedEntries);
-  } else {
-    tableEntries.push(...orderedEntries);
-  }
 
   const isAdmin = () => {
     const user = window.CurrentUser || {};
@@ -83,6 +49,50 @@ export async function runPlanningApp() {
       role === 'superadmin'
     );
   };
+
+  function normalizeAccessText(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  function canViewPreDesign() {
+    if (isAdmin()) return true;
+    const user = window.CurrentUser || {};
+    const identity = normalizeAccessText([
+      user.fullName,
+      user.full_name,
+      user.name,
+      user.email,
+      user.initials,
+    ].filter(Boolean).join(' '));
+    return identity.includes('maja') || identity.includes('lina');
+  }
+
+  let tableEntries = Object.entries(APP_CONFIG.tables).filter(([tableName]) => (
+    tableName !== 'PRE DEV' || canViewPreDesign()
+  ));
+  const digProdIndex = tableEntries.findIndex(([tableName]) => tableName === 'DIG PROD');
+  const digProdEntry = digProdIndex >= 0 ? tableEntries.splice(digProdIndex, 1)[0] : null;
+  const projektIndex = tableEntries.findIndex(([tableName]) => tableName === 'PROJEKT');
+  const projektEntry = projektIndex >= 0 ? tableEntries.splice(projektIndex, 1)[0] : null;
+
+  const insertIndex = tableEntries.findIndex(
+    ([tableName]) => tableName === 'SÄLJINTRO'
+  );
+
+  const orderedEntries = [
+    ...(digProdEntry ? [digProdEntry] : []),
+    ...(projektEntry ? [projektEntry] : []),
+  ];
+
+  if (insertIndex >= 0) {
+    tableEntries.splice(insertIndex + 1, 0, ...orderedEntries);
+  } else {
+    tableEntries.push(...orderedEntries);
+  }
 
   let activeFloatingActionMenu = null;
 
@@ -213,10 +223,6 @@ export async function runPlanningApp() {
     columnChecklistsError: '',
     linksList: [],
     linksPanelOpen: false,
-    messagesPanelOpen: false,
-    messagesPanelMode: 'inbox',
-    messagesList: null,
-    messageComposeDraft: null,
     modalTodoRows: [],
     planningUsers: [],
     projectRows: [],
@@ -238,6 +244,7 @@ export async function runPlanningApp() {
     digprodPlanPanelMode: 'plan',
     digprodPlanRowId: null,
     lanseringsplanIntroSourceId: null,
+    digprodPlanShopifySpecContext: false,
     digprodPlanRowsBySourceId: {},
     digprodPlanCountsBySourceId: {},
     digprodPlanDeadlinesBySourceId: {},
@@ -321,69 +328,6 @@ export async function runPlanningApp() {
     createSaljintroFromUtveckling,
   } = workflowController;
 
-  async function navigateToMessageSource(item) {
-    const tableName = String(item?.sourceTable || '').trim();
-    const rowId = String(item?.sourceRowId || '').trim();
-
-    if (!tableName || !rowId) {
-      alert('Radkoppling saknas.');
-      return;
-    }
-
-    const tableConfig = APP_CONFIG.tables?.[tableName];
-    if (!tableConfig?.dbTable) {
-      alert(`Kunde inte hitta vyn ${tableName}.`);
-      return;
-    }
-
-    let row = getRowById(tableName, rowId);
-    if (!row) {
-      try {
-        await loadTableRowsFromData(state, tableName, tableConfig);
-        row = getRowById(tableName, rowId);
-      } catch (err) {
-        console.warn('Could not reload source table for message navigation:', err.message);
-      }
-    }
-
-    if (!row) {
-      alert('Kunde inte hitta kopplad rad.');
-      return;
-    }
-
-    state.activeTableName = tableName;
-    state.detailRowId = row.id;
-    state.messagesPanelOpen = false;
-    state.linksPanelOpen = false;
-    state.settingsPanelOpen = false;
-    state.archivePanelOpen = false;
-    state.notesPanelOpen = false;
-    state.notesRowId = null;
-    state.rowTodoPanelOpen = false;
-    state.rowTodoRowId = null;
-    state.columnChecklistPanelOpen = false;
-    state.columnChecklistActive = null;
-    state.newRowDraft = null;
-    state.editingCell = null;
-
-    render();
-  }
-
-  const messagesController = createMessagesController({
-    supabase,
-    state,
-    getCurrentUserInitials,
-    getCurrentUserId,
-    getRowTitleField,
-    navigateToMessageSource,
-    render,
-  });
-  const {
-    ensureMessagesButton,
-    createMessagesPanel,
-    createMessageButtonForRow,
-    loadMessages,
-  } = messagesController;
 
   function getActiveConfig() {
     return tableEntries.find(([tableName]) => tableName === state.activeTableName) || null;
@@ -1183,7 +1127,7 @@ export async function runPlanningApp() {
 
         const linkButton = document.createElement('button');
         linkButton.type = 'button';
-        linkButton.className = 'message-card__row-link mood-link-row__name';
+        linkButton.className = 'mood-link-row__name';
         linkButton.textContent = getMoodLinkName(item) || 'Namnlös länk';
         linkButton.title = 'Öppna länk i nytt fönster';
         linkButton.addEventListener('click', () => openMoodLink(item));
@@ -2090,7 +2034,6 @@ export async function runPlanningApp() {
         state.rowTodoPanelOpen = false;
         state.rowTodoRowId = null;
         state.settingsPanelOpen = false;
-        state.messagesPanelOpen = false;
         state.columnChecklistPanelOpen = false;
         state.columnChecklistActive = null;
 
@@ -2133,7 +2076,7 @@ export async function runPlanningApp() {
     Object.assign(draft, overrides);
 
     if (isOwnerEnabledTable(tableName)) {
-      draft.owner_initials = getCurrentUserInitials();
+      draft.owner_initials = String(overrides?.owner_initials || '').trim() || getCurrentUserInitials();
     }
 
     if (tableName === 'MARKNAD' || tableName === 'SÄLJ' || tableName === 'INKÖP') {
@@ -2194,6 +2137,8 @@ export async function runPlanningApp() {
   }
 
 
+  // TEMP v292: tidsregler avstängda. Lanseringsplanens veckor sätts manuellt.
+  const LANSERINGSPLAN_TIME_RULES_ENABLED = false;
   const LANSERINGSPLAN_TIME_RULES_TABLE = 'lanseringsplan_tidsregler';
   const LANSERINGSPLAN_ROW_TIME_RULES_TABLE = 'lanseringsplan_row_tidsregler';
   const LANSERINGSPLAN_TIME_RULE_DEFS = [
@@ -2555,7 +2500,7 @@ export async function runPlanningApp() {
     const isRowSpecific = Boolean(rowId);
     if (state.lanseringsplanTimeRulesLoading) return;
     if (!state.lanseringsplanTimeRules || !Object.keys(state.lanseringsplanTimeRules).length) {
-      await loadLanseringsplanTimeRules();
+      if (LANSERINGSPLAN_TIME_RULES_ENABLED) await loadLanseringsplanTimeRules();
     }
     const rowRules = isRowSpecific ? await loadLanseringsplanRowTimeRules(rowId) : null;
 
@@ -2651,7 +2596,7 @@ export async function runPlanningApp() {
     footer.className = 'side-panel__footer';
 
     const saveButton = document.createElement('button');
-    saveButton.type = 'submit';
+    saveButton.type = 'button';
     saveButton.className = 'primary-button';
     saveButton.textContent = 'Save';
 
@@ -2879,6 +2824,11 @@ export async function runPlanningApp() {
           saveButton.textContent = 'Save';
         }
       }
+    });
+
+    saveButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      form.requestSubmit();
     });
 
     panel.append(header, form, footer);
@@ -3138,7 +3088,7 @@ export async function runPlanningApp() {
 
     wrap.appendChild(newButton);
 
-    if (tableName === 'LANSERINGSPLAN') {
+    if (tableName === 'LANSERINGSPLAN' && LANSERINGSPLAN_TIME_RULES_ENABLED) {
       const timeRulesButton = document.createElement('button');
       timeRulesButton.type = 'button';
       timeRulesButton.className = 'secondary-button';
@@ -3330,7 +3280,7 @@ export async function runPlanningApp() {
     }
 
     try {
-      if (tableName === 'LANSERINGSPLAN') {
+      if (tableName === 'LANSERINGSPLAN' && LANSERINGSPLAN_TIME_RULES_ENABLED) {
         await recalculateLanseringsplanRowAfterCreate(finalRow);
       }
     } catch (err) {
@@ -3513,6 +3463,19 @@ export async function runPlanningApp() {
     }
 
     if (tableConfig.dbTable === 'lanseringsplan' && LANSERINGSPLAN_DATE_FIELDS.includes(dateField)) {
+      if (!LANSERINGSPLAN_TIME_RULES_ENABLED) {
+        // Manuellt läge: ändra bara vald vecka. Fullsize ska fortfarande speglas till Design.
+        if (dateField === 'fullsize_slut_datum') {
+          try {
+            await syncDesignFullsizeFromLanseringsplan(row, { date: true });
+          } catch (syncErr) {
+            alert(`Datum sparades, men Fullsize kunde inte speglas till Design: ${syncErr.message}`);
+          }
+        }
+        render();
+        return;
+      }
+
       try {
         if (dateField === 'fullsize_slut_datum' && !nextDate) {
           await syncDesignFullsizeFromLanseringsplan(row, { date: true });
@@ -4220,7 +4183,7 @@ export async function runPlanningApp() {
     return (state.rowsByTable?.['DIG PROD'] || []).filter((candidate) => {
       const category = normalizeDigProdIntroCategory(candidate?.kategori);
       return (
-        (category === 'B2B-intro' || category === 'B2C-intro') &&
+        (category === 'B2B-intro' || category === 'B2C-intro' || category === 'Content-marketing') &&
         normalizeLanseringsplanProductName(candidate?.produktnamn) === productKey
       );
     });
@@ -4238,8 +4201,8 @@ export async function runPlanningApp() {
 
     const digProdRows = getDigProdIntroRowsForLanseringsplan(lanseringsplanRow);
     const extraText = digProdRows.length
-      ? `\n\nÄven ${digProdRows.length} rad(er) i DIG PROD / B2B Intro och B2C Intro för samma produkt tas bort.`
-      : '\n\nInga kopplade B2B/B2C Intro-rader hittades i DIG PROD.';
+      ? `\n\nÄven ${digProdRows.length} kopplad(e) innehållsrad(er) för samma produkt tas bort.`
+      : '\n\nInga kopplade innehållsrader hittades.';
 
     const confirmed = window.confirm(`Ta bort raden i Lanseringsplan för ${productName || 'denna produkt'}?${extraText}`);
     if (!confirmed) return;
@@ -4320,19 +4283,40 @@ export async function runPlanningApp() {
     }
   }
 
-  async function openLanseringsplanDigProdIntroModal(lanseringsplanRow, introType) {
-    const label = introType === 'B2C-intro' ? 'B2C Intro' : 'B2B Intro';
+  async function openLanseringsplanDigProdIntroModal(lanseringsplanRow, introType, options = {}) {
+    const label = options.modalTitle || (introType === 'B2C-intro' ? 'B2C Intro' : introType === 'Content-marketing' ? 'Content Marketing' : 'B2B Intro');
     const productName = String(lanseringsplanRow?.produkt || '').trim();
-    const targetRow = findDigProdIntroRowForLanseringsplan(lanseringsplanRow, introType);
+    let targetRow = findDigProdIntroRowForLanseringsplan(lanseringsplanRow, introType);
+
+    if (!targetRow?.id && options.createIfMissing === true) {
+      const digProdConfig = APP_CONFIG.tables?.['DIG PROD'];
+      if (!digProdConfig?.dbTable) {
+        alert('Kunde inte hitta DIG PROD.');
+        return;
+      }
+      if (!productName) {
+        alert('Lanseringsplan-raden saknar Produkt.');
+        return;
+      }
+      try {
+        targetRow = await createInlineNewRow('DIG PROD', digProdConfig, {
+          produktnamn: productName,
+          kategori: introType,
+          kommentar: '',
+        });
+      } catch (err) {
+        alert(`Kunde inte skapa ${label} för ${productName}: ${err.message || err}`);
+        return;
+      }
+    }
 
     if (!targetRow?.id) {
-      alert(`Ingen ${label}-rad finns ännu för ${productName || 'denna produkt'}. Använd Skapa Dig plan när den funktionen är klar.`);
+      alert(`Ingen ${label}-rad finns ännu för ${productName || 'denna produkt'}.`);
       return;
     }
 
     state.settingsPanelOpen = false;
     state.linksPanelOpen = false;
-    state.messagesPanelOpen = false;
     state.archivePanelOpen = false;
     state.rowTodoPanelOpen = false;
     state.notesPanelOpen = false;
@@ -4344,6 +4328,75 @@ export async function runPlanningApp() {
     state.digprodPlanPanelOpen = true;
     state.digprodPlanRowId = targetRow.id;
     state.lanseringsplanIntroSourceId = lanseringsplanRow?.id || null;
+    state.digprodIntroModalTitle = options.modalTitle || null;
+    render();
+  }
+
+  async function openDesignDigProdB2BIntroModal(designRow) {
+    const productName = String(designRow?.produktide || '').trim();
+    if (!productName) {
+      alert('Design-raden saknar Produktnamn.');
+      return;
+    }
+
+    let targetRow = (state.rowsByTable?.['DIG PROD'] || []).find((candidate) => (
+      normalizeDigProdIntroCategory(candidate?.kategori) === 'B2B-intro' &&
+      normalizeLanseringsplanProductName(candidate?.produktnamn) === normalizeLanseringsplanProductName(productName)
+    )) || null;
+
+    if (!targetRow?.id) {
+      const digProdConfig = APP_CONFIG.tables?.['DIG PROD'];
+      if (!digProdConfig?.dbTable) {
+        alert('Kunde inte hitta DIG PROD.');
+        return;
+      }
+
+      try {
+        targetRow = await createInlineNewRow('DIG PROD', digProdConfig, {
+          produktnamn: productName,
+          kategori: 'B2B-intro',
+          kommentar: '',
+          owner_initials: 'DH',
+        });
+      } catch (err) {
+        alert(`Kunde inte skapa B2B Intro för ${productName}: ${err.message || err}`);
+        return;
+      }
+    }
+
+    if (!targetRow?.id) {
+      alert(`Kunde inte skapa eller öppna B2B Intro för ${productName}.`);
+      return;
+    }
+
+    if (getOwnerInitials(targetRow) !== 'DH') {
+      const digProdConfig = APP_CONFIG.tables?.['DIG PROD'];
+      const previousOwner = getOwnerInitials(targetRow);
+      targetRow.owner_initials = 'DH';
+      const { error: ownerError } = await supabase
+        .from(digProdConfig.dbTable)
+        .update({ owner_initials: 'DH' })
+        .eq('id', targetRow.id);
+      if (ownerError) {
+        targetRow.owner_initials = previousOwner;
+        alert(`Kunde inte sätta DH som ansvarig: ${ownerError.message}`);
+        return;
+      }
+    }
+
+    state.settingsPanelOpen = false;
+    state.linksPanelOpen = false;
+    state.archivePanelOpen = false;
+    state.rowTodoPanelOpen = false;
+    state.notesPanelOpen = false;
+    state.columnChecklistPanelOpen = false;
+    state.cdmpProvmattorPanelOpen = false;
+    state.detailRowId = null;
+    state.newRowDraft = null;
+    state.digprodPlanPanelMode = 'intro_row';
+    state.digprodPlanPanelOpen = true;
+    state.digprodPlanRowId = targetRow.id;
+    state.lanseringsplanIntroSourceId = null;
     render();
   }
 
@@ -4410,6 +4463,11 @@ export async function runPlanningApp() {
             action: async () => runRowAction(tableName, tableConfig, row, 'delete'),
           },
           {
+            label: 'Shopify Spec',
+            title: 'Öppna B2B Intro för denna produkt',
+            action: async () => openDesignDigProdB2BIntroModal(row),
+          },
+          {
             label: 'Kopia lansering',
             title: 'Skapa kopia i Lanseringsplan',
             action: async () => createLanseringsplanFromDesign(row),
@@ -4424,17 +4482,6 @@ export async function runPlanningApp() {
 
 
     if (tableName === 'LANSERINGSPLAN') {
-      wrap.appendChild(makeButton({
-        label: 'B2C',
-        title: 'Öppna motsvarande DIG PROD / B2C Intro-rad',
-        action: async () => openLanseringsplanDigProdIntroModal(row, 'B2C-intro'),
-      }));
-      wrap.appendChild(makeButton({
-        label: 'B2B',
-        title: 'Öppna motsvarande DIG PROD / B2B Intro-rad',
-        action: async () => openLanseringsplanDigProdIntroModal(row, 'B2B-intro'),
-      }));
-
       const moreButton = document.createElement('button');
       moreButton.type = 'button';
       moreButton.className = 'row-actions__button row-actions__menu-trigger';
@@ -4446,9 +4493,14 @@ export async function runPlanningApp() {
         event.stopPropagation();
         openFloatingActionMenu(moreButton, [
           {
-            label: 'Skapa Dig Prod',
-            title: 'Skapa B2B Intro och B2C Intro i DIG PROD',
-            action: async () => createDigProdIntroRowsFromLanseringsplan(row),
+            label: 'Content Shopify',
+            title: 'Öppna Content Shopify för denna produkt, eller skapa den om den saknas',
+            action: async () => openLanseringsplanDigProdIntroModal(row, 'B2C-intro', { createIfMissing: true, modalTitle: 'Content Shopify' }),
+          },
+          {
+            label: 'Content Marketing',
+            title: 'Öppna Content Marketing för denna produkt, eller skapa den om den saknas',
+            action: async () => openLanseringsplanDigProdIntroModal(row, 'Content-marketing', { createIfMissing: true, modalTitle: 'Content Marketing' }),
           },
           {
             label: 'Arkiv',
@@ -4457,15 +4509,15 @@ export async function runPlanningApp() {
           },
           {
             label: 'Ta bort',
-            title: 'Ta bort raden och kopplade B2B/B2C Intro-rader i DIG PROD',
+            title: 'Ta bort raden och kopplade innehållsrader',
             danger: true,
             action: async () => deleteLanseringsplanRowWithDigProdIntroRows(row),
           },
-          {
+          ...(LANSERINGSPLAN_TIME_RULES_ENABLED ? [{
             label: 'Tidsregler',
             title: 'Redigera tidsregler för denna rad',
             action: async () => openLanseringsplanTimeRulesModal(row),
-          },
+          }] : []),
         ]);
       });
       wrap.appendChild(moreButton);
@@ -4562,9 +4614,11 @@ export async function runPlanningApp() {
   ];
 
   function getDigprodPlanActivityFields(row) {
-    return getDigprodPlanIntroType(row) === 'B2C-intro'
-      ? DIGPROD_B2C_PLAN_ACTIVITY_FIELDS
-      : DIGPROD_B2B_PLAN_ACTIVITY_FIELDS;
+    if (getDigprodPlanIntroType(row) === 'B2C-intro') return DIGPROD_B2C_PLAN_ACTIVITY_FIELDS;
+    if (state.digprodPlanShopifySpecContext) {
+      return DIGPROD_B2B_PLAN_ACTIVITY_FIELDS.filter((activity) => activity.field !== 'text_copy' && activity.field !== 'utskick');
+    }
+    return DIGPROD_B2B_PLAN_ACTIVITY_FIELDS;
   }
 
   function getDigprodPlanSourceKey(rowId) {
@@ -4751,11 +4805,10 @@ export async function runPlanningApp() {
     return rows;
   }
 
-  async function openDigprodPlanPanel(row) {
+  async function openDigprodPlanPanel(row, options = {}) {
     if (!row?.id) return;
     state.settingsPanelOpen = false;
     state.linksPanelOpen = false;
-    state.messagesPanelOpen = false;
     state.archivePanelOpen = false;
     state.rowTodoPanelOpen = false;
     state.notesPanelOpen = false;
@@ -4765,6 +4818,7 @@ export async function runPlanningApp() {
     state.newRowDraft = null;
     state.digprodPlanPanelMode = 'plan';
     state.lanseringsplanIntroSourceId = null;
+    state.digprodPlanShopifySpecContext = options.shopifySpec === true;
     state.digprodPlanPanelOpen = true;
     state.digprodPlanRowId = row.id;
     document.body?.classList?.add('is-digprod-plan-print-ready');
@@ -4778,6 +4832,8 @@ export async function runPlanningApp() {
     state.digprodPlanPanelMode = 'plan';
     state.digprodPlanRowId = null;
     state.lanseringsplanIntroSourceId = null;
+    state.digprodIntroModalTitle = null;
+    state.digprodPlanShopifySpecContext = false;
     closeCdmpProvmattorDatePicker();
     render();
   }
@@ -4853,7 +4909,10 @@ export async function runPlanningApp() {
     button.addEventListener('click', async (event) => {
       event.preventDefault();
       event.stopPropagation();
-      await openDigprodPlanPanel(row);
+      const shopifySpec = state.digprodPlanPanelMode === 'intro_row'
+        && getDigprodPlanIntroType(row) === 'B2B-intro'
+        && !state.lanseringsplanIntroSourceId;
+      await openDigprodPlanPanel(row, { shopifySpec });
     });
     return button;
   }
@@ -5015,15 +5074,60 @@ export async function runPlanningApp() {
   }
 
 
+  function findDesignRowForDigprodRow(row) {
+    const productKey = normalizeLanseringsplanProductName(row?.produktnamn);
+    if (!productKey) return null;
+    return (state.rowsByTable?.['UTVECKLING'] || []).find((candidate) => (
+      normalizeLanseringsplanProductName(candidate?.produktide) === productKey
+    )) || null;
+  }
+
+  function getShopifySpecificationDeadlineColumn() {
+    return {
+      name: 'DEADLINE',
+      field: '__shopify_spec_deadline',
+      type: 'status',
+      width: '13ch',
+      statusLabel: ' ',
+      hideStatusLabel: true,
+      mods: { align: 'center', readonly: true },
+    };
+  }
+
   function getDigprodIntroModalColumns(row) {
     const introType = getDigprodPlanIntroType(row);
     const digConfig = APP_CONFIG.tables?.['DIG PROD'];
-    return (digConfig?.columns || []).filter((column) => {
+    const isShopifySpecificationModal = introType === 'B2B-intro' && !state.digprodIntroModalTitle;
+    const isContentShopifyModal = introType === 'B2C-intro' && state.digprodIntroModalTitle === 'Content Shopify';
+    const isContentMarketingModal = introType === 'Content-marketing' && state.digprodIntroModalTitle === 'Content Marketing';
+
+    if (isContentMarketingModal) {
+      const marketingFields = [
+        { field: 'media', name: 'Press/Media' },
+        { field: 'kampanj', name: 'Annonsering' },
+      ];
+      return marketingFields.map(({ field, name }) => {
+        const sourceColumn = (digConfig?.columns || []).find((column) => column?.field === field);
+        return sourceColumn ? { ...sourceColumn, name, hiddenInTable: false } : null;
+      }).filter(Boolean);
+    }
+
+    const columns = (digConfig?.columns || []).filter((column) => {
       if (!column || column.field === 'id' || column.hiddenInTable) return false;
       if (Array.isArray(column.digprodCategories) && !column.digprodCategories.includes(introType)) return false;
-      if (column.field === 'kategori') return false;
+      if (column.field === 'kategori' || column.field === 'produktnamn') return false;
+      if (isShopifySpecificationModal && column.field === 'tidplan') return false;
+      if (introType === 'B2B-intro' && (column.field === 'text_copy' || column.field === 'utskick')) return false;
       return true;
+    }).map((column) => {
+      if (!isContentShopifyModal) return column;
+      if (column.field === 'utskick') return { ...column, name: 'Utskick B2B' };
+      if (column.field === 'media') return { ...column, name: 'PDP Copy' };
+      return column;
     });
+
+    if (isShopifySpecificationModal) columns.push(getShopifySpecificationDeadlineColumn());
+    return columns;
   }
 
   function createDigprodIntroTextEditor(row, column, options = {}) {
@@ -5072,6 +5176,30 @@ export async function runPlanningApp() {
     const wrap = document.createElement('div');
     wrap.className = 'lanseringsplan-intro-modal__cell-content';
 
+    if (column?.field === '__shopify_spec_deadline') {
+      const designRow = findDesignRowForDigprodRow(row);
+      const designConfig = APP_CONFIG.tables?.['UTVECKLING'];
+      const designColumn = (designConfig?.columns || []).find((candidate) => candidate?.field === 'prissattning');
+      const button = createStatusButton(
+        { ...column, renderFromField: 'prissattning_slut_datum', dateDisplayMode: 'weekReadonly' },
+        designRow?.prissattning || 'gray',
+        false,
+        designRow || {}
+      );
+      if (!designRow?.id || !designColumn) {
+        button.disabled = true;
+      } else {
+        button.addEventListener('click', async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          await toggleStatusCell(designConfig, designRow, designColumn);
+          render();
+        });
+      }
+      wrap.appendChild(button);
+      return wrap;
+    }
+
     if (isDigprodPlanColumn(column)) {
       wrap.appendChild(createDigprodPlanButton(row, column));
       return wrap;
@@ -5102,7 +5230,7 @@ export async function runPlanningApp() {
     if (!row) return document.createDocumentFragment();
 
     const introType = getDigprodPlanIntroType(row);
-    const titleLabel = introType === 'B2C-intro' ? 'B2C Intro' : 'B2B Intro';
+    const titleLabel = state.digprodIntroModalTitle || (introType === 'B2C-intro' ? 'B2C Intro' : introType === 'Content-marketing' ? 'Content Marketing' : 'Shopify Specification');
     const columns = getDigprodIntroModalColumns(row);
 
     const overlay = document.createElement('div');
@@ -5126,16 +5254,34 @@ export async function runPlanningApp() {
     heading.className = 'todo-modal__heading';
     const eyebrow = document.createElement('p');
     eyebrow.className = 'side-panel__eyebrow';
-    eyebrow.textContent = 'DIG PROD';
+    eyebrow.textContent = state.digprodIntroModalTitle === 'Content Marketing' ? 'CONTENT' : 'DIG PROD';
     const title = document.createElement('h2');
     title.className = 'side-panel__title';
-    title.textContent = `${titleLabel} – ${row.produktnamn || 'produkt'}`;
+    if (introType === 'B2B-intro' && !state.digprodIntroModalTitle) {
+      const designRow = findDesignRowForDigprodRow(row);
+      const deadlineDate = String(designRow?.prissattning_slut_datum || '').slice(0, 10);
+      const deadlineWeek = formatWeekFromDateValue(deadlineDate) || '—';
+      const deadlineLabel = deadlineDate ? `${deadlineWeek} · ${deadlineDate}` : deadlineWeek;
+      title.textContent = `${titleLabel} – ${row.produktnamn || 'produkt'} · DEADLINE – ${deadlineLabel}`;
+    } else {
+      title.textContent = `${titleLabel} – ${row.produktnamn || 'produkt'}`;
+    }
     const text = document.createElement('p');
     text.className = 'side-panel__text';
-    text.textContent = 'Redigera samma DIG PROD-rad som visas i B2B/B2C Intro. Ändringarna sparas direkt.';
+    if (introType === 'B2B-intro' && !state.digprodIntroModalTitle) {
+      text.textContent = 'Deadline hämtas från Design och kan bara ändras där. Färgen kan ändras här.';
+    } else {
+      text.textContent = state.digprodIntroModalTitle === 'Content Marketing' ? 'Ändringarna sparas direkt.' : 'Redigera samma DIG PROD-rad som visas i B2B/B2C Intro. Ändringarna sparas direkt.';
+    }
     heading.appendChild(eyebrow);
     heading.appendChild(title);
     heading.appendChild(text);
+    if (introType === 'B2B-intro') {
+      const ownerText = document.createElement('p');
+      ownerText.className = 'side-panel__text';
+      ownerText.textContent = `Ansvarig: ${getOwnerInitials(row) || 'DH'}`;
+      heading.appendChild(ownerText);
+    }
 
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
@@ -5416,7 +5562,6 @@ export async function runPlanningApp() {
     if (!row?.id) return;
     state.settingsPanelOpen = false;
     state.linksPanelOpen = false;
-    state.messagesPanelOpen = false;
     state.archivePanelOpen = false;
     state.rowTodoPanelOpen = false;
     state.notesPanelOpen = false;
@@ -6720,10 +6865,6 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     } else {
       const actions = getActionConfig(tableName);
 
-      if (tableName !== 'RUTINER') {
-        headerActions.appendChild(createMessageButtonForRow(tableName, row));
-      }
-
       if (actions.primary && !['PRE DEV','UTVECKLING'].includes(tableName)) {
         const primaryButton = document.createElement('button');
         primaryButton.type = 'button';
@@ -6802,6 +6943,36 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
 
     void renderStatistics(state, shell);
     return shell;
+  }
+
+
+  function openDigProdB2BIntroView() {
+    const digProdConfig = APP_CONFIG.tables?.['DIG PROD'];
+    if (!digProdConfig) {
+      alert('Kunde inte hitta DIG PROD.');
+      return;
+    }
+
+    const filters = ensureFilters('DIG PROD', digProdConfig);
+    filters.kategori = 'B2B-intro';
+
+    state.activeTableName = 'DIG PROD';
+    state.editingCell = null;
+    state.savingCell = null;
+    state.detailRowId = null;
+    state.archivePanelOpen = false;
+    state.notesPanelOpen = false;
+    state.notesRowId = null;
+    state.linksPanelOpen = false;
+    state.rowTodoPanelOpen = false;
+    state.rowTodoRowId = null;
+    state.settingsPanelOpen = false;
+    state.columnChecklistPanelOpen = false;
+    state.columnChecklistActive = null;
+    state.digprodPlanPanelOpen = false;
+    state.digprodPlanRowId = null;
+
+    render();
   }
 
 
@@ -6943,6 +7114,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     const currentSort = getSortState(tableName);
     table.querySelectorAll('thead th').forEach((th, index) => {
       const column = visibleColumns[index];
+
       if (!isSortableColumn(column)) return;
 
       th.classList.add('is-sortable');
@@ -6973,14 +7145,11 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     getActiveConfig,
     openSettingsMenu,
     ensureLinksButton,
-    ensureMessagesButton,
-    userArea,
     createNav,
     getCurrentDraftRow,
     getCurrentDetailRow,
     createSettingsPanel,
     createLinksPanel,
-    createMessagesPanel,
     createArchivePanel,
     createRowTodoPanel,
     createNotesPanel,
@@ -7120,12 +7289,11 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
   await loadColumnChecklists();
   await loadLinks();
   await loadPlanningUsers();
-  await loadMessages();
   await loadModalTodoRows();
   await projectsController.loadProjects();
   await loadCdmpProvmattorCounts();
   await loadDigprodPlanCounts();
-  await loadLanseringsplanTimeRules();
+  if (LANSERINGSPLAN_TIME_RULES_ENABLED) await loadLanseringsplanTimeRules();
   if (state.activeTableName) {
     await loadUnreadCountsForTable(state.activeTableName);
   }
