@@ -13,7 +13,7 @@ import { createTodoController } from './app_todo.js?v=254';
 import { createRowTodoController } from './app_row_todo.js?v=254';
 import { createNotesController } from './app_notes.js?v=254';
 import { createSettingsController } from './app_settings.js?v=286';
-import { createRenderController } from './app_render.js?v=290';
+import { createRenderController } from './app_render.js?v=308';
 import { createDataController } from './app_data.js?v=254';
 import { createActionController } from './app_actions.js?v=254';
 import { createFilterController } from './app_filters.js?v=254';
@@ -980,8 +980,8 @@ export async function runPlanningApp() {
 
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
-    saveButton.className = 'primary-button';
-    saveButton.textContent = 'Spara';
+    saveButton.className = 'secondary-button';
+    saveButton.textContent = 'Save';
 
     const cancelButton = document.createElement('button');
     cancelButton.type = 'button';
@@ -2597,7 +2597,7 @@ export async function runPlanningApp() {
 
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
-    saveButton.className = 'primary-button';
+    saveButton.className = 'secondary-button';
     saveButton.textContent = 'Save';
 
     const cancelButton = document.createElement('button');
@@ -2788,7 +2788,7 @@ export async function runPlanningApp() {
 
     const saveButton = document.createElement('button');
     saveButton.type = 'submit';
-    saveButton.className = 'primary-button';
+    saveButton.className = 'secondary-button';
     saveButton.textContent = 'Save';
 
     const cancelButton = document.createElement('button');
@@ -2836,6 +2836,169 @@ export async function runPlanningApp() {
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
     window.setTimeout(() => kategoriSelect.focus(), 0);
+  }
+
+  function getLanseringsplanSalesChannels(row) {
+    return {
+      b2b: row?.salj_b2b !== false,
+      b2c: row?.salj_b2c !== false,
+    };
+  }
+
+  function createLanseringsplanSalesChannelControl(labelText, checked = true) {
+    const label = document.createElement('label');
+    label.className = 'detail-field';
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'detail-field__label';
+    labelSpan.textContent = labelText;
+
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = !!checked;
+    input.className = 'detail-field__checkbox';
+    input.setAttribute('aria-label', labelText);
+
+    label.append(labelSpan, input);
+    return { label, input };
+  }
+
+  function openLanseringsplanSalesChannelsModal({
+    row = null,
+    titleText = 'Säljkanaler',
+    helpText = 'Välj vilka säljkanaler som ska användas. Minst en kanal måste vara vald.',
+    onSave,
+  } = {}) {
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay-modal lanseringsplan-sales-channels-modal';
+
+    const closeModal = () => overlay.remove();
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) closeModal();
+    });
+
+    const dialog = document.createElement('div');
+    dialog.className = 'overlay-modal__dialog';
+
+    const panel = document.createElement('section');
+    panel.className = 'side-panel lanseringsplan-sales-channels-modal__panel';
+
+    const header = document.createElement('div');
+    header.className = 'side-panel__header';
+
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'todo-modal__heading';
+
+    const eyebrow = document.createElement('p');
+    eyebrow.className = 'side-panel__eyebrow';
+    eyebrow.textContent = 'Lanseringsplan';
+
+    const title = document.createElement('h2');
+    title.className = 'side-panel__title';
+    title.textContent = titleText;
+
+    const help = document.createElement('p');
+    help.className = 'side-panel__text';
+    help.textContent = helpText;
+
+    titleWrap.append(eyebrow, title, help);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'side-panel__close side-panel__close--small';
+    closeButton.setAttribute('aria-label', 'Stäng');
+    closeButton.textContent = '×';
+    closeButton.addEventListener('click', closeModal);
+    header.append(titleWrap, closeButton);
+
+    const form = document.createElement('form');
+    form.className = 'side-panel__body lanseringsplan-sales-channels-modal__form';
+
+    const initial = getLanseringsplanSalesChannels(row);
+    const b2bControl = createLanseringsplanSalesChannelControl('B2B', initial.b2b);
+    const b2cControl = createLanseringsplanSalesChannelControl('B2C', initial.b2c);
+    form.append(b2bControl.label, b2cControl.label);
+
+    const footer = document.createElement('div');
+    footer.className = 'side-panel__footer';
+
+    const saveButton = document.createElement('button');
+    saveButton.type = 'submit';
+    saveButton.className = 'secondary-button';
+    saveButton.textContent = 'Save';
+
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'secondary-button';
+    cancelButton.textContent = 'Avbryt';
+    cancelButton.addEventListener('click', closeModal);
+    footer.append(saveButton, cancelButton);
+
+    // Footer ligger utanför <form>, så koppla Save explicit till formulärets submit.
+    saveButton.addEventListener('click', () => form.requestSubmit());
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const b2b = !!b2bControl.input.checked;
+      const b2c = !!b2cControl.input.checked;
+      if (!b2b && !b2c) {
+        alert('Minst en säljkanal måste vara vald.');
+        return;
+      }
+
+      saveButton.disabled = true;
+      cancelButton.disabled = true;
+      saveButton.textContent = 'Sparar...';
+      try {
+        const saved = await onSave?.({ b2b, b2c });
+        if (saved !== false) closeModal();
+      } catch (err) {
+        alert(`Kunde inte spara säljkanaler: ${err.message || err}`);
+      } finally {
+        if (overlay.isConnected) {
+          saveButton.disabled = false;
+          cancelButton.disabled = false;
+          saveButton.textContent = 'Save';
+        }
+      }
+    });
+
+    panel.append(header, form, footer);
+    dialog.appendChild(panel);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+  }
+
+  async function updateLanseringsplanSalesChannels(row, { b2b, b2c }) {
+    if (!row?.id) return false;
+    const lanseringsplanConfig = APP_CONFIG.tables?.['LANSERINGSPLAN'];
+    if (!lanseringsplanConfig?.dbTable) return false;
+
+    const payload = { salj_b2b: !!b2b, salj_b2c: !!b2c };
+    const { error } = await supabase
+      .from(lanseringsplanConfig.dbTable)
+      .update(payload)
+      .eq('id', row.id);
+
+    if (error) {
+      alert(`Kunde inte spara säljkanaler: ${error.message}`);
+      return false;
+    }
+
+    row.salj_b2b = payload.salj_b2b;
+    row.salj_b2c = payload.salj_b2c;
+    render();
+    return true;
+  }
+
+  function openLanseringsplanSalesChannelsForRow(row) {
+    if (!isAdmin()) return;
+    const productName = String(row?.produkt || '').trim();
+    openLanseringsplanSalesChannelsModal({
+      row,
+      titleText: productName ? `Säljkanaler – ${productName}` : 'Säljkanaler',
+      onSave: async ({ b2b, b2c }) => updateLanseringsplanSalesChannels(row, { b2b, b2c }),
+    });
   }
 
   function openLanseringsplanNewRowModal(tableName, tableConfig) {
@@ -2902,12 +3065,15 @@ export async function runPlanningApp() {
     productLabel.textContent = 'Produkt';
     productField.append(productLabel, produktInput);
 
+    const b2bControl = createLanseringsplanSalesChannelControl('B2B', true);
+    const b2cControl = createLanseringsplanSalesChannelControl('B2C', true);
+
     const footer = document.createElement('div');
     footer.className = 'side-panel__footer';
 
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
-    saveButton.className = 'primary-button';
+    saveButton.className = 'secondary-button';
     saveButton.textContent = 'Save';
 
     const cancelButton = document.createElement('button');
@@ -2918,7 +3084,7 @@ export async function runPlanningApp() {
 
     footer.append(saveButton, cancelButton);
 
-    form.append(collectionField, productField);
+    form.append(collectionField, productField, b2bControl.label, b2cControl.label);
 
     const saveLanseringsplanNewRow = async () => {
       const collection = String(collectionSelect.value || '').trim();
@@ -2936,12 +3102,19 @@ export async function runPlanningApp() {
         return;
       }
 
+      const saljB2B = !!b2bControl.input.checked;
+      const saljB2C = !!b2cControl.input.checked;
+      if (!saljB2B && !saljB2C) {
+        alert('Minst en säljkanal måste vara vald.');
+        return;
+      }
+
       saveButton.disabled = true;
       cancelButton.disabled = true;
       saveButton.textContent = 'Sparar...';
 
       try {
-        const createdRow = await createInlineNewRow(tableName, tableConfig, { collection, produkt });
+        const createdRow = await createInlineNewRow(tableName, tableConfig, { collection, produkt, salj_b2b: saljB2B, salj_b2c: saljB2C });
         if (createdRow) closeModal();
       } catch (err) {
         alert(`Kunde inte skapa ny rad i Lanseringsplan: ${err.message || err}`);
@@ -4265,22 +4438,32 @@ export async function runPlanningApp() {
 
     const fullsizeDate = String(designRow?.stort_sample_slut_datum || '').slice(0, 10);
 
-    try {
-      const createdRow = await createInlineNewRow('LANSERINGSPLAN', lanseringsplanConfig, {
-        produkt,
-        collection,
-        fullsize: normalizeStatusValue(designRow?.stort_sample || 'gray'),
-        fullsize_slut_datum: fullsizeDate,
-      });
+    openLanseringsplanSalesChannelsModal({
+      titleText: `Säljkanaler – ${produkt}`,
+      helpText: 'Välj säljkanaler för kopian som skapas i Lanseringsplan.',
+      onSave: async ({ b2b, b2c }) => {
+        try {
+          const createdRow = await createInlineNewRow('LANSERINGSPLAN', lanseringsplanConfig, {
+            produkt,
+            collection,
+            fullsize: normalizeStatusValue(designRow?.stort_sample || 'gray'),
+            fullsize_slut_datum: fullsizeDate,
+            salj_b2b: b2b,
+            salj_b2c: b2c,
+          });
 
-      if (createdRow?.id) {
-        alert(`Kopia skapad i Lanseringsplan för ${produkt}.`);
-      }
-      return createdRow || null;
-    } catch (err) {
-      alert(`Kunde inte skapa kopia i Lanseringsplan: ${err.message || err}`);
-      return null;
-    }
+          if (createdRow?.id) {
+            alert(`Kopia skapad i Lanseringsplan för ${produkt}.`);
+            return true;
+          }
+          return false;
+        } catch (err) {
+          alert(`Kunde inte skapa kopia i Lanseringsplan: ${err.message || err}`);
+          return false;
+        }
+      },
+    });
+    return null;
   }
 
   async function openLanseringsplanDigProdIntroModal(lanseringsplanRow, introType, options = {}) {
@@ -4502,6 +4685,11 @@ export async function runPlanningApp() {
             title: 'Öppna Content Marketing för denna produkt, eller skapa den om den saknas',
             action: async () => openLanseringsplanDigProdIntroModal(row, 'Content-marketing', { createIfMissing: true, modalTitle: 'Content Marketing' }),
           },
+          ...(isAdmin() ? [{
+            label: 'Säljkanaler',
+            title: 'Ändra B2B/B2C för denna produkt',
+            action: async () => openLanseringsplanSalesChannelsForRow(row),
+          }] : []),
           {
             label: 'Arkiv',
             title: 'Lägg raden i Arkiv',
@@ -6108,8 +6296,8 @@ export async function runPlanningApp() {
 
     const saveButton = document.createElement('button');
     saveButton.type = 'button';
-    saveButton.className = 'primary-button';
-    saveButton.textContent = 'Spara';
+    saveButton.className = 'secondary-button';
+    saveButton.textContent = 'Save';
 
     const clearButton = document.createElement('button');
     clearButton.type = 'button';
@@ -6827,7 +7015,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     heading.innerHTML = `
       <p class="side-panel__eyebrow">${tableName}</p>
       <h2 class="side-panel__title">${isDraft ? 'Ny rad' : 'Radöversikt'}</h2>
-      <p class="side-panel__text">${isDraft ? 'Fyll i fälten nedan och välj Spara eller Avbryt.' : 'Redigera fälten nedan eller välj åtgärd.'}</p>
+      <p class="side-panel__text">${isDraft ? 'Fyll i fälten nedan och välj Save eller Avbryt.' : 'Redigera fälten nedan eller välj åtgärd.'}</p>
     `;
 
     const headerActions = document.createElement('div');
@@ -6853,7 +7041,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
       const saveButton = document.createElement('button');
       saveButton.type = 'button';
       saveButton.className = 'secondary-button';
-      saveButton.textContent = state.savingCell === '__new_row__' ? 'Sparar...' : 'Spara';
+      saveButton.textContent = state.savingCell === '__new_row__' ? 'Sparar...' : 'Save';
       saveButton.disabled = state.savingCell === '__new_row__';
       saveButton.addEventListener('click', async () => {
         await saveNewRow(tableName, tableConfig, row);

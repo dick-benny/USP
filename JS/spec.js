@@ -70,6 +70,8 @@ window.PlanningSpec = (function () {
       "LANSERINGSPLAN": { id: "lanseringsplan", dbTable: "lanseringsplan", title: "Lanseringsplan", columns: [
         { name: "Collection", field: "collection", type: "dropdown_design_collection", width: "13ch", mods: { align: "left", displayMode: "select", readonly: false }, default: "27-spring" },
         { name: "Produkt", field: "produkt", type: "text", key: true, sortable: true, width: PRIMARY_TITLE_WIDTH, mods: { align: "left", displayMode: "text", readonly: false } },
+        { name: "Sälj B2B", field: "salj_b2b", type: "boolean", hiddenInTable: true, default: true, mods: { readonly: false } },
+        { name: "Sälj B2C", field: "salj_b2c", type: "boolean", hiddenInTable: true, default: true, mods: { readonly: false } },
         { name: "Fullsize\nFotoprov", field: "fullsize", type: "status", width: STATUS_WIDTH, renderFromField: "fullsize_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Fullsize slut", field: "fullsize_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "Content Shopify", field: "content", type: "status", width: "14ch", renderFromField: "content_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
@@ -81,7 +83,8 @@ window.PlanningSpec = (function () {
         { name: "PO-lager", field: "po_lager", type: "status", width: STATUS_WIDTH, renderFromField: "po_lager_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "PO-lager slut", field: "po_lager_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "B2C", field: "b2c", type: "status", width: STATUS_WIDTH, renderFromField: "b2c_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "B2C slut", field: "b2c_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" }
+        { name: "B2C slut", field: "b2c_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
+        { name: "Kommentar", field: "kommentar", type: "text", width: "34ch", mods: { align: "left", displayMode: "textarea", readonly: false }, default: "" }
       ]},
       "SÄLJINTRO": { id: "saljintro", dbTable: "saljintro", title: "SÄLJINTRO", columns: [
         { name: "Produkt", field: "produkt", type: "text", key: true, width: PRIMARY_TITLE_WIDTH, mods: { align: "left", displayMode: "text", readonly: false } },
@@ -147,7 +150,7 @@ window.PlanningSpec = (function () {
     "COLLECTION PLAN": [],
     "PRE DEV": [{ utv_ide: "", kategori: "Anisa", beskrivning: "", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", utvardering: "", is_done: false }],
     "UTVECKLING": [{ produktide: "", kategori: "matta", syfte: "Anisa", beskrivning: "", collection: "27-spring", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", stort_sample: "gray", stort_sample_slut_datum: "", prissattning: "gray", prissattning_slut_datum: "", po_sample_falkoping: "gray", po_sample_falkoping_slut_datum: "", sample_kontor: "gray", sample_kontor_slut_datum: "", q_test: "gray", is_done: false }],
-    "LANSERINGSPLAN": [{ collection: "27-spring", produkt: "", fullsize: "gray", fullsize_slut_datum: "", content: "gray", content_slut_datum: "", content_marketing: "gray", content_marketing_slut_datum: "", b2b: "gray", b2b_slut_datum: "", po_lager: "gray", po_lager_slut_datum: "", b2c: "gray", b2c_slut_datum: "", is_done: false }],
+    "LANSERINGSPLAN": [{ collection: "27-spring", produkt: "", salj_b2b: true, salj_b2c: true, fullsize: "gray", fullsize_slut_datum: "", content: "gray", content_slut_datum: "", content_marketing: "gray", content_marketing_slut_datum: "", b2b: "gray", b2b_slut_datum: "", po_lager: "gray", po_lager_slut_datum: "", b2c: "gray", b2c_slut_datum: "", kommentar: "", is_done: false }],
     "SÄLJINTRO": [{ produkt: "", beskrivning_status: "", kategori: "matta", koll_q: "--", po_beslut: "gray", po_beslut_datum: "", po_beslut_slut_datum: "", po_lager: "gray", po_lager_datum: "", po_lager_slut_datum: "", b2b_ready: "gray", b2b_ready_datum: "", b2b_ready_slut_datum: "", shopify_ready: "gray", shopify_ready_datum: "", shopify_ready_slut_datum: "", b2b_intro: "--", is_done: false }],
     "DIG PROD": [{ produktnamn: "", kategori: "B2B-intro", kommentar: "", spec_produkt: "gray", spec_variant: "gray", text_copy: "gray", bild: "gray", copy_to_b2c: "gray", packshot: "gray", miljo: "gray", kampanj: "gray", media: "gray", update_b2b: "gray", utskick: "gray", is_done: false }],
     "STATISTICS": [],

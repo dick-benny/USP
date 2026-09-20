@@ -451,6 +451,17 @@ export function createRenderController(deps) {
         const td = document.createElement('td');
 
         if (getAlignment(column) === 'center') td.classList.add('is-center');
+
+        const disabledSalesChannel = tableName === 'LANSERINGSPLAN' && (
+          (column.field === 'b2b' && row?.salj_b2b === false) ||
+          (column.field === 'b2c' && row?.salj_b2c === false)
+        );
+        if (disabledSalesChannel) {
+          td.classList.add('is-channel-disabled');
+          td.setAttribute('aria-label', `${column.name} ej aktiv säljkanal`);
+          tr.appendChild(td);
+          return;
+        }
         if (isStatusColumn(column)) td.classList.add('status-cell');
 
         if (isOpenColumn(column)) {
