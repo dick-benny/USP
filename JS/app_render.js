@@ -619,6 +619,34 @@ export function createRenderController(deps) {
     shell.appendChild(createFilterBar(tableName, tableConfig));
     shell.appendChild(tableWrap);
 
+    if (['LANSERINGSPLAN', 'PRE DEV', 'UTVECKLING'].includes(tableName)) {
+      tableWrap.classList.add('table-wrap--viewport-scroll');
+
+      // Keep the sticky column header fully opaque while rows scroll beneath it.
+      // The generic table wrapper has a small top padding; without removing it,
+      // scrolled status cells can become visible in the strip above the sticky header.
+      tableWrap.style.paddingTop = '0';
+      tableWrap.style.background = 'var(--panel)';
+      thead.style.position = 'sticky';
+      thead.style.top = '0';
+      thead.style.zIndex = '8';
+      thead.style.background = 'var(--panel)';
+      Array.from(thead.querySelectorAll('th')).forEach((th) => {
+        th.style.background = 'var(--panel)';
+        th.style.zIndex = '9';
+      });
+
+      requestAnimationFrame(() => {
+        if (!tableWrap.isConnected) return;
+        const top = Math.ceil(tableWrap.getBoundingClientRect().top);
+        const bottomGap = 20;
+        const availableHeight = Math.max(280, window.innerHeight - top - bottomGap);
+        tableWrap.style.maxHeight = `${availableHeight}px`;
+        tableWrap.style.overscrollBehavior = 'contain';
+        tableWrap.style.scrollbarGutter = 'stable';
+      });
+    }
+
     return shell;
   }
 

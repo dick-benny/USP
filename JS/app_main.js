@@ -13,7 +13,7 @@ import { createTodoController } from './app_todo.js?v=254';
 import { createRowTodoController } from './app_row_todo.js?v=254';
 import { createNotesController } from './app_notes.js?v=254';
 import { createSettingsController } from './app_settings.js?v=286';
-import { createRenderController } from './app_render.js?v=308';
+import { createRenderController } from './app_render.js?v=315';
 import { createDataController } from './app_data.js?v=254';
 import { createActionController } from './app_actions.js?v=254';
 import { createFilterController } from './app_filters.js?v=254';
@@ -178,6 +178,7 @@ export async function runPlanningApp() {
     archivePanelOpen: false,
     archiveRowsByTable: {},
     archiveLoading: false,
+    archiveDetailItem: null,
     notesPanelOpen: false,
     notesRowId: null,
     notesRowsByKey: {},
@@ -1981,6 +1982,7 @@ export async function runPlanningApp() {
     }
     state.linksPanelOpen = false;
     state.archivePanelOpen = true;
+    state.archiveDetailItem = null;
     state.detailRowId = null;
     state.newRowDraft = null;
     state.settingsPanelOpen = false;
@@ -1990,6 +1992,7 @@ export async function runPlanningApp() {
 
   function closeArchivePanel() {
     state.archivePanelOpen = false;
+    state.archiveDetailItem = null;
     render();
   }
 
@@ -6875,10 +6878,53 @@ export async function runPlanningApp() {
     return `${date.getUTCFullYear()}-W${String(getISOWeekNumber(date)).padStart(2, '0')}`;
   }
 
+  function getArchiveDetailValue(payload, column) {
+    if (!column?.field) return '—';
+
+    if (column.type === 'status') {
+      const status = normalizeStatusValue(payload?.[column.field] || 'gray');
+      const dateValue = column.renderFromField ? payload?.[column.renderFromField] : '';
+      const week = formatWeekFromDateValue(dateValue);
+      const statusLabel = status === 'green' ? 'Grön' : status === 'yellow' ? 'Gul' : status === 'red' ? 'Röd' : 'Grå';
+      return week ? `${week} · ${statusLabel}` : statusLabel;
+    }
+
+    if (column.type === 'boolean') {
+      return payload?.[column.field] === false ? 'Nej' : 'Ja';
+    }
+
+    const value = payload?.[column.field];
+    if (value === null || value === undefined || value === '') return '—';
+    if (column.type === 'date') return String(value).slice(0, 10) || '—';
+    return String(value);
+  }
+
+  function getArchiveDetailColumns(tableConfig) {
+    return (tableConfig?.columns || []).filter((column) => {
+      if (!column?.field || column.field === 'id' || column.hiddenInTable) return false;
+      if (String(column.field).startsWith('__')) return false;
+      if (['ui_open', 'ui_notes', 'ui_todo', 'ui_actions'].includes(column.type)) return false;
+      return true;
+    });
+  }
+
+  function openArchiveDetail(item) {
+    state.archiveDetailItem = item || null;
+    render();
+  }
+
+  function closeArchiveDetail() {
+    state.archiveDetailItem = null;
+    render();
+  }
+
   function createArchivePanel() {
     const tableName = state.activeTableName;
     const rows = state.archiveRowsByTable[tableName] || [];
     const titleField = getArchiveTitleField(tableName);
+    const active = tableEntries.find(([name]) => name === tableName);
+    const tableConfig = active?.[1] || null;
+    const detailItem = state.archiveDetailItem;
 
     const overlay = document.createElement('div');
     overlay.className = 'overlay-modal';
@@ -6896,11 +6942,34 @@ export async function runPlanningApp() {
     header.className = 'side-panel__header';
 
     const heading = document.createElement('div');
-    heading.innerHTML = `
-      <p class="side-panel__eyebrow">${tableName}</p>
-      <h2 class="side-panel__title">Arkiv</h2>
-      <p class="side-panel__text">Arkiverade rader för aktuell tabell.</p>
-    `;
+    if (detailItem) {
+      const payload = detailItem.payload_json || {};
+      const titleText = String(payload[titleField] || 'Arkiverad rad').trim();
+      heading.innerHTML = `
+        <p class="side-panel__eyebrow">${tableName} · ARKIV</p>
+        <h2 class="side-panel__title"></h2>
+        <p class="side-panel__text">Arkiverad: ${formatDateTimeValue(detailItem.archived_at)}</p>
+      `;
+      heading.querySelector('.side-panel__title').textContent = titleText;
+    } else {
+      heading.innerHTML = `
+        <p class="side-panel__eyebrow">${tableName}</p>
+        <h2 class="side-panel__title">Arkiv</h2>
+        <p class="side-panel__text">Arkiverade rader för aktuell tabell.</p>
+      `;
+    }
+
+    const headerActions = document.createElement('div');
+    headerActions.className = 'side-panel__header-actions';
+
+    if (detailItem) {
+      const backButton = document.createElement('button');
+      backButton.type = 'button';
+      backButton.className = 'secondary-button';
+      backButton.textContent = 'Tillbaka';
+      backButton.addEventListener('click', closeArchiveDetail);
+      headerActions.appendChild(backButton);
+    }
 
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
@@ -6909,12 +6978,79 @@ export async function runPlanningApp() {
     closeButton.addEventListener('click', closeArchivePanel);
 
     header.appendChild(heading);
+    if (headerActions.children.length) header.appendChild(headerActions);
     header.appendChild(closeButton);
 
     const body = document.createElement('div');
     body.className = 'side-panel__body';
 
-    if (state.archiveLoading) {
+    if (detailItem) {
+      const payload = detailItem.payload_json || {};
+
+      if (tableName === 'LANSERINGSPLAN') {
+        const contentActions = document.createElement('div');
+        contentActions.className = 'side-panel__header-actions';
+
+        [
+          { type: 'B2C-intro', label: 'Content Shopify' },
+          { type: 'Content-marketing', label: 'Content Marketing' },
+        ].forEach(({ type, label }) => {
+          const target = findDigProdIntroRowForLanseringsplan(payload, type);
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'secondary-button';
+          button.textContent = target?.id ? label : `${label} (saknas)`;
+          button.disabled = !target?.id;
+          if (target?.id) {
+            button.addEventListener('click', () => {
+              void openLanseringsplanDigProdIntroModal(payload, type, {
+                createIfMissing: false,
+                modalTitle: label,
+              });
+            });
+          }
+          contentActions.appendChild(button);
+        });
+
+        body.appendChild(contentActions);
+      }
+
+      const metaGrid = document.createElement('div');
+      metaGrid.className = 'detail-grid';
+
+      const columns = getArchiveDetailColumns(tableConfig);
+      columns.forEach((column) => {
+        const card = document.createElement('section');
+        card.className = 'detail-card';
+
+        const title = document.createElement('h3');
+        title.className = 'detail-card__title';
+        title.textContent = String(column.name || column.field).replace(/\n/g, ' ');
+
+        const value = document.createElement('p');
+        value.className = 'detail-card__text';
+        value.textContent = getArchiveDetailValue(payload, column);
+
+        card.appendChild(title);
+        card.appendChild(value);
+        metaGrid.appendChild(card);
+      });
+
+      const archiveMeta = document.createElement('section');
+      archiveMeta.className = 'detail-card';
+      const archiveMetaTitle = document.createElement('h3');
+      archiveMetaTitle.className = 'detail-card__title';
+      archiveMetaTitle.textContent = 'Arkivinformation';
+      const archiveMetaText = document.createElement('p');
+      archiveMetaText.className = 'detail-card__text';
+      const transitionText = getArchiveTransitionText(detailItem);
+      archiveMetaText.textContent = `Typ: ${detailItem.archive_reason || 'archived'}${transitionText ? ` · ${transitionText}` : ''}`;
+      archiveMeta.appendChild(archiveMetaTitle);
+      archiveMeta.appendChild(archiveMetaText);
+      metaGrid.appendChild(archiveMeta);
+
+      body.appendChild(metaGrid);
+    } else if (state.archiveLoading) {
       const loading = document.createElement('p');
       loading.className = 'empty-state';
       loading.textContent = 'Laddar arkiv...';
@@ -6931,6 +7067,18 @@ export async function runPlanningApp() {
       rows.forEach((item) => {
         const card = document.createElement('section');
         card.className = 'detail-card';
+        card.tabIndex = 0;
+        card.setAttribute('role', 'button');
+        card.title = 'Öppna detalj';
+        card.style.cursor = 'pointer';
+        const openDetail = () => openArchiveDetail(item);
+        card.addEventListener('click', openDetail);
+        card.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openDetail();
+          }
+        });
 
         const payload = item.payload_json || {};
         const titleText = String(payload[titleField] || 'Arkiverad rad').trim();
