@@ -13,7 +13,7 @@ import { createTodoController } from './app_todo.js?v=254';
 import { createRowTodoController } from './app_row_todo.js?v=254';
 import { createNotesController } from './app_notes.js?v=254';
 import { createSettingsController } from './app_settings.js?v=286';
-import { createRenderController } from './app_render.js?v=315';
+import { createRenderController } from './app_render.js?v=316';
 import { createDataController } from './app_data.js?v=254';
 import { createActionController } from './app_actions.js?v=254';
 import { createFilterController } from './app_filters.js?v=254';
@@ -36,6 +36,17 @@ export async function runPlanningApp() {
   }
 
   const { APP_CONFIG, SAMPLE_ROWS = {} } = spec;
+
+  // v317: Marketing Plan is a dedicated weekly timeline UI.
+  // It intentionally does not reuse the old MARKNAD table/view.
+  if (!APP_CONFIG.tables.MARKNADSPLAN) {
+    APP_CONFIG.tables.MARKNADSPLAN = {
+      title: 'Marknadsföringsplan',
+      navTitle: 'MARKNADSPLAN',
+      customView: true,
+      columns: [],
+    };
+  }
 
   const isAdmin = () => {
     const user = window.CurrentUser || {};
@@ -74,6 +85,9 @@ export async function runPlanningApp() {
   let tableEntries = Object.entries(APP_CONFIG.tables).filter(([tableName]) => (
     tableName !== 'PRE DEV' || canViewPreDesign()
   ));
+  const marketingPlanIndex = tableEntries.findIndex(([tableName]) => tableName === 'MARKNADSPLAN');
+  const marketingPlanEntry = marketingPlanIndex >= 0 ? tableEntries.splice(marketingPlanIndex, 1)[0] : null;
+
   const digProdIndex = tableEntries.findIndex(([tableName]) => tableName === 'DIG PROD');
   const digProdEntry = digProdIndex >= 0 ? tableEntries.splice(digProdIndex, 1)[0] : null;
   const projektIndex = tableEntries.findIndex(([tableName]) => tableName === 'PROJEKT');
@@ -92,6 +106,12 @@ export async function runPlanningApp() {
     tableEntries.splice(insertIndex + 1, 0, ...orderedEntries);
   } else {
     tableEntries.push(...orderedEntries);
+  }
+
+  if (marketingPlanEntry) {
+    const launchIndex = tableEntries.findIndex(([tableName]) => tableName === 'LANSERINGSPLAN');
+    if (launchIndex >= 0) tableEntries.splice(launchIndex + 1, 0, marketingPlanEntry);
+    else tableEntries.push(marketingPlanEntry);
   }
 
   let activeFloatingActionMenu = null;
@@ -179,6 +199,13 @@ export async function runPlanningApp() {
     archiveRowsByTable: {},
     archiveLoading: false,
     archiveDetailItem: null,
+    marketingPlanRowDefs: [],
+    marketingPlanCells: [],
+    marketingPlanCellMap: new Map(),
+    marketingPlanLoading: false,
+    marketingPlanSetupError: false,
+    marketingPlanWeekOffset: 0,
+    marketingPlanFilters: { collection: 'ALL', product: 'ALL', owner: 'ALL', status: 'ALL' },
     notesPanelOpen: false,
     notesRowId: null,
     notesRowsByKey: {},
@@ -2089,6 +2116,608 @@ export async function runPlanningApp() {
     draft.is_done = false;
 
     return await saveNewRow(tableName, tableConfig, normalizeRow(tableName, tableConfig, draft));
+  }
+
+
+  const MARKETING_PLAN_ROWS_TABLE = 'marketing_plan_rows';
+  const MARKETING_PLAN_CELLS_TABLE = 'marketing_plan_cells';
+  const MARKETING_PLAN_VISIBLE_WEEKS = 14;
+  const MARKETING_PLAN_IMAGE_PREFIX = 'marketing-plan-images';
+  const MARKETING_PLAN_DEFAULT_ROWS = [
+    { row_key: 'content-theme', section: 'CONTENT', group_name: '', label: 'Theme', row_type: 'normal', sort_order: 10 },
+    { row_key: 'content-lead-image', section: 'CONTENT', group_name: '', label: 'Lead kampanjbild', row_type: 'normal', sort_order: 20 },
+    { row_key: 'content-instagram', section: 'CONTENT', group_name: '', label: 'Instagram-flödet', row_type: 'normal', sort_order: 30 },
+    { row_key: 'content-copy', section: 'CONTENT', group_name: '', label: 'Copy', row_type: 'normal', sort_order: 40 },
+    { row_key: 'content-website', section: 'CONTENT', group_name: '', label: 'Website', row_type: 'normal', sort_order: 50 },
+    { row_key: 'content-pr', section: 'CONTENT', group_name: '', label: 'PR', row_type: 'normal', sort_order: 60 },
+    { row_key: 'content-newsletter', section: 'CONTENT', group_name: '', label: 'Newsletter', row_type: 'normal', sort_order: 70 },
+    { row_key: 'content-newsletter-b2b', section: 'CONTENT', group_name: '', label: 'Newsletter B2B', row_type: 'normal', sort_order: 80 },
+    { row_key: 'content-tiktok', section: 'CONTENT', group_name: '', label: 'TikTok', row_type: 'normal', sort_order: 90 },
+    { row_key: 'ads-prospecting-scandi', section: 'ADS', group_name: 'Prospecting Scandi', label: 'Prospecting Scandi', row_type: 'campaign', sort_order: 110 },
+    { row_key: 'ads-prospecting-scandi-copy', section: 'ADS', group_name: 'Prospecting Scandi', label: 'Copy', row_type: 'normal', sort_order: 120 },
+    { row_key: 'ads-prospecting-scandi-target', section: 'ADS', group_name: 'Prospecting Scandi', label: 'Target', row_type: 'normal', sort_order: 130 },
+    { row_key: 'ads-prospecting-usa', section: 'ADS', group_name: 'Prospecting New Markets / USA', label: 'Prospecting New Markets / USA', row_type: 'campaign', sort_order: 140 },
+    { row_key: 'ads-prospecting-usa-copy', section: 'ADS', group_name: 'Prospecting New Markets / USA', label: 'Copy', row_type: 'normal', sort_order: 150 },
+    { row_key: 'ads-prospecting-usa-target', section: 'ADS', group_name: 'Prospecting New Markets / USA', label: 'Target', row_type: 'normal', sort_order: 160 },
+    { row_key: 'ads-category-retargeting', section: 'ADS', group_name: 'Category / Product Retargeting WW', label: 'Category / Product Retargeting WW', row_type: 'campaign', sort_order: 170 },
+    { row_key: 'ads-category-retargeting-copy-post', section: 'ADS', group_name: 'Category / Product Retargeting WW', label: 'Copy Post', row_type: 'normal', sort_order: 180 },
+    { row_key: 'ads-category-retargeting-copy-story', section: 'ADS', group_name: 'Category / Product Retargeting WW', label: 'Copy Story', row_type: 'normal', sort_order: 190 },
+    { row_key: 'ads-category-retargeting-target', section: 'ADS', group_name: 'Category / Product Retargeting WW', label: 'Target', row_type: 'normal', sort_order: 200 },
+    { row_key: 'ads-brand-retargeting', section: 'ADS', group_name: 'Brand Retargeting WW', label: 'Brand Retargeting WW', row_type: 'campaign', sort_order: 210 },
+  ];
+
+  function ensureMarketingPlanStyles() {
+    if (document.getElementById('marketingPlanStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'marketingPlanStyles';
+    style.textContent = `
+      .marketing-plan { display:flex; flex-direction:column; gap:16px; min-width:0; }
+      .marketing-plan__header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+      .marketing-plan__title { margin:0; font-size:2rem; line-height:1.1; }
+      .marketing-plan__subtitle { margin:6px 0 0; color:var(--muted, #6b7280); }
+      .marketing-plan__actions, .marketing-plan__nav { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+      .marketing-plan__filters { display:flex; align-items:end; gap:12px; flex-wrap:wrap; }
+      .marketing-plan__filter { display:flex; flex-direction:column; gap:5px; min-width:145px; }
+      .marketing-plan__filter span { font-size:.78rem; font-weight:700; color:var(--muted, #667085); }
+      .marketing-plan__filter select { min-height:42px; border:1px solid var(--border, #d8c7aa); border-radius:14px; background:#fff; padding:0 12px; }
+      .marketing-plan__timeline { overflow:auto; border-top:1px solid var(--border, #e5ded2); border-bottom:1px solid var(--border, #e5ded2); background:var(--panel, #fbf8f2); max-height:calc(100vh - 255px); }
+      .marketing-plan__grid { min-width:1660px; }
+      .marketing-plan__weeks, .marketing-plan__row { display:grid; grid-template-columns:260px repeat(14, 100px); }
+      .marketing-plan__weeks { position:sticky; top:0; z-index:30; background:var(--panel, #fbf8f2); border-bottom:1px solid var(--border, #ddd4c7); }
+      .marketing-plan__corner { position:sticky; left:0; z-index:35; background:var(--panel, #fbf8f2); padding:12px 14px; font-size:.78rem; font-weight:800; letter-spacing:.04em; color:#6a6d69; }
+      .marketing-plan__week { padding:10px 6px; text-align:center; font-size:.8rem; font-weight:800; border-left:1px solid var(--border, #e6dfd4); background:var(--panel, #fbf8f2); }
+      .marketing-plan__week small { display:block; margin-top:2px; font-size:.68rem; font-weight:600; color:#8b8175; }
+      .marketing-plan__week.is-current { background:#eef7ef; box-shadow:inset 0 -3px 0 #7ea88a; }
+      .marketing-plan__section { position:sticky; left:0; z-index:8; min-width:1660px; padding:9px 14px; font-size:.77rem; font-weight:900; letter-spacing:.08em; background:#eee8dd; border-top:1px solid #ddd4c7; border-bottom:1px solid #ddd4c7; }
+      .marketing-plan__row { min-height:66px; border-bottom:1px solid var(--border, #e9e3d9); position:relative; }
+      .marketing-plan__row.is-campaign { min-height:62px; background:rgba(239,235,227,.55); }
+      .marketing-plan__meta { position:sticky; left:0; z-index:12; display:flex; flex-direction:column; justify-content:center; padding:10px 14px; background:var(--panel, #fbf8f2); border-right:1px solid var(--border, #ddd4c7); min-width:0; }
+      .marketing-plan__row.is-campaign .marketing-plan__meta { background:#f0ebe2; }
+      .marketing-plan__label { font-size:.88rem; font-weight:700; line-height:1.25; color:var(--text, #14223a); }
+      .marketing-plan__row:not(.is-campaign)[data-section="ADS"] .marketing-plan__label { padding-left:18px; font-weight:600; }
+      .marketing-plan__group { margin-top:3px; font-size:.68rem; color:#8a8176; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .marketing-plan__cell { position:relative; min-width:0; padding:5px; border-left:1px solid var(--border, #e9e3d9); background:#fffdf9; cursor:pointer; }
+      .marketing-plan__cell:hover { background:#f6f2ea; }
+      .marketing-plan__cell.is-current { background:#f5fbf5; }
+      .marketing-plan__cell.has-content { background:#f1eee7; }
+      .marketing-plan__cell.has-content[data-status="Pågår"] { background:#eef7ef; }
+      .marketing-plan__cell.has-content[data-status="Klar"] { background:#e8f4eb; }
+      .marketing-plan__cell.has-content[data-status="Pausad"] { background:#f4eee5; }
+      .marketing-plan__cell-text { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; font-size:.72rem; line-height:1.25; color:#243146; overflow-wrap:anywhere; }
+      .marketing-plan__cell-meta { position:absolute; right:4px; bottom:3px; font-size:.58rem; font-weight:800; color:#82796f; }
+      .marketing-plan__empty { padding:24px; color:var(--muted, #6b7280); }
+      .marketing-plan-modal__panel { width:min(760px, calc(100vw - 32px)); max-width:760px; }
+      .marketing-plan-modal__grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; padding:18px 22px 4px; }
+      .marketing-plan-modal__field { display:flex; flex-direction:column; gap:6px; min-width:0; }
+      .marketing-plan-modal__field.is-wide { grid-column:1 / -1; }
+      .marketing-plan-modal__field span { font-size:.78rem; font-weight:800; color:#667085; }
+      .marketing-plan-modal__field input, .marketing-plan-modal__field select, .marketing-plan-modal__field textarea { width:100%; border:1px solid var(--border, #d7c6a9); border-radius:12px; padding:10px 12px; background:#fff; min-height:42px; font:inherit; }
+      .marketing-plan-modal__field textarea { min-height:105px; resize:vertical; }
+      .marketing-plan-modal__week { color:#7b746b; font-size:.82rem; margin-top:2px; }
+      .marketing-plan-image { display:flex; flex-direction:column; gap:10px; padding:12px; border:1px dashed var(--border, #d7c6a9); border-radius:14px; background:#fbfaf7; }
+      .marketing-plan-image__drop { min-height:78px; display:flex; align-items:center; justify-content:center; text-align:center; padding:14px; border-radius:10px; background:#fff; color:#71685e; font-size:.82rem; outline:none; }
+      .marketing-plan-image__drop:focus { box-shadow:0 0 0 2px rgba(126,168,138,.35); }
+      .marketing-plan-image__actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+      .marketing-plan-image__preview { display:none; align-items:flex-start; gap:12px; }
+      .marketing-plan-image__preview.is-visible { display:flex; }
+      .marketing-plan-image__preview img { width:120px; max-height:100px; object-fit:cover; border-radius:10px; border:1px solid var(--border, #d7c6a9); background:#fff; }
+      .marketing-plan__thumb { width:100%; height:34px; object-fit:cover; border-radius:5px; margin-bottom:4px; display:block; background:#eee; }
+      .marketing-plan__thumb-button { width:100%; border:0; padding:0; margin:0 0 3px; background:transparent; cursor:zoom-in; display:block; }
+      .marketing-plan-image-viewer { position:fixed; inset:0; z-index:4000; background:rgba(0,0,0,.72); display:flex; align-items:center; justify-content:center; padding:24px; }
+      .marketing-plan-image-viewer img { max-width:min(1100px, 94vw); max-height:90vh; object-fit:contain; border-radius:10px; background:#fff; }
+      @media (max-width:760px) { .marketing-plan-modal__grid { grid-template-columns:1fr; } .marketing-plan-modal__field.is-wide { grid-column:auto; } }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function marketingPlanEscapeHtml(value) {
+    return String(value ?? '').replace(/[&<>\"]/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '\"': '&quot;',
+    }[char] || char));
+  }
+
+  function marketingPlanMonday(date = new Date()) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const day = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() - day + 1);
+    return d;
+  }
+
+  function marketingPlanAddWeeks(date, weeks) {
+    const d = new Date(date.getTime());
+    d.setUTCDate(d.getUTCDate() + (Number(weeks) || 0) * 7);
+    return d;
+  }
+
+  function marketingPlanDateKey(date) {
+    return date.toISOString().slice(0, 10);
+  }
+
+  function marketingPlanISOWeek(date) {
+    const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const day = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    return { year: d.getUTCFullYear(), week };
+  }
+
+  function marketingPlanWeekValueFromDate(value) {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(`${String(value).slice(0,10)}T00:00:00Z`);
+    if (Number.isNaN(date.getTime())) return '';
+    const { year, week } = marketingPlanISOWeek(date);
+    return `${year}-W${String(week).padStart(2, '0')}`;
+  }
+
+  function marketingPlanMondayFromWeekValue(value) {
+    const match = String(value || '').match(/^(\d{4})-W(\d{2})$/);
+    if (!match) return '';
+    const year = Number(match[1]);
+    const week = Number(match[2]);
+    const jan4 = new Date(Date.UTC(year, 0, 4));
+    const jan4Day = jan4.getUTCDay() || 7;
+    const monday = new Date(jan4);
+    monday.setUTCDate(jan4.getUTCDate() - jan4Day + 1 + (week - 1) * 7);
+    return marketingPlanDateKey(monday);
+  }
+
+  function marketingPlanLabel(date) {
+    const { week } = marketingPlanISOWeek(date);
+    return `V${week}`;
+  }
+
+  function marketingPlanMonthLabel(date) {
+    return new Intl.DateTimeFormat('sv-SE', { month: 'short', timeZone: 'UTC' }).format(date).replace('.', '');
+  }
+
+  function marketingPlanWeeksInRange(startDateKey, endDateKey) {
+    const out = [];
+    let cursor = new Date(`${startDateKey}T00:00:00Z`);
+    const end = new Date(`${endDateKey}T00:00:00Z`);
+    let guard = 0;
+    while (cursor <= end && guard < 104) {
+      out.push(new Date(cursor));
+      cursor = marketingPlanAddWeeks(cursor, 1);
+      guard += 1;
+    }
+    return out;
+  }
+
+  function getMarketingPlanRows() {
+    const rows = Array.isArray(state.marketingPlanRowDefs) && state.marketingPlanRowDefs.length
+      ? state.marketingPlanRowDefs
+      : MARKETING_PLAN_DEFAULT_ROWS;
+    return [...rows]
+      .filter((row) => row?.is_active !== false)
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+  }
+
+  function getMarketingPlanCell(rowKey, weekKey) {
+    return state.marketingPlanCellMap?.get(`${rowKey}|${weekKey}`) || null;
+  }
+
+  function rebuildMarketingPlanCellMap() {
+    const map = new Map();
+    (state.marketingPlanCells || []).forEach((cell) => {
+      if (!cell?.row_key || !cell?.week_start) return;
+      map.set(`${cell.row_key}|${String(cell.week_start).slice(0,10)}`, cell);
+    });
+    state.marketingPlanCellMap = map;
+  }
+
+  async function loadMarketingPlanData() {
+    state.marketingPlanLoading = true;
+    if (state.activeTableName === 'MARKNADSPLAN') render();
+    const [rowsResult, cellsResult] = await Promise.all([
+      supabase.from(MARKETING_PLAN_ROWS_TABLE).select('*').order('sort_order', { ascending: true }),
+      supabase.from(MARKETING_PLAN_CELLS_TABLE).select('*').order('week_start', { ascending: true }),
+    ]);
+    state.marketingPlanLoading = false;
+    if (rowsResult.error) {
+      console.warn('Kunde inte läsa Marknadsplan-rader:', rowsResult.error);
+      state.marketingPlanRowDefs = MARKETING_PLAN_DEFAULT_ROWS;
+      state.marketingPlanSetupError = true;
+    } else {
+      state.marketingPlanRowDefs = Array.isArray(rowsResult.data) && rowsResult.data.length ? rowsResult.data : MARKETING_PLAN_DEFAULT_ROWS;
+      state.marketingPlanSetupError = false;
+    }
+    if (cellsResult.error) {
+      console.warn('Kunde inte läsa Marknadsplan-celler:', cellsResult.error);
+      state.marketingPlanCells = [];
+      state.marketingPlanSetupError = true;
+    } else {
+      state.marketingPlanCells = Array.isArray(cellsResult.data) ? cellsResult.data : [];
+    }
+    rebuildMarketingPlanCellMap();
+    if (state.activeTableName === 'MARKNADSPLAN') render();
+  }
+
+  function getMarketingPlanOptions(field) {
+    return [...new Set((state.marketingPlanCells || [])
+      .map((row) => String(row?.[field] || '').trim())
+      .filter(Boolean))]
+      .sort((a,b)=>a.localeCompare(b,'sv'));
+  }
+
+  function marketingPlanCellMatchesFilters(cell) {
+    const filters = state.marketingPlanFilters || {};
+    if (!cell) return Object.values(filters).every((v) => !v || v === 'ALL');
+    const checks = [
+      ['collection', 'collection'],
+      ['product', 'produkt'],
+      ['owner', 'owner_initials'],
+      ['status', 'status'],
+    ];
+    return checks.every(([filterKey, field]) => {
+      const wanted = filters[filterKey] || 'ALL';
+      return wanted === 'ALL' || String(cell[field] || '') === wanted;
+    });
+  }
+
+  function createMarketingPlanSelect(label, filterKey, field) {
+    const wrap = document.createElement('label'); wrap.className='marketing-plan__filter';
+    const caption = document.createElement('span'); caption.textContent=label;
+    const select = document.createElement('select');
+    const all = document.createElement('option'); all.value='ALL'; all.textContent='ALL'; select.appendChild(all);
+    getMarketingPlanOptions(field).forEach((value)=>{ const option=document.createElement('option'); option.value=value; option.textContent=value; select.appendChild(option); });
+    select.value=state.marketingPlanFilters?.[filterKey] || 'ALL';
+    select.addEventListener('change',()=>{ state.marketingPlanFilters[filterKey]=select.value; render(); });
+    wrap.appendChild(caption); wrap.appendChild(select); return wrap;
+  }
+
+  function createMarketingPlanField(label, control, wide = false) {
+    const wrap=document.createElement('label'); wrap.className=`marketing-plan-modal__field${wide?' is-wide':''}`;
+    const caption=document.createElement('span'); caption.textContent=label;
+    wrap.appendChild(caption); wrap.appendChild(control); return wrap;
+  }
+
+  function marketingPlanImageFileName(name) {
+    const raw = String(name || 'image').trim();
+    return raw.normalize('NFKD').replace(/[^\w.\- ]+/g,'').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'') || 'image';
+  }
+
+  function marketingPlanIsImageFile(file) {
+    return Boolean(file && String(file.type || '').toLowerCase().startsWith('image/'));
+  }
+
+  function marketingPlanImagePath(file) {
+    const extName = marketingPlanImageFileName(file?.name || `image-${Date.now()}.png`);
+    return `${MARKETING_PLAN_IMAGE_PREFIX}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${extName}`;
+  }
+
+  async function uploadMarketingPlanImage(file) {
+    if (!marketingPlanIsImageFile(file)) throw new Error('Välj eller klistra in en bildfil.');
+    if (file.size > 10 * 1024 * 1024) throw new Error('Bilden är för stor. Max 10 MB.');
+    const path = marketingPlanImagePath(file);
+    const { error } = await supabase.storage.from(PDF_BUCKET).upload(path, file, {
+      cacheControl: '3600', upsert: false, contentType: file.type || 'image/png',
+    });
+    if (error) throw new Error(error.message || 'Kunde inte ladda upp bilden.');
+    return path;
+  }
+
+  async function deleteMarketingPlanImage(path) {
+    const value=String(path||'').trim(); if(!value) return;
+    try { await supabase.storage.from(PDF_BUCKET).remove([value]); } catch(err) { console.warn('Kunde inte ta bort marknadsbild:', err); }
+  }
+
+  async function marketingPlanImageUrl(path) {
+    const value=String(path||'').trim(); if(!value) return '';
+    state.marketingPlanImageUrlCache = state.marketingPlanImageUrlCache || new Map();
+    if(state.marketingPlanImageUrlCache.has(value)) return state.marketingPlanImageUrlCache.get(value);
+    try {
+      const { data, error } = await supabase.storage.from(PDF_BUCKET).createSignedUrl(value, 3600);
+      if(!error && data?.signedUrl){ state.marketingPlanImageUrlCache.set(value,data.signedUrl); return data.signedUrl; }
+    } catch(err) { console.warn('Signed image URL failed:', err); }
+    const { data } = supabase.storage.from(PDF_BUCKET).getPublicUrl(value);
+    const url=data?.publicUrl || '';
+    if(url) state.marketingPlanImageUrlCache.set(value,url);
+    return url;
+  }
+
+  function openMarketingPlanImageViewer(url) {
+    if(!url) return;
+    const overlay=document.createElement('div'); overlay.className='marketing-plan-image-viewer';
+    const img=document.createElement('img'); img.src=url; img.alt='Marknadsbild';
+    overlay.appendChild(img); document.body.appendChild(overlay);
+    overlay.addEventListener('click',()=>overlay.remove());
+  }
+
+  function attachMarketingPlanThumbnail(host, path) {
+    if(!host || !path) return;
+    const button=document.createElement('button'); button.type='button'; button.className='marketing-plan__thumb-button'; button.title='Öppna bild';
+    const img=document.createElement('img'); img.className='marketing-plan__thumb'; img.alt=''; button.appendChild(img); host.prepend(button);
+    marketingPlanImageUrl(path).then((url)=>{ if(!url || !img.isConnected){ button.remove(); return; } img.src=url; button.addEventListener('click',(event)=>{ event.stopPropagation(); openMarketingPlanImageViewer(url); }); }).catch(()=>button.remove());
+  }
+
+  function openMarketingPlanCellModal(rowDef, weekDate, existingCell = null) {
+    ensureMarketingPlanStyles();
+    const weekKey = marketingPlanDateKey(weekDate);
+    const item = existingCell || {};
+    const overlay=document.createElement('div'); overlay.className='overlay-modal';
+    const panel=document.createElement('div'); panel.className='side-panel marketing-plan-modal__panel';
+    const header=document.createElement('div'); header.className='side-panel__header';
+    const titleWrap=document.createElement('div');
+    const title=document.createElement('h3'); title.textContent=rowDef.label;
+    const week=document.createElement('div'); week.className='marketing-plan-modal__week'; week.textContent=`${marketingPlanLabel(weekDate)} · vecka som börjar ${weekKey}`;
+    titleWrap.appendChild(title); titleWrap.appendChild(week);
+    const close=document.createElement('button'); close.type='button'; close.className='icon-button'; close.textContent='×'; close.setAttribute('aria-label','Stäng');
+    header.appendChild(titleWrap); header.appendChild(close);
+    const body=document.createElement('div'); body.className='marketing-plan-modal__grid';
+    const content=document.createElement('textarea'); content.value=item.content || '';
+    const comment=document.createElement('textarea'); comment.value=item.kommentar || '';
+    let pendingImageFile=null; let removeExistingImage=false; let previewObjectUrl='';
+    const imageWrap=document.createElement('div'); imageWrap.className='marketing-plan-image'; imageWrap.tabIndex=0;
+    const imageDrop=document.createElement('div'); imageDrop.className='marketing-plan-image__drop'; imageDrop.tabIndex=0; imageDrop.textContent='Klistra in bild här med Ctrl+V eller välj fil';
+    const imageActions=document.createElement('div'); imageActions.className='marketing-plan-image__actions';
+    const chooseImage=document.createElement('button'); chooseImage.type='button'; chooseImage.className='secondary-button'; chooseImage.textContent='Välj bild';
+    const clearImage=document.createElement('button'); clearImage.type='button'; clearImage.className='secondary-button'; clearImage.textContent='Ta bort bild'; clearImage.hidden=!item.image_path;
+    const imageInput=document.createElement('input'); imageInput.type='file'; imageInput.accept='image/*'; imageInput.hidden=true;
+    const imagePreview=document.createElement('div'); imagePreview.className='marketing-plan-image__preview';
+    const imagePreviewImg=document.createElement('img'); imagePreviewImg.alt='Förhandsvisning'; imagePreview.appendChild(imagePreviewImg);
+    imageActions.appendChild(chooseImage); imageActions.appendChild(clearImage); imageActions.appendChild(imageInput); imageWrap.appendChild(imageDrop); imageWrap.appendChild(imageActions); imageWrap.appendChild(imagePreview);
+    const setPreviewFile=(file)=>{
+      if(!marketingPlanIsImageFile(file)){ alert('Det du klistrade in är inte en bild.'); return; }
+      if(file.size>10*1024*1024){ alert('Bilden är för stor. Max 10 MB.'); return; }
+      pendingImageFile=file; removeExistingImage=false; clearImage.hidden=false;
+      if(previewObjectUrl) URL.revokeObjectURL(previewObjectUrl); previewObjectUrl=URL.createObjectURL(file); imagePreviewImg.src=previewObjectUrl; imagePreview.classList.add('is-visible');
+    };
+    chooseImage.addEventListener('click',()=>imageInput.click());
+    imageInput.addEventListener('change',()=>{ const file=imageInput.files?.[0]; if(file) setPreviewFile(file); });
+    const pasteHandler=(event)=>{
+      const files=[...(event.clipboardData?.files||[])];
+      const itemFile=[...(event.clipboardData?.items||[])].map((entry)=>entry.kind==='file'?entry.getAsFile():null).find(marketingPlanIsImageFile);
+      const file=files.find(marketingPlanIsImageFile) || itemFile; if(!file) return; event.preventDefault(); setPreviewFile(file);
+    };
+    clearImage.addEventListener('click',()=>{ pendingImageFile=null; removeExistingImage=true; clearImage.hidden=true; imagePreview.classList.remove('is-visible'); imagePreviewImg.removeAttribute('src'); if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl); previewObjectUrl='';} });
+    if(item.image_path){ marketingPlanImageUrl(item.image_path).then((url)=>{ if(url && imagePreviewImg.isConnected && !pendingImageFile && !removeExistingImage){ imagePreviewImg.src=url; imagePreview.classList.add('is-visible'); imagePreviewImg.style.cursor='zoom-in'; imagePreviewImg.addEventListener('click',()=>openMarketingPlanImageViewer(url),{once:false}); } }); }
+    body.appendChild(createMarketingPlanField('Innehåll',content,true));
+    body.appendChild(createMarketingPlanField('Bild',imageWrap,true));
+    body.appendChild(createMarketingPlanField('Kommentar',comment,true));
+    const footer=document.createElement('div'); footer.className='side-panel__footer';
+    const cancel=document.createElement('button'); cancel.type='button'; cancel.className='secondary-button'; cancel.textContent='Avbryt';
+    const remove=document.createElement('button'); remove.type='button'; remove.className='secondary-button'; remove.textContent='Rensa vecka'; remove.hidden=!item.id;
+    const save=document.createElement('button'); save.type='button'; save.className='secondary-button'; save.textContent='Save';
+    footer.appendChild(cancel); footer.appendChild(remove); footer.appendChild(save);
+    panel.appendChild(header); panel.appendChild(body); panel.appendChild(footer); overlay.appendChild(panel); document.body.appendChild(overlay); overlay.addEventListener('paste',pasteHandler);
+    const closeModal=()=>{ if(previewObjectUrl) URL.revokeObjectURL(previewObjectUrl); overlay.remove(); }; close.addEventListener('click',closeModal); cancel.addEventListener('click',closeModal);
+    overlay.addEventListener('click',(event)=>{ if(event.target===overlay) closeModal(); });
+    remove.addEventListener('click', async()=>{
+      if (!item.id) return;
+      if (!window.confirm(`Rensa ${rowDef.label} för ${marketingPlanLabel(weekDate)}?`)) return;
+      const { error } = await supabase.from(MARKETING_PLAN_CELLS_TABLE).delete().eq('id',item.id);
+      if (error) { alert(`Kunde inte rensa: ${error.message || error}`); return; }
+      if(item.image_path) await deleteMarketingPlanImage(item.image_path);
+      closeModal(); await loadMarketingPlanData();
+    });
+    save.addEventListener('click', async()=>{
+      save.disabled=true;
+      let imagePath=item.image_path || null;
+      try {
+        if(pendingImageFile) imagePath=await uploadMarketingPlanImage(pendingImageFile);
+        else if(removeExistingImage) imagePath=null;
+      } catch(err) { save.disabled=false; alert(`Kunde inte spara bilden: ${err.message || err}`); return; }
+      const payload={
+        row_key: rowDef.row_key,
+        week_start: weekKey,
+        content: content.value.trim() || null,
+        collection: item.collection || null,
+        produkt: item.produkt || null,
+        owner_initials: item.owner_initials || null,
+        status: item.status || 'Planerad',
+        kommentar: comment.value.trim() || null,
+        image_path: imagePath,
+        updated_at: new Date().toISOString(),
+      };
+      const query=item.id
+        ? supabase.from(MARKETING_PLAN_CELLS_TABLE).update(payload).eq('id',item.id)
+        : supabase.from(MARKETING_PLAN_CELLS_TABLE).insert(payload);
+      const { error }=await query;
+      save.disabled=false;
+      if(error){ if(pendingImageFile && imagePath && imagePath!==item.image_path) await deleteMarketingPlanImage(imagePath); alert(`Kunde inte spara: ${error.message || error}`); return; }
+      if(item.image_path && item.image_path!==imagePath) await deleteMarketingPlanImage(item.image_path);
+      closeModal(); await loadMarketingPlanData();
+    });
+  }
+
+  function marketingPlanVisibleRows() {
+    return getMarketingPlanRows();
+  }
+
+  function buildMarketingPlanExcelHtml(startDateKey, endDateKey) {
+    const weeks=marketingPlanWeeksInRange(startDateKey,endDateKey);
+    const rows=marketingPlanVisibleRows(weeks);
+    const weekHeaders=weeks.map((week)=>`<th>${marketingPlanEscapeHtml(marketingPlanLabel(week))}</th>`).join('');
+    let currentSection='';
+    const body=[];
+    rows.forEach((row)=>{
+      if(row.section!==currentSection){ currentSection=row.section; body.push(`<tr><th colspan="${weeks.length+1}" style="text-align:left;background:#eee8dd">${marketingPlanEscapeHtml(currentSection)}</th></tr>`); }
+      const cells=weeks.map((week)=>{
+        const cell=getMarketingPlanCell(row.row_key,marketingPlanDateKey(week));
+        return `<td>${marketingPlanEscapeHtml(cell?.content || '')}</td>`;
+      }).join('');
+      const label=row.section==='ADS' && row.row_type!=='campaign' ? `  ${row.label}` : row.label;
+      body.push(`<tr><td>${marketingPlanEscapeHtml(label)}</td>${cells}</tr>`);
+    });
+    return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif}table{border-collapse:collapse}th,td{border:1px solid #d8d2c7;padding:6px;vertical-align:top;white-space:pre-wrap}th{background:#f3efe8}</style></head><body><table><thead><tr><th>Aktivitet</th>${weekHeaders}</tr></thead><tbody>${body.join('')}</tbody></table></body></html>`;
+  }
+
+  function openMarketingPlanExcelBrowser() {
+    const currentMonday=marketingPlanMonday(new Date());
+    const defaultStart=marketingPlanAddWeeks(currentMonday,-3+Number(state.marketingPlanWeekOffset||0));
+    const defaultEnd=marketingPlanAddWeeks(defaultStart,MARKETING_PLAN_VISIBLE_WEEKS-1);
+    const rows=getMarketingPlanRows();
+    const cells=(state.marketingPlanCells||[]).map((cell)=>({
+      row_key:cell.row_key, week_start:String(cell.week_start||'').slice(0,10), content:cell.content||'', collection:cell.collection||'', produkt:cell.produkt||'', owner_initials:cell.owner_initials||'', status:cell.status||'', kommentar:cell.kommentar||'', image_path:cell.image_path||''
+    }));
+    const filters={...(state.marketingPlanFilters||{})};
+    const payload=JSON.stringify({rows,cells,filters}).replaceAll('</script>','<\\/script>');
+    const child=window.open('','_blank');
+    if(!child){ alert('Browsern blockerade den nya fliken. Tillåt popup-fönster för localhost och prova igen.'); return; }
+    child.document.open();
+    child.document.write(`<!doctype html><html lang="sv"><head><meta charset="utf-8"><title>Marknadsföringsplan – Excel</title><style>
+      body{font-family:Arial,sans-serif;margin:24px;color:#17243a;background:#faf8f3}header{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap;margin-bottom:18px}h1{margin:0}.sub{color:#6b7280}.controls{display:flex;gap:10px;align-items:end;flex-wrap:wrap}label{font-size:12px;font-weight:700;display:flex;flex-direction:column;gap:5px}input,button{font:inherit;padding:9px 12px;border:1px solid #d8c7aa;border-radius:10px;background:white}button{cursor:pointer;font-weight:700}table{border-collapse:collapse;width:100%;background:white}th,td{border:1px solid #ddd6ca;padding:7px;vertical-align:top;white-space:pre-wrap;min-width:90px}th{background:#f2eee7;position:sticky;top:0}.section th{background:#e8e1d6;text-align:left}.rowlabel{min-width:230px;font-weight:700}.child{padding-left:24px!important;font-weight:500}.empty{padding:30px;color:#6b7280}
+    </style></head><body><header><div><h1>Marknadsföringsplan</h1><div class="sub">Välj veckointervall. Tabellen uppdateras direkt.</div></div><div class="controls"><label>Från vecka<input id="fromWeek" type="week" value="${marketingPlanWeekValueFromDate(defaultStart)}"></label><label>Till vecka<input id="toWeek" type="week" value="${marketingPlanWeekValueFromDate(defaultEnd)}"></label><button id="downloadBtn" type="button">Ladda ned Excel</button></div></header><div id="tableWrap"></div><script>
+      const DATA=${payload};
+      function monday(v){const m=String(v||'').match(/^(\\d{4})-W(\\d{2})$/);if(!m)return'';const y=+m[1],w=+m[2],j=new Date(Date.UTC(y,0,4)),d=j.getUTCDay()||7;j.setUTCDate(j.getUTCDate()-d+1+(w-1)*7);return j.toISOString().slice(0,10)}
+      function addWeeks(k,n){const d=new Date(k+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n*7);return d.toISOString().slice(0,10)}
+      function isoLabel(k){const d=new Date(k+'T00:00:00Z'),x=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));const day=x.getUTCDay()||7;x.setUTCDate(x.getUTCDate()+4-day);const ys=new Date(Date.UTC(x.getUTCFullYear(),0,1));const w=Math.ceil((((x-ys)/86400000)+1)/7);return 'V'+w}
+      function esc(v){return String(v??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]))}
+      function weeks(a,b){const out=[];let k=a,g=0;while(k&&k<=b&&g<104){out.push(k);k=addWeeks(k,1);g++}return out}
+      function cellMap(){const m=new Map();DATA.cells.forEach(c=>m.set(c.row_key+'|'+c.week_start,c));return m} const MAP=cellMap();
+      function getSel(){const a=monday(document.getElementById('fromWeek').value),b=monday(document.getElementById('toWeek').value);return {a,b,ws:weeks(a,b)}}
+      function tableHtml(forExcel=false){const {a,b,ws}=getSel();if(!a||!b||a>b)return '<div class="empty">Välj ett giltigt intervall.</div>';let sec='',body='';DATA.rows.forEach(r=>{if(r.section!==sec){sec=r.section;body+='<tr class="section"><th colspan="'+(ws.length+1)+'">'+esc(sec)+'</th></tr>'}body+='<tr><td class="rowlabel '+(r.section==='ADS'&&r.row_type!=='campaign'?'child':'')+'">'+esc(r.label)+'</td>'+ws.map(k=>'<td>'+esc((MAP.get(r.row_key+'|'+k)||{}).content||'')+'</td>').join('')+'</tr>'});if(!body&&!forExcel)return '<div class="empty">Inga aktiviteter i valt intervall.</div>';return '<table'+(forExcel?' border="1"':'')+'><thead><tr><th>Aktivitet</th>'+ws.map(k=>'<th>'+isoLabel(k)+'</th>').join('')+'</tr></thead><tbody>'+body+'</tbody></table>'}
+      function render(){document.getElementById('tableWrap').innerHTML=tableHtml(false)}
+      document.getElementById('fromWeek').addEventListener('change',render);document.getElementById('toWeek').addEventListener('change',render);
+      document.getElementById('downloadBtn').addEventListener('click',()=>{const {a,b}=getSel();if(!a||!b||a>b){alert('Välj ett giltigt veckointervall.');return}const html='<!doctype html><html><head><meta charset="utf-8"></head><body>'+tableHtml(true)+'</body></html>';const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='Marknadsforingsplan_'+document.getElementById('fromWeek').value+'_'+document.getElementById('toWeek').value+'.xls';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)});render();
+    <\/script></body></html>`);
+    child.document.close();
+  }
+
+  function parseMarketingPlanImportImageFile(file) {
+    const name = String(file?.name || '').trim();
+    const parts = name.split('__');
+    if (parts.length < 3) return null;
+    const rowKey = String(parts[0] || '').trim();
+    const weekKey = String(parts[1] || '').trim();
+    const knownRow = getMarketingPlanRows().some((row) => row.row_key === rowKey);
+    const parsedDate = new Date(`${weekKey}T00:00:00Z`);
+    if (!knownRow || Number.isNaN(parsedDate.getTime()) || marketingPlanDateKey(parsedDate) !== weekKey) return null;
+    return { rowKey, weekKey };
+  }
+
+  async function importMarketingPlanImages(files, triggerButton) {
+    const selected = Array.from(files || []);
+    const parsed = selected.map((file) => ({ file, meta: parseMarketingPlanImportImageFile(file) }));
+    const valid = parsed.filter((item) => item.meta && marketingPlanIsImageFile(item.file));
+    if (!valid.length) {
+      alert('Inga giltiga Campaign Plan-bilder hittades. Välj de extraherade JPG/PNG-filerna från v327-paketet.');
+      return;
+    }
+    const invalidCount = selected.length - valid.length;
+    const originalText = triggerButton?.textContent || 'Importera bilder';
+    if (triggerButton) triggerButton.disabled = true;
+    const errors = [];
+    let imported = 0;
+    try {
+      for (let index = 0; index < valid.length; index += 1) {
+        const { file, meta } = valid[index];
+        if (triggerButton) triggerButton.textContent = `Importerar ${index + 1}/${valid.length}`;
+        if (file.size > 10 * 1024 * 1024) {
+          errors.push(`${file.name}: större än 10 MB`);
+          continue;
+        }
+        const safeName = marketingPlanImageFileName(file.name);
+        const imagePath = `${MARKETING_PLAN_IMAGE_PREFIX}/excel-import/${safeName}`;
+        const { error: uploadError } = await supabase.storage.from(PDF_BUCKET).upload(imagePath, file, {
+          cacheControl: '3600', upsert: true, contentType: file.type || 'image/jpeg',
+        });
+        if (uploadError) {
+          errors.push(`${file.name}: ${uploadError.message || 'uppladdning misslyckades'}`);
+          continue;
+        }
+        const existing = getMarketingPlanCell(meta.rowKey, meta.weekKey);
+        const now = new Date().toISOString();
+        let dbResult;
+        if (existing) {
+          dbResult = await supabase.from(MARKETING_PLAN_CELLS_TABLE)
+            .update({ image_path: imagePath, updated_at: now })
+            .eq('row_key', meta.rowKey)
+            .eq('week_start', meta.weekKey);
+        } else {
+          dbResult = await supabase.from(MARKETING_PLAN_CELLS_TABLE)
+            .insert({ row_key: meta.rowKey, week_start: meta.weekKey, image_path: imagePath, updated_at: now });
+        }
+        if (dbResult?.error) {
+          try { await supabase.storage.from(PDF_BUCKET).remove([imagePath]); } catch (_) {}
+          errors.push(`${file.name}: ${dbResult.error.message || 'databasen kunde inte uppdateras'}`);
+          continue;
+        }
+        imported += 1;
+      }
+      state.marketingPlanImageUrlCache = new Map();
+      await loadMarketingPlanData();
+      const extra = invalidCount ? ` ${invalidCount} fil(er) ignorerades.` : '';
+      const failed = errors.length ? `\n\n${errors.length} fel:\n${errors.slice(0, 8).join('\n')}${errors.length > 8 ? '\n…' : ''}` : '';
+      alert(`Bildimport klar: ${imported} av ${valid.length} bilder importerades.${extra}${failed}`);
+    } finally {
+      if (triggerButton) {
+        triggerButton.disabled = false;
+        triggerButton.textContent = originalText;
+      }
+    }
+  }
+
+  function openMarketingPlanImageBulkImport(triggerButton) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg';
+    input.multiple = true;
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.addEventListener('change', async () => {
+      try { await importMarketingPlanImages(input.files, triggerButton); }
+      finally { input.remove(); }
+    }, { once: true });
+    input.click();
+  }
+
+  function createMarketingPlanView() {
+    ensureMarketingPlanStyles();
+    const root=document.createElement('section'); root.className='marketing-plan';
+    const header=document.createElement('div'); header.className='marketing-plan__header';
+    const titleWrap=document.createElement('div'); const title=document.createElement('h2'); title.className='marketing-plan__title'; title.textContent='Marknadsföringsplan';
+    const subtitle=document.createElement('p'); subtitle.className='marketing-plan__subtitle'; subtitle.textContent='Veckoplan – klicka i en cell för att lägga till eller ändra innehåll.';
+    titleWrap.appendChild(title); titleWrap.appendChild(subtitle);
+    const actions=document.createElement('div'); actions.className='marketing-plan__actions';
+    const excel=document.createElement('button'); excel.type='button'; excel.className='secondary-button'; excel.textContent='Excel'; excel.addEventListener('click',openMarketingPlanExcelBrowser); actions.appendChild(excel);
+    if (isAdmin()) { const imageImport=document.createElement('button'); imageImport.type='button'; imageImport.className='secondary-button'; imageImport.textContent='Importera bilder'; imageImport.title='Engångsimport av bilder extraherade från Campaign Plan'; imageImport.addEventListener('click',()=>openMarketingPlanImageBulkImport(imageImport)); actions.appendChild(imageImport); }
+    header.appendChild(titleWrap); header.appendChild(actions); root.appendChild(header);
+
+    const tools=document.createElement('div'); tools.style.display='flex'; tools.style.justifyContent='flex-end'; tools.style.gap='14px'; tools.style.flexWrap='wrap'; tools.style.alignItems='end';
+    const nav=document.createElement('div'); nav.className='marketing-plan__nav';
+    const prev=document.createElement('button'); prev.type='button'; prev.className='secondary-button'; prev.textContent='← 6 v'; prev.addEventListener('click',()=>{state.marketingPlanWeekOffset-=6;render();});
+    const today=document.createElement('button'); today.type='button'; today.className='secondary-button'; today.textContent='Idag'; today.addEventListener('click',()=>{state.marketingPlanWeekOffset=0;render();});
+    const next=document.createElement('button'); next.type='button'; next.className='secondary-button'; next.textContent='6 v →'; next.addEventListener('click',()=>{state.marketingPlanWeekOffset+=6;render();});
+    nav.appendChild(prev); nav.appendChild(today); nav.appendChild(next); tools.appendChild(nav); root.appendChild(tools);
+
+    if(state.marketingPlanSetupError){ const warn=document.createElement('div'); warn.className='empty-state'; warn.textContent='Marknadsplanens nya veckotabeller saknas eller kunde inte läsas. Kör SQL/v322_marketing_plan_matrix.sql i Supabase.'; root.appendChild(warn); }
+    if(state.marketingPlanLoading){ const loading=document.createElement('div'); loading.className='empty-state'; loading.textContent='Laddar marknadsplan…'; root.appendChild(loading); return root; }
+
+    const currentMonday=marketingPlanMonday(new Date());
+    const firstWeek=marketingPlanAddWeeks(currentMonday,-3+Number(state.marketingPlanWeekOffset||0));
+    const weeks=Array.from({length:MARKETING_PLAN_VISIBLE_WEEKS},(_,i)=>marketingPlanAddWeeks(firstWeek,i));
+    const currentKey=marketingPlanDateKey(currentMonday);
+    const rows=marketingPlanVisibleRows(weeks);
+    const timeline=document.createElement('div'); timeline.className='marketing-plan__timeline';
+    const grid=document.createElement('div'); grid.className='marketing-plan__grid';
+    const weekHeader=document.createElement('div'); weekHeader.className='marketing-plan__weeks';
+    const corner=document.createElement('div'); corner.className='marketing-plan__corner'; corner.textContent='AKTIVITET'; weekHeader.appendChild(corner);
+    weeks.forEach((weekDate)=>{const cell=document.createElement('div');cell.className=`marketing-plan__week${marketingPlanDateKey(weekDate)===currentKey?' is-current':''}`;cell.innerHTML=`${marketingPlanEscapeHtml(marketingPlanLabel(weekDate))}<small>${marketingPlanEscapeHtml(marketingPlanMonthLabel(weekDate))}</small>`;weekHeader.appendChild(cell);});
+    grid.appendChild(weekHeader);
+    let section='';
+    rows.forEach((row)=>{
+      if(row.section!==section){section=row.section;const sectionEl=document.createElement('div');sectionEl.className='marketing-plan__section';sectionEl.textContent=section;grid.appendChild(sectionEl);}
+      const line=document.createElement('div'); line.className=`marketing-plan__row${row.row_type==='campaign'?' is-campaign':''}`; line.dataset.section=row.section;
+      const meta=document.createElement('div'); meta.className='marketing-plan__meta';
+      const label=document.createElement('div'); label.className='marketing-plan__label'; label.textContent=row.label; meta.appendChild(label);
+      if(row.section==='ADS'&&row.group_name&&row.row_type!=='campaign'){const group=document.createElement('div');group.className='marketing-plan__group';group.textContent=row.group_name;meta.appendChild(group);}
+      line.appendChild(meta);
+      weeks.forEach((weekDate)=>{
+        const weekKey=marketingPlanDateKey(weekDate); const existing=getMarketingPlanCell(row.row_key,weekKey);
+        const cell=document.createElement('div'); cell.className=`marketing-plan__cell${weekKey===currentKey?' is-current':''}${(existing?.content||existing?.image_path)?' has-content':''}`;
+        if(existing?.image_path) attachMarketingPlanThumbnail(cell,existing.image_path);
+        if(existing?.content){const text=document.createElement('div');text.className='marketing-plan__cell-text';text.textContent=existing.content;cell.appendChild(text);cell.title=[existing.content,existing.kommentar].filter(Boolean).join('\n\n');}
+        cell.addEventListener('click',()=>openMarketingPlanCellModal(row,weekDate,existing)); line.appendChild(cell);
+      });
+      grid.appendChild(line);
+    });
+    if(!rows.length){const empty=document.createElement('div');empty.className='marketing-plan__empty';empty.textContent='Inga rader finns i Marknadsplanen.';grid.appendChild(empty);}
+    timeline.appendChild(grid); root.appendChild(timeline); return root;
   }
 
   function getDesignCategoryOptions() {
@@ -7501,6 +8130,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     createCustomView: (tableName) => {
       if (tableName === 'PROJEKT') return projectsController.createView();
       if (tableName === 'STATISTICS') return createStatisticsView();
+      if (tableName === 'MARKNADSPLAN') return createMarketingPlanView();
       return null;
     },
     getAlignment,
@@ -7629,6 +8259,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
   await projectsController.loadProjects();
   await loadCdmpProvmattorCounts();
   await loadDigprodPlanCounts();
+  await loadMarketingPlanData();
   if (LANSERINGSPLAN_TIME_RULES_ENABLED) await loadLanseringsplanTimeRules();
   if (state.activeTableName) {
     await loadUnreadCountsForTable(state.activeTableName);
