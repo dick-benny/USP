@@ -1527,6 +1527,500 @@ export async function runPlanningApp() {
     return wrap;
   }
 
+  const LOCAL_TODO_TABLES = new Set(['PRE DEV', 'UTVECKLING', 'LANSERINGSPLAN']);
+
+  function getLocalTodoViewLabel(tableName) {
+    if (tableName === 'PRE DEV') return 'Pre Design';
+    if (tableName === 'UTVECKLING') return 'Design';
+    if (tableName === 'LANSERINGSPLAN') return 'Lanseringsplan';
+    return tableName;
+  }
+
+  function getLocalTodoRows(tableName) {
+    return state.rowsByTable?.[tableName] || [];
+  }
+
+  function getLocalTodoCollections(tableName) {
+    if (tableName === 'PRE DEV') return [];
+    return Array.from(new Set(
+      getLocalTodoRows(tableName)
+        .map((row) => String(row?.collection || '').trim())
+        .filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b, 'sv'));
+  }
+
+  function getLocalTodoProducts(tableName, collection = '') {
+    const titleField = getRowTitleField(tableName);
+    const wantedCollection = String(collection || '').trim();
+    return Array.from(new Set(
+      getLocalTodoRows(tableName)
+        .filter((row) => {
+          if (tableName === 'PRE DEV' || !wantedCollection) return true;
+          return String(row?.collection || '').trim() === wantedCollection;
+        })
+        .map((row) => String(row?.[titleField] || '').trim())
+        .filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b, 'sv'));
+  }
+
+  function localTodoScopeLabel(item) {
+    const scope = String(item?.scope_type || 'view');
+    const collection = String(item?.collection || '').trim();
+    const product = String(item?.product || '').trim();
+    if (scope === 'product') {
+      return collection ? `${collection} / ${product || 'Produkt'}` : (product || 'Produkt');
+    }
+    if (scope === 'collection') return collection || 'Collection';
+    return 'Hela vyn';
+  }
+
+  function localTodoCreateOption(value, label) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    return option;
+  }
+
+  async function loadLocalTodos(tableName) {
+    const { data, error } = await supabase
+      .from('planning_view_todos')
+      .select('*')
+      .eq('view_name', tableName)
+      .order('is_done', { ascending: true })
+      .order('klart_datum', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return Array.isArray(data) ? data : [];
+  }
+
+  async function getLocalTodoCount(tableName) {
+    const { count, error } = await supabase
+      .from('planning_view_todos')
+      .select('id', { count: 'exact', head: true })
+      .eq('view_name', tableName);
+    if (error) throw error;
+    return Number(count || 0);
+  }
+
+  function refreshLocalTodoButtonCount(tableName, button) {
+    if (!button || !LOCAL_TODO_TABLES.has(tableName)) return;
+    void getLocalTodoCount(tableName)
+      .then((count) => {
+        if (!button.isConnected) return;
+        button.textContent = count > 0 ? `TODO (${count})` : 'TODO';
+      })
+      .catch(() => {
+        if (button.isConnected) button.textContent = 'TODO';
+      });
+  }
+
+  async function openLocalTodoPanel(tableName, options = {}) {
+    if (!LOCAL_TODO_TABLES.has(tableName)) return;
+
+    const todoContext = {
+      collection: String(options?.collection || '').trim(),
+      product: String(options?.product || '').trim(),
+    };
+    const hasProductContext = !!todoContext.product;
+    const initialScopeLabel = hasProductContext
+      ? (todoContext.collection ? `${todoContext.collection} / ${todoContext.product}` : todoContext.product)
+      : '';
+
+    const old = document.getElementById('localTodoOverlay');
+    if (old) old.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'localTodoOverlay';
+    overlay.className = 'overlay-modal';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'overlay-modal__dialog';
+    dialog.style.maxWidth = '920px';
+
+    const panel = document.createElement('div');
+    panel.className = 'side-panel';
+    panel.style.width = 'min(920px, calc(100vw - 32px))';
+    panel.style.maxWidth = '920px';
+
+    const header = document.createElement('div');
+    header.className = 'side-panel__header';
+    const heading = document.createElement('div');
+    heading.className = 'todo-modal__heading';
+    const title = document.createElement('h2');
+    title.textContent = `TODO · ${getLocalTodoViewLabel(tableName)}`;
+    const subtitle = document.createElement('div');
+    subtitle.textContent = hasProductContext
+      ? `Lokala TODO · ${initialScopeLabel}`
+      : 'Lokala TODO för den här vyn';
+    subtitle.style.color = '#777';
+    subtitle.style.fontSize = '.86rem';
+    heading.append(title, subtitle);
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'secondary-button';
+    closeButton.textContent = 'Stäng';
+    closeButton.addEventListener('click', () => overlay.remove());
+    header.append(heading, closeButton);
+
+    const body = document.createElement('div');
+    body.className = 'side-panel__body';
+    body.style.display = 'grid';
+    body.style.gap = '16px';
+
+    function fieldWrap(labelText, control) {
+      const label = document.createElement('label');
+      label.className = 'detail-field';
+      const span = document.createElement('span');
+      span.className = 'detail-field__label';
+      span.textContent = labelText;
+      control.classList.add('detail-field__control');
+      label.append(span, control);
+      return label;
+    }
+
+    const form = document.createElement('form');
+    form.style.display = 'none';
+    form.style.gridTemplateColumns = 'minmax(150px, .8fr) minmax(150px, 1fr) minmax(180px, 1.2fr)';
+    form.style.gap = '12px';
+    form.style.alignItems = 'end';
+    form.style.padding = '12px';
+    form.style.border = '1px solid #e2d8c8';
+    form.style.borderRadius = '12px';
+    form.style.background = '#fff';
+
+    const formTitle = document.createElement('strong');
+    formTitle.style.gridColumn = '1 / -1';
+    formTitle.style.fontSize = '1rem';
+
+    const scopeSelect = document.createElement('select');
+    scopeSelect.appendChild(localTodoCreateOption('view', 'Hela vyn'));
+    if (tableName !== 'PRE DEV') scopeSelect.appendChild(localTodoCreateOption('collection', 'Collection'));
+    scopeSelect.appendChild(localTodoCreateOption('product', tableName === 'PRE DEV' ? 'Produkt' : 'Collection + Produkt'));
+
+    const collectionSelect = document.createElement('select');
+    getLocalTodoCollections(tableName).forEach((value) => collectionSelect.appendChild(localTodoCreateOption(value, value)));
+
+    const productSelect = document.createElement('select');
+    const refreshProducts = (preferredValue = '') => {
+      const previous = preferredValue || productSelect.value;
+      productSelect.innerHTML = '';
+      getLocalTodoProducts(tableName, collectionSelect.value).forEach((value) => productSelect.appendChild(localTodoCreateOption(value, value)));
+      if (previous && ![...productSelect.options].some((option) => option.value === previous)) {
+        productSelect.appendChild(localTodoCreateOption(previous, previous));
+      }
+      if ([...productSelect.options].some((option) => option.value === previous)) productSelect.value = previous;
+    };
+    refreshProducts();
+    collectionSelect.addEventListener('change', () => refreshProducts());
+
+    const description = document.createElement('textarea');
+    description.rows = 2;
+    description.placeholder = 'Beskrivning';
+    const dueDate = document.createElement('input');
+    dueDate.type = 'date';
+
+    const ownerSelect = document.createElement('select');
+    ownerSelect.appendChild(localTodoCreateOption('', 'Ingen'));
+    getOwnerOptions(getCurrentUserInitials()).forEach((value) => ownerSelect.appendChild(localTodoCreateOption(value, value)));
+
+    const scopeWrap = fieldWrap('Gäller', scopeSelect);
+    const collectionWrap = fieldWrap('Collection', collectionSelect);
+    const productWrap = fieldWrap('Produkt', productSelect);
+    const descriptionWrap = fieldWrap('Beskrivning', description);
+    descriptionWrap.style.gridColumn = '1 / span 2';
+    const ownerWrap = fieldWrap('Ansvarig', ownerSelect);
+    const dueWrap = fieldWrap('Klart', dueDate);
+
+    const formActions = document.createElement('div');
+    formActions.style.gridColumn = '1 / -1';
+    formActions.style.display = 'flex';
+    formActions.style.justifyContent = 'flex-end';
+    formActions.style.gap = '8px';
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'secondary-button';
+    cancelButton.textContent = 'Avbryt';
+    const saveButton = document.createElement('button');
+    saveButton.type = 'submit';
+    saveButton.className = 'secondary-button';
+    saveButton.textContent = 'Save';
+    formActions.append(cancelButton, saveButton);
+
+    function syncScopeFields() {
+      const scope = scopeSelect.value;
+      collectionWrap.style.display = (scope === 'collection' || (scope === 'product' && tableName !== 'PRE DEV')) ? '' : 'none';
+      productWrap.style.display = scope === 'product' ? '' : 'none';
+    }
+    scopeSelect.addEventListener('change', syncScopeFields);
+
+    form.append(formTitle, scopeWrap, collectionWrap, productWrap, descriptionWrap, ownerWrap, dueWrap, formActions);
+
+    const toolbar = document.createElement('div');
+    toolbar.style.display = 'flex';
+    toolbar.style.alignItems = 'end';
+    toolbar.style.justifyContent = 'space-between';
+    toolbar.style.gap = '12px';
+    toolbar.style.flexWrap = 'wrap';
+
+    const filterSelect = document.createElement('select');
+    filterSelect.className = 'detail-field__control';
+    filterSelect.style.width = 'min(340px, 100%)';
+    const ownerFilterSelect = document.createElement('select');
+    ownerFilterSelect.className = 'detail-field__control';
+    ownerFilterSelect.style.width = 'min(220px, 100%)';
+    const filterGroup = document.createElement('div');
+    filterGroup.style.display = 'flex';
+    filterGroup.style.gap = '12px';
+    filterGroup.style.flexWrap = 'wrap';
+    filterGroup.append(fieldWrap('Filter', filterSelect), fieldWrap('Ansvarig', ownerFilterSelect));
+
+    const newTodoButton = document.createElement('button');
+    newTodoButton.type = 'button';
+    newTodoButton.className = 'secondary-button';
+    newTodoButton.textContent = '+ Ny TODO';
+    toolbar.append(filterGroup, newTodoButton);
+
+    const list = document.createElement('div');
+    list.style.display = 'grid';
+    list.style.gap = '8px';
+
+    let todos = [];
+    let editingId = null;
+
+    function resetForm(prefillContext = null) {
+      editingId = null;
+      const context = prefillContext || null;
+      if (context?.product) {
+        scopeSelect.value = 'product';
+        if (tableName !== 'PRE DEV') {
+          const collection = String(context.collection || '').trim();
+          if (collection && ![...collectionSelect.options].some((option) => option.value === collection)) {
+            collectionSelect.appendChild(localTodoCreateOption(collection, collection));
+          }
+          collectionSelect.value = collection || collectionSelect.options[0]?.value || '';
+        }
+        refreshProducts(String(context.product || '').trim());
+      } else {
+        scopeSelect.value = 'view';
+        collectionSelect.value = collectionSelect.options[0]?.value || '';
+        refreshProducts();
+      }
+      description.value = '';
+      dueDate.value = '';
+      const currentInitials = getCurrentUserInitials();
+      ownerSelect.value = currentInitials && [...ownerSelect.options].some((option) => option.value === currentInitials) ? currentInitials : '';
+      syncScopeFields();
+    }
+
+    function showListMode() {
+      form.style.display = 'none';
+      toolbar.style.display = 'flex';
+      list.style.display = 'grid';
+      resetForm();
+    }
+
+    function showFormMode(item = null, prefillContext = null) {
+      toolbar.style.display = 'none';
+      list.style.display = 'none';
+      form.style.display = 'grid';
+      editingId = item?.id || null;
+      formTitle.textContent = editingId ? 'Redigera TODO' : 'Ny TODO';
+
+      if (!item) {
+        resetForm(prefillContext);
+        form.style.display = 'grid';
+        formTitle.textContent = 'Ny TODO';
+        description.focus();
+        return;
+      }
+
+      const scope = String(item.scope_type || 'view');
+      scopeSelect.value = [...scopeSelect.options].some((option) => option.value === scope) ? scope : 'view';
+
+      const collection = String(item.collection || '').trim();
+      if (collection && ![...collectionSelect.options].some((option) => option.value === collection)) {
+        collectionSelect.appendChild(localTodoCreateOption(collection, collection));
+      }
+      collectionSelect.value = collection || collectionSelect.options[0]?.value || '';
+      refreshProducts(String(item.product || '').trim());
+      description.value = item.beskrivning || '';
+      dueDate.value = item.klart_datum || '';
+      const owner = String(item.ansvarig || '').trim();
+      if (owner && ![...ownerSelect.options].some((option) => option.value === owner)) {
+        ownerSelect.appendChild(localTodoCreateOption(owner, owner));
+      }
+      ownerSelect.value = owner;
+      syncScopeFields();
+      description.focus();
+    }
+
+    function populateFilter() {
+      const previous = filterSelect.value || 'all';
+      const previousOwner = ownerFilterSelect.value || 'all';
+      filterSelect.innerHTML = '';
+      filterSelect.appendChild(localTodoCreateOption('all', 'Alla'));
+      const labels = Array.from(new Set(todos.map(localTodoScopeLabel))).sort((a, b) => a.localeCompare(b, 'sv'));
+      labels.forEach((label) => filterSelect.appendChild(localTodoCreateOption(label, label)));
+      filterSelect.value = [...filterSelect.options].some((option) => option.value === previous) ? previous : 'all';
+
+      ownerFilterSelect.innerHTML = '';
+      ownerFilterSelect.appendChild(localTodoCreateOption('all', 'Alla'));
+      const owners = Array.from(new Set(todos.map((item) => String(item?.ansvarig || '').trim()).filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b, 'sv'));
+      owners.forEach((owner) => ownerFilterSelect.appendChild(localTodoCreateOption(owner, owner)));
+      ownerFilterSelect.value = [...ownerFilterSelect.options].some((option) => option.value === previousOwner) ? previousOwner : 'all';
+    }
+
+    function renderList() {
+      list.innerHTML = '';
+      const filter = filterSelect.value || 'all';
+      const ownerFilter = ownerFilterSelect.value || 'all';
+      const visible = todos.filter((item) =>
+        (filter === 'all' || localTodoScopeLabel(item) === filter) &&
+        (ownerFilter === 'all' || String(item?.ansvarig || '').trim() === ownerFilter)
+      );
+      if (!visible.length) {
+        const empty = document.createElement('div');
+        empty.textContent = 'Inga TODO i detta filter.';
+        empty.style.padding = '18px 4px';
+        empty.style.color = '#777';
+        list.appendChild(empty);
+        return;
+      }
+
+      visible.forEach((item) => {
+        const row = document.createElement('div');
+        row.style.display = 'grid';
+        row.style.gridTemplateColumns = 'auto minmax(120px, .8fr) minmax(220px, 2fr) 74px 110px auto';
+        row.style.alignItems = 'center';
+        row.style.gap = '10px';
+        row.style.padding = '10px 12px';
+        row.style.border = '1px solid #e2d8c8';
+        row.style.borderRadius = '12px';
+        row.style.background = '#fff';
+        row.style.cursor = 'pointer';
+        if (item.is_done) row.style.opacity = '.58';
+        row.title = 'Klicka för att redigera';
+        row.addEventListener('click', () => showFormMode(item));
+
+        const done = document.createElement('input');
+        done.type = 'checkbox';
+        done.checked = !!item.is_done;
+        done.title = 'Klar';
+        done.addEventListener('click', (event) => event.stopPropagation());
+        done.addEventListener('change', async () => {
+          const { error } = await supabase.from('planning_view_todos').update({ is_done: done.checked, updated_at: new Date().toISOString() }).eq('id', item.id);
+          if (error) { alert(`Kunde inte uppdatera TODO: ${error.message}`); done.checked = !done.checked; return; }
+          await reload();
+        });
+
+        const scope = document.createElement('strong');
+        scope.textContent = localTodoScopeLabel(item);
+        scope.style.fontSize = '.85rem';
+
+        const text = document.createElement('div');
+        text.textContent = item.beskrivning || '';
+        if (item.is_done) text.style.textDecoration = 'line-through';
+
+        const owner = document.createElement('div');
+        owner.textContent = String(item?.ansvarig || '').trim() || '—';
+        owner.style.fontSize = '.85rem';
+        owner.style.fontWeight = '700';
+        owner.title = 'Ansvarig';
+
+        const due = document.createElement('div');
+        due.textContent = item.klart_datum ? formatDateValue(item.klart_datum) : '—';
+        due.style.fontSize = '.85rem';
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'secondary-button';
+        remove.textContent = 'Ta bort';
+        remove.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          if (!confirm('Ta bort TODO?')) return;
+          const { error } = await supabase.from('planning_view_todos').delete().eq('id', item.id);
+          if (error) { alert(`Kunde inte ta bort TODO: ${error.message}`); return; }
+          await reload();
+        });
+
+        row.append(done, scope, text, owner, due, remove);
+        list.appendChild(row);
+      });
+    }
+
+    async function reload() {
+      try {
+        todos = await loadLocalTodos(tableName);
+        populateFilter();
+        renderList();
+      } catch (err) {
+        list.innerHTML = '';
+        const error = document.createElement('div');
+        error.textContent = `Kunde inte läsa lokala TODO: ${err.message}`;
+        error.style.color = '#b42318';
+        list.appendChild(error);
+      }
+    }
+
+    filterSelect.addEventListener('change', renderList);
+    ownerFilterSelect.addEventListener('change', renderList);
+    newTodoButton.addEventListener('click', () => showFormMode(null, hasProductContext ? todoContext : null));
+    cancelButton.addEventListener('click', showListMode);
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const beskrivning = String(description.value || '').trim();
+      if (!beskrivning) { description.focus(); return; }
+      const scope = scopeSelect.value;
+      const payload = {
+        view_name: tableName,
+        scope_type: scope,
+        collection: scope === 'collection' || (scope === 'product' && tableName !== 'PRE DEV') ? (collectionSelect.value || null) : null,
+        product: scope === 'product' ? (productSelect.value || null) : null,
+        beskrivning,
+        klart_datum: dueDate.value || null,
+        ansvarig: ownerSelect.value || null,
+        updated_at: new Date().toISOString(),
+      };
+      if (scope === 'collection' && !payload.collection) { collectionSelect.focus(); return; }
+      if (scope === 'product' && !payload.product) { productSelect.focus(); return; }
+      saveButton.disabled = true;
+      try {
+        let error;
+        if (editingId) {
+          ({ error } = await supabase.from('planning_view_todos').update(payload).eq('id', editingId));
+        } else {
+          ({ error } = await supabase.from('planning_view_todos').insert({
+            ...payload,
+            is_done: false,
+            created_by: getCurrentUserInitials() || null,
+          }));
+        }
+        if (error) throw error;
+        await reload();
+        showListMode();
+      } catch (err) {
+        alert(`Kunde inte ${editingId ? 'uppdatera' : 'skapa'} TODO: ${err.message}`);
+      } finally {
+        saveButton.disabled = false;
+      }
+    });
+
+    body.append(toolbar, form, list);
+    panel.append(header, body);
+    dialog.appendChild(panel);
+    overlay.appendChild(dialog);
+    overlay.addEventListener('click', (event) => { if (event.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    await reload();
+    showListMode();
+    if (initialScopeLabel && [...filterSelect.options].some((option) => option.value === initialScopeLabel)) {
+      filterSelect.value = initialScopeLabel;
+      renderList();
+    }
+  }
+
   function getRowTitleField(tableName) {
     if (tableName === 'PRE DEV') return 'utv_ide';
     if (tableName === 'UTVECKLING') return 'produktide';
@@ -3893,6 +4387,12 @@ export async function runPlanningApp() {
 
     wrap.appendChild(newButton);
 
+    if (LOCAL_TODO_TABLES.has(tableName)) {
+      const localTodoButton = createHeaderActionButton('TODO', () => { void openLocalTodoPanel(tableName); });
+      wrap.appendChild(localTodoButton);
+      refreshLocalTodoButtonCount(tableName, localTodoButton);
+    }
+
     if (tableName === 'LANSERINGSPLAN' && LANSERINGSPLAN_TIME_RULES_ENABLED) {
       const timeRulesButton = document.createElement('button');
       timeRulesButton.type = 'button';
@@ -5267,6 +5767,14 @@ export async function runPlanningApp() {
         event.stopPropagation();
         openFloatingActionMenu(moreButton, [
           {
+            label: 'TODO',
+            title: 'Öppna TODO för denna Collection och produkt',
+            action: async () => openLocalTodoPanel(tableName, {
+              collection: String(row?.collection || '').trim(),
+              product: String(row?.produktide || '').trim(),
+            }),
+          },
+          {
             label: 'Arkiv',
             title: 'Lägg raden i Arkiv',
             action: async () => runRowAction(tableName, tableConfig, row, 'archive'),
@@ -5307,6 +5815,14 @@ export async function runPlanningApp() {
         event.preventDefault();
         event.stopPropagation();
         openFloatingActionMenu(moreButton, [
+          {
+            label: 'TODO',
+            title: 'Öppna TODO för denna Collection och produkt',
+            action: async () => openLocalTodoPanel(tableName, {
+              collection: String(row?.collection || '').trim(),
+              product: String(row?.produkt || '').trim(),
+            }),
+          },
           {
             label: 'Content Shopify',
             title: 'Öppna Content Shopify för denna produkt, eller skapa den om den saknas',
