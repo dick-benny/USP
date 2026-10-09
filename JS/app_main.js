@@ -1,4 +1,6 @@
+import { createListsController, LIST_TYPES, editorOptions } from './app_lists.js?v=333';
 import { supabase } from './supabase.js';
+import { createMeetingsController } from './app_meetings.js?v=332';
 import {
   UI_OPEN_COLUMN,
   UI_NOTES_COLUMN,
@@ -12,9 +14,9 @@ import {
 import { createTodoController } from './app_todo.js?v=254';
 import { createRowTodoController } from './app_row_todo.js?v=254';
 import { createNotesController } from './app_notes.js?v=254';
-import { createSettingsController } from './app_settings.js?v=286';
+import { createSettingsController } from './app_settings.js?v=333';
 import { createRenderController } from './app_render.js?v=316';
-import { createDataController } from './app_data.js?v=254';
+import { createDataController } from './app_data.js?v=333';
 import { createActionController } from './app_actions.js?v=254';
 import { createFilterController } from './app_filters.js?v=254';
 import { createColumnToolsController } from './app_column_tools.js?v=254';
@@ -113,6 +115,13 @@ export async function runPlanningApp() {
     if (launchIndex >= 0) tableEntries.splice(launchIndex + 1, 0, marketingPlanEntry);
     else tableEntries.push(marketingPlanEntry);
   }
+
+  // v332: standalone Meetings view immediately after TODO.
+  const meetingsConfig = { title: 'Meetings', navTitle: 'MEETINGS', customView: true, columns: [] };
+  APP_CONFIG.tables.MEETINGS = meetingsConfig;
+  tableEntries = tableEntries.filter(([name]) => name !== 'MEETINGS');
+  const todoNavIndex = tableEntries.findIndex(([name]) => name === TODO_TABLE);
+  tableEntries.splice(todoNavIndex >= 0 ? todoNavIndex + 1 : tableEntries.length, 0, ['MEETINGS', meetingsConfig]);
 
   let activeFloatingActionMenu = null;
 
@@ -615,7 +624,10 @@ export async function runPlanningApp() {
     createDocumentBadge,
   } = columnToolsController;
 
+  const listsController = createListsController({ supabase, APP_CONFIG, state, isAdmin, render });
+
   const settingsController = createSettingsController({
+    listsController,
     supabase,
     state,
     tableEntries,
@@ -1542,11 +1554,7 @@ export async function runPlanningApp() {
 
   function getLocalTodoCollections(tableName) {
     if (tableName === 'PRE DEV') return [];
-    return Array.from(new Set(
-      getLocalTodoRows(tableName)
-        .map((row) => String(row?.collection || '').trim())
-        .filter(Boolean)
-    )).sort((a, b) => a.localeCompare(b, 'sv'));
+    return [...APP_CONFIG.dropdowns.dropdown_design_collection.options];
   }
 
   function getLocalTodoProducts(tableName, collection = '') {
@@ -1789,13 +1797,16 @@ export async function runPlanningApp() {
 
     function resetForm(prefillContext = null) {
       editingId = null;
+      collectionSelect.replaceChildren(...getLocalTodoCollections(tableName).map(value => localTodoCreateOption(value, value)));
       const context = prefillContext || null;
       if (context?.product) {
         scopeSelect.value = 'product';
         if (tableName !== 'PRE DEV') {
           const collection = String(context.collection || '').trim();
           if (collection && ![...collectionSelect.options].some((option) => option.value === collection)) {
-            collectionSelect.appendChild(localTodoCreateOption(collection, collection));
+            const historicalOption = localTodoCreateOption(collection, collection);
+            historicalOption.disabled = true;
+            collectionSelect.appendChild(historicalOption);
           }
           collectionSelect.value = collection || collectionSelect.options[0]?.value || '';
         }
@@ -1820,6 +1831,7 @@ export async function runPlanningApp() {
     }
 
     function showFormMode(item = null, prefillContext = null) {
+      collectionSelect.replaceChildren(...getLocalTodoCollections(tableName).map(value => localTodoCreateOption(value, value)));
       toolbar.style.display = 'none';
       list.style.display = 'none';
       form.style.display = 'grid';
@@ -1839,7 +1851,9 @@ export async function runPlanningApp() {
 
       const collection = String(item.collection || '').trim();
       if (collection && ![...collectionSelect.options].some((option) => option.value === collection)) {
-        collectionSelect.appendChild(localTodoCreateOption(collection, collection));
+        const historicalOption = localTodoCreateOption(collection, collection);
+        historicalOption.disabled = true;
+        collectionSelect.appendChild(historicalOption);
       }
       collectionSelect.value = collection || collectionSelect.options[0]?.value || '';
       refreshProducts(String(item.product || '').trim());
@@ -2561,7 +2575,7 @@ export async function runPlanningApp() {
         state.columnChecklistPanelOpen = false;
         state.columnChecklistActive = null;
 
-        void loadUnreadCountsForTable(tableName);
+        if (tableName !== 'MEETINGS') void loadUnreadCountsForTable(tableName);
         render();
       });
 
@@ -2831,6 +2845,7 @@ export async function runPlanningApp() {
   }
 
   function getMarketingPlanOptions(field) {
+    if (field === 'collection') return [...APP_CONFIG.dropdowns.dropdown_design_collection.options];
     return [...new Set((state.marketingPlanCells || [])
       .map((row) => String(row?.[field] || '').trim())
       .filter(Boolean))]
@@ -4456,7 +4471,7 @@ export async function runPlanningApp() {
 
   function isEditableDropdownColumn(column) {
     const dropdown = APP_CONFIG.dropdowns?.[column.type];
-    return !!dropdown?.options?.length && !isOpenColumn(column) && column?.mods?.readonly !== true;
+    return (!!dropdown?.options?.length || !!dropdown?.managedList) && !isOpenColumn(column) && column?.mods?.readonly !== true;
   }
 
   function getDropdownOptionLabel(value) {
@@ -4475,6 +4490,7 @@ export async function runPlanningApp() {
   }
 
   function normalizeDropdownCellValue(column, value) {
+    if (LIST_TYPES[column?.type]) return String(value ?? '');
     if (column?.type === 'dropdown_saljintro_vecka') return formatWeekValue(value);
     if (column?.type === 'dropdown_saljintro_kvartal') return formatQuarterValue(value);
     if (column?.type === 'dropdown_dev_syfte' || column?.type === 'dropdown_pre_dev_kategori') return normalizeSupplierDropdownValue(value);
@@ -4522,6 +4538,13 @@ export async function runPlanningApp() {
 
   async function saveNewRow(tableName, tableConfig, draftRow) {
     if (!draftRow) return;
+
+    for (const column of tableConfig.columns) {
+      if (LIST_TYPES[column.type] && draftRow[column.field] && !APP_CONFIG.dropdowns[column.type].options.includes(draftRow[column.field])) {
+        alert(`${column.name}: värdet är inte längre aktivt. Välj ett annat värde.`);
+        return;
+      }
+    }
 
     state.savingCell = '__new_row__';
     render();
@@ -4609,6 +4632,10 @@ export async function runPlanningApp() {
   }
 
   async function saveCellValue(tableConfig, row, column, nextValue) {
+    if (LIST_TYPES[column.type] && String(nextValue ?? '') !== String(row[column.field] ?? '') && nextValue && !APP_CONFIG.dropdowns[column.type].options.includes(nextValue)) {
+      alert('Värdet är inte längre aktivt. Välj ett annat värde.');
+      return false;
+    }
     const key = getCellKey(row, column);
     if (!key || !row.id) {
       state.editingCell = null;
@@ -5561,7 +5588,7 @@ export async function runPlanningApp() {
     }
 
     const produkt = String(designRow?.produktide || '').trim();
-    const collection = String(designRow?.collection || '').trim() || '27-spring';
+    const collection = String(designRow?.collection || '').trim() || (getLanseringsplanCollectionOptions()[0] || '');
 
     if (!produkt) {
       alert('Design-raden saknar Namn/Produkt och kan därför inte kopieras till Lanseringsplan.');
@@ -5647,10 +5674,10 @@ export async function runPlanningApp() {
     render();
   }
 
-  async function openDesignDigProdB2BIntroModal(designRow) {
-    const productName = String(designRow?.produktide || '').trim();
+  async function openShopifySpecificationModal(productValue) {
+    const productName = String(productValue || '').trim();
     if (!productName) {
-      alert('Design-raden saknar Produktnamn.');
+      alert('Raden saknar produktnamn.');
       return;
     }
 
@@ -5712,6 +5739,7 @@ export async function runPlanningApp() {
     state.digprodPlanPanelOpen = true;
     state.digprodPlanRowId = targetRow.id;
     state.lanseringsplanIntroSourceId = null;
+    state.digprodIntroModalTitle = null;
     render();
   }
 
@@ -5788,7 +5816,7 @@ export async function runPlanningApp() {
           {
             label: 'Shopify Spec',
             title: 'Öppna B2B Intro för denna produkt',
-            action: async () => openDesignDigProdB2BIntroModal(row),
+            action: async () => openShopifySpecificationModal(row?.produktide),
           },
           {
             label: 'Kopia lansering',
@@ -5822,6 +5850,11 @@ export async function runPlanningApp() {
               collection: String(row?.collection || '').trim(),
               product: String(row?.produkt || '').trim(),
             }),
+          },
+          {
+            label: 'Shopify Spec',
+            title: 'Öppna Shopify Specification för denna produkt, eller skapa den om den saknas',
+            action: async () => openShopifySpecificationModal(row?.produkt),
           },
           {
             label: 'Content Shopify',
@@ -7737,10 +7770,11 @@ export async function runPlanningApp() {
     const currentValue = normalizeDropdownCellValue(column, row[column.field]);
     let committing = false;
 
-    dropdown.options.forEach((option) => {
+    editorOptions(dropdown, currentValue).forEach(({ value: option, disabled }) => {
       const opt = document.createElement('option');
       opt.value = option;
-      opt.textContent = getDropdownOptionLabel(option);
+      opt.disabled = disabled;
+      opt.textContent = option ? getDropdownOptionLabel(option) : '—';
       if (currentValue === normalizeDropdownCellValue(column, option)) {
         opt.selected = true;
       }
@@ -7933,14 +7967,15 @@ export async function runPlanningApp() {
         }
         control.appendChild(opt);
       });
-    } else if (dropdown?.options?.length) {
+    } else if (dropdown?.options?.length || dropdown?.managedList) {
       control = document.createElement('select');
       control.className = 'detail-field__control';
       const currentDropdownValue = normalizeDropdownCellValue(column, row[column.field]);
-      dropdown.options.forEach((option) => {
+      editorOptions(dropdown, currentDropdownValue, isDraft).forEach(({ value: option, disabled }) => {
         const opt = document.createElement('option');
         opt.value = option;
-        opt.textContent = getDropdownOptionLabel(option);
+        opt.disabled = disabled;
+        opt.textContent = option ? getDropdownOptionLabel(option) : '—';
         if (currentDropdownValue === option) {
           opt.selected = true;
         }
@@ -8618,6 +8653,12 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     });
   }
 
+  const meetingsController = createMeetingsController({
+    supabase,
+    getHostOptions: getOwnerOptions,
+    getCurrentUser: () => window.CurrentUser,
+  });
+
   const renderController = createRenderController({
     app,
     settingsButton,
@@ -8644,6 +8685,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     createFilterBar,
     enhanceSortableHeaders,
     createCustomView: (tableName) => {
+      if (tableName === 'MEETINGS') return meetingsController.createView();
       if (tableName === 'PROJEKT') return projectsController.createView();
       if (tableName === 'STATISTICS') return createStatisticsView();
       if (tableName === 'MARKNADSPLAN') return createMarketingPlanView();
@@ -8747,6 +8789,15 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
 
   settingsButton?.addEventListener('click', () => {
     openSettingsMenu();
+  });
+
+  await listsController.load();
+  if (listsController.getError()) alert(listsController.getError());
+
+  window.addEventListener('focus', async () => {
+    if (state.editingCell || state.newRowDraft || state.settingsPanelOpen || state.detailRowId) return;
+    await listsController.load();
+    render();
   });
 
   await Promise.all(

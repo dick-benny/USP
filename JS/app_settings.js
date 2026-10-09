@@ -1,5 +1,6 @@
 export function createSettingsController({
   supabase,
+  listsController,
   state,
   tableEntries,
   isAdmin,
@@ -832,7 +833,9 @@ export function createSettingsController({
     header.className = 'side-panel__header';
 
     const heading = document.createElement('div');
-    if (state.settingsView === 'document_links') {
+    if (state.settingsView === 'lists') {
+      heading.innerHTML = '<p class="side-panel__eyebrow">Settings</p><h2 class="side-panel__title">Listor</h2><p>Supplier och Collection</p>';
+    } else if (state.settingsView === 'document_links') {
       heading.innerHTML = `
         <p class="side-panel__eyebrow">Settings</p>
         <h2 class="side-panel__title">Match kolumn + dok</h2>
@@ -920,6 +923,15 @@ export function createSettingsController({
 
       if (isAdmin()) {
         menu.appendChild(createCard({
+          title: 'Listor', subtitle: 'Hantera Supplier och Collection', adminOnly: true,
+          onClick: async () => {
+            if (!isAdmin()) return;
+            await listsController.load();
+            state.settingsView = 'lists';
+            render();
+          },
+        }));
+        menu.appendChild(createCard({
           title: 'Checklistor',
           subtitle: 'Hantera kolumn-checklistor',
           onClick: openSettingsChecklists,
@@ -971,7 +983,9 @@ export function createSettingsController({
         body.appendChild(backRow);
       }
 
-      if (state.settingsView === 'checklists') {
+      if (state.settingsView === 'lists') {
+        body.appendChild(listsController.panel());
+      } else if (state.settingsView === 'checklists') {
         const listCard = document.createElement('section');
         listCard.className = 'detail-card settings-list settings-checklist-card';
 

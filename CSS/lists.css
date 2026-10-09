@@ -1,0 +1,7 @@
+.planning-lists__row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0; }
+.planning-lists__row input { min-width:0; padding:8px; border:1px solid #d4d4d4; border-radius:4px; }
+.planning-lists__row input:first-child { flex:1 1 180px; }
+.planning-lists__row input[type=number] { width:90px; }
+.planning-lists__row button { padding:8px; cursor:pointer; }
+.planning-lists__row span { font-size:12px; }
+.planning-lists__row :disabled { opacity:.55; cursor:default; }

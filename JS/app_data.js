@@ -17,6 +17,7 @@ export function createDataController({ APP_CONFIG, SAMPLE_ROWS = {} }) {
   function getDefaultValue(tableName, column) {
     const dropdown = APP_CONFIG.dropdowns?.[column.type];
     const normalizeDropdownDefault = (value) => {
+      if (dropdown?.managedList) return dropdown.options.includes(value) ? value : '';
       if (!dropdown?.options?.length) return value;
       return dropdown.options.includes(value) ? value : dropdown.options[0];
     };
@@ -100,7 +101,8 @@ export function createDataController({ APP_CONFIG, SAMPLE_ROWS = {} }) {
 
     tableConfig.columns.forEach((column) => {
       if (normalized[column.field] === undefined || normalized[column.field] === null) {
-        normalized[column.field] = getDefaultValue(tableName, column);
+        normalized[column.field] = row.id && APP_CONFIG.dropdowns?.[column.type]?.managedList
+          ? '' : getDefaultValue(tableName, column);
       }
 
       if (column.type === 'status') {
