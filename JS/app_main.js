@@ -1,3 +1,4 @@
+import { createLaunchTodos } from './app_launch_todos.js?v=339';
 import { createListsController, LIST_TYPES, editorOptions } from './app_lists.js?v=333';
 import { supabase } from './supabase.js';
 import { createMeetingsController } from './app_meetings.js?v=332';
@@ -14,8 +15,8 @@ import {
 import { createTodoController } from './app_todo.js?v=254';
 import { createRowTodoController } from './app_row_todo.js?v=254';
 import { createNotesController } from './app_notes.js?v=254';
-import { createSettingsController } from './app_settings.js?v=333';
-import { createRenderController } from './app_render.js?v=316';
+import { createSettingsController } from './app_settings.js?v=335';
+import { createRenderController } from './app_render.js?v=340';
 import { createDataController } from './app_data.js?v=333';
 import { createActionController } from './app_actions.js?v=254';
 import { createFilterController } from './app_filters.js?v=254';
@@ -486,8 +487,8 @@ export async function runPlanningApp() {
   function getVisibleColumns(tableConfig) {
     const hiddenRowTodoTables = ['PRE DEV', 'UTVECKLING', 'LANSERINGSPLAN', 'SÄLJINTRO', 'DIG PROD'];
     const tableName = state.activeTableName;
-    const inlineOnlyTables = ['SÄLJINTRO', 'UTVECKLING', 'LANSERINGSPLAN', 'PRE DEV', 'DIG PROD', 'CDMP', 'INKÖP', 'MARKNAD', 'SÄLJ'];
-    const inlineActionTables = ['TODO', 'PRE DEV', 'UTVECKLING', 'LANSERINGSPLAN', 'SÄLJINTRO', 'CDMP', 'INKÖP', 'MARKNAD', 'SÄLJ'];
+    const inlineOnlyTables = ['RUTINER', 'SÄLJINTRO', 'UTVECKLING', 'LANSERINGSPLAN', 'PRE DEV', 'DIG PROD', 'CDMP', 'INKÖP', 'MARKNAD', 'SÄLJ'];
+    const inlineActionTables = ['RUTINER', 'TODO', 'PRE DEV', 'UTVECKLING', 'LANSERINGSPLAN', 'SÄLJINTRO', 'CDMP', 'INKÖP', 'MARKNAD', 'SÄLJ'];
     const utilityColumns = inlineOnlyTables.includes(tableName)
       ? []
       : [UI_OPEN_COLUMN, ...(tableName === TODO_TABLE ? [] : [UI_NOTES_COLUMN])];
@@ -1602,10 +1603,10 @@ export async function runPlanningApp() {
   }
 
   async function getLocalTodoCount(tableName) {
-    const { count, error } = await supabase
-      .from('planning_view_todos')
-      .select('id', { count: 'exact', head: true })
-      .eq('view_name', tableName);
+    let query = supabase.from('planning_view_todos')
+      .select('id', { count: 'exact', head: true }).eq('view_name', tableName);
+    if (tableName === 'LANSERINGSPLAN') query = query.eq('scope_type', 'view');
+    const { count, error } = await query;
     if (error) throw error;
     return Number(count || 0);
   }
@@ -1621,6 +1622,10 @@ export async function runPlanningApp() {
         if (button.isConnected) button.textContent = 'TODO';
       });
   }
+
+  const openLaunchTodos = createLaunchTodos({
+    supabase, getCurrentUserInitials, openFloatingActionMenu, onChange: () => render(),
+  });
 
   async function openLocalTodoPanel(tableName, options = {}) {
     if (!LOCAL_TODO_TABLES.has(tableName)) return;
@@ -4403,7 +4408,7 @@ export async function runPlanningApp() {
     wrap.appendChild(newButton);
 
     if (LOCAL_TODO_TABLES.has(tableName)) {
-      const localTodoButton = createHeaderActionButton('TODO', () => { void openLocalTodoPanel(tableName); });
+      const localTodoButton = createHeaderActionButton('TODO', () => { void (tableName === 'LANSERINGSPLAN' ? openLaunchTodos() : openLocalTodoPanel(tableName)); });
       wrap.appendChild(localTodoButton);
       refreshLocalTodoButtonCount(tableName, localTodoButton);
     }
@@ -4466,7 +4471,7 @@ export async function runPlanningApp() {
   }
 
   function isEditableTextColumn(column) {
-    return ['text', 'veckonummer', 'kvartal'].includes(column.type) && !isOpenColumn(column) && !isExcelLinkColumn(column) && !isCdmpProvmattorColumn(column) && !isDigprodPlanColumn(column) && column?.mods?.readonly !== true;
+    return ['text', 'veckonummer', 'kvartal'].includes(column.type) && !isOpenColumn(column) && column?.mods?.displayMode !== 'document_link' && !isExcelLinkColumn(column) && !isCdmpProvmattorColumn(column) && !isDigprodPlanColumn(column) && column?.mods?.readonly !== true;
   }
 
   function isEditableDropdownColumn(column) {
@@ -4538,6 +4543,10 @@ export async function runPlanningApp() {
 
   async function saveNewRow(tableName, tableConfig, draftRow) {
     if (!draftRow) return;
+    if (tableName === 'RUTINER' && !isValidDocumentLink(String(draftRow.document || '').trim())) {
+      alert('Ange en giltig http/https-länk.');
+      return;
+    }
 
     for (const column of tableConfig.columns) {
       if (LIST_TYPES[column.type] && draftRow[column.field] && !APP_CONFIG.dropdowns[column.type].options.includes(draftRow[column.field])) {
@@ -4643,6 +4652,10 @@ export async function runPlanningApp() {
       return false;
     }
 
+    if (column?.mods?.displayMode === 'document_link' && !isValidDocumentLink(String(nextValue || '').trim())) {
+      alert('Ange en giltig http/https-länk.');
+      return false;
+    }
     let normalizedNextValue = nextValue;
     if (column.type === 'status') normalizedNextValue = normalizeStatusValue(nextValue);
     if (isEditableDropdownColumn(column)) normalizedNextValue = normalizeDropdownCellValue(column, nextValue);
@@ -5783,6 +5796,34 @@ export async function runPlanningApp() {
       return wrap;
     }
 
+    if (tableName === 'RUTINER') {
+      const moreButton = document.createElement('button');
+      moreButton.type = 'button';
+      moreButton.className = 'row-actions__button row-actions__menu-trigger';
+      moreButton.textContent = '...';
+      moreButton.title = 'Fler åtgärder';
+      moreButton.setAttribute('aria-label', 'Fler åtgärder');
+      moreButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openFloatingActionMenu(moreButton, [
+          {
+            label: 'Ändra länk',
+            title: 'Lägg till eller ändra dokumentlänken',
+            action: async () => openExcelLinkModal(tableConfig, row, tableConfig.columns.find((column) => column.field === 'document')),
+          },
+          {
+            label: 'Ta bort',
+            title: 'Ta bort rutinen/manualen',
+            danger: true,
+            action: async () => runRowAction(tableName, tableConfig, row, 'delete'),
+          },
+        ]);
+      });
+      wrap.appendChild(moreButton);
+      return wrap;
+    }
+
     if (tableName === 'UTVECKLING') {
       const moreButton = document.createElement('button');
       moreButton.type = 'button';
@@ -5861,11 +5902,6 @@ export async function runPlanningApp() {
             title: 'Öppna Content Shopify för denna produkt, eller skapa den om den saknas',
             action: async () => openLanseringsplanDigProdIntroModal(row, 'B2C-intro', { createIfMissing: true, modalTitle: 'Content Shopify' }),
           },
-          {
-            label: 'Content Marketing',
-            title: 'Öppna Content Marketing för denna produkt, eller skapa den om den saknas',
-            action: async () => openLanseringsplanDigProdIntroModal(row, 'Content-marketing', { createIfMissing: true, modalTitle: 'Content Marketing' }),
-          },
           ...(isAdmin() ? [{
             label: 'Säljkanaler',
             title: 'Ändra B2B/B2C för denna produkt',
@@ -5942,6 +5978,14 @@ export async function runPlanningApp() {
   }
 
 
+  function isValidDocumentLink(value) {
+    if (!value) return true;
+    try {
+      const url = new URL(value);
+      return (url.protocol === 'https:' || url.protocol === 'http:') && !!url.hostname;
+    } catch (_) { return false; }
+  }
+
   function getNormalizedExternalLink(rawValue) {
     const raw = String(rawValue || '').trim();
     if (!raw) return '';
@@ -5971,7 +6015,7 @@ export async function runPlanningApp() {
     { field: 'spec_produkt', label: 'SPEC PRODUKT' },
     { field: 'spec_variant', label: 'SPEC VARIANT' },
     { field: 'text_copy', label: 'PDP COPY' },
-    { field: 'copy_to_b2c', label: 'BRANDBOOK' },
+    { field: 'copy_to_b2c', label: 'MASTERDATA' },
     { field: 'utskick', label: 'UTSKICK' },
   ];
 
@@ -7397,9 +7441,83 @@ export async function runPlanningApp() {
     return overlay;
   }
 
+  function openLaunchCommentModal(tableConfig, row, column) {
+    if (!row?.id || document.getElementById('launchCommentOverlay')) return;
+    const make = (tag, className, text) => {
+      const node = document.createElement(tag);
+      node.className = className;
+      if (text !== undefined) node.textContent = text;
+      if (tag === 'button') node.type = 'button';
+      return node;
+    };
+    const overlay = make('div', 'overlay-modal');
+    overlay.id = 'launchCommentOverlay';
+    const dialog = make('div', 'overlay-modal__dialog');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'launchCommentTitle');
+    const panel = make('section', 'side-panel launch-comment-modal');
+    const header = make('div', 'side-panel__header');
+    const title = make('h2', 'side-panel__title', 'Kommentar – ' + (row.produkt || 'Utan produktnamn'));
+    title.id = 'launchCommentTitle';
+    const body = make('div', 'side-panel__body');
+    const field = make('label', 'detail-field');
+    const input = make('textarea', 'detail-field__control launch-comment-input');
+    input.rows = 10;
+    input.value = String(row.kommentar ?? '');
+    field.append(make('span', 'detail-field__label', 'Kommentar'), input);
+    const message = make('p', 'side-panel__text');
+    message.setAttribute('role', 'alert');
+    const footer = make('div', 'side-panel__footer');
+    const save = make('button', 'secondary-button', 'Save');
+    const cancel = make('button', 'secondary-button', 'Avbryt');
+    let busy = false;
+    const close = () => {
+      if (busy) return;
+      overlay.remove();
+      const cell = Array.from(document.querySelectorAll('[data-launch-comment-row]'))
+        .find(node => node.dataset.launchCommentRow === String(row.id));
+      cell?.focus();
+    };
+    cancel.addEventListener('click', close);
+    overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
+    overlay.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
+      if (event.key === 'Tab') {
+        const controls = [input, save, cancel].filter(node => !node.disabled);
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    });
+    save.addEventListener('click', async () => {
+      if (busy) return;
+      busy = true; save.disabled = true; cancel.disabled = true; input.readOnly = true;
+      message.textContent = '';
+      const previous = row.kommentar;
+      try {
+        const saved = await saveCellValue(tableConfig, row, column, input.value);
+        if (saved) { busy = false; close(); return; }
+        message.textContent = 'Kommentaren kunde inte sparas. Försök igen.';
+      } catch (error) {
+        row.kommentar = previous;
+        state.savingCell = null;
+        render();
+        message.textContent = 'Kommentaren kunde inte sparas: ' + error.message;
+      } finally {
+        busy = false; save.disabled = false; cancel.disabled = false; input.readOnly = false;
+      }
+      input.focus();
+    });
+    header.append(title); body.append(field, message); footer.append(save, cancel);
+    panel.append(header, body, footer); dialog.append(panel); overlay.append(dialog);
+    document.body.append(overlay); input.focus();
+  }
+
   function openExcelLinkModal(tableConfig, row, column) {
     if (!tableConfig || !row?.id || !column?.field) return;
 
+    const isDocumentLink = column?.mods?.displayMode === 'document_link';
     const existingValue = String(row[column.field] || '').trim();
 
     const overlay = document.createElement('div');
@@ -7422,15 +7540,15 @@ export async function runPlanningApp() {
 
     const eyebrow = document.createElement('p');
     eyebrow.className = 'side-panel__eyebrow';
-    eyebrow.textContent = 'Offert';
+    eyebrow.textContent = isDocumentLink ? 'Rutiner/Manual' : 'Offert';
 
     const title = document.createElement('h2');
     title.className = 'side-panel__title';
-    title.textContent = existingValue ? 'Ändra Excel-länk' : 'Lägg till Excel-länk';
+    title.textContent = isDocumentLink ? 'Dokumentlänk' : (existingValue ? 'Ändra Excel-länk' : 'Lägg till Excel-länk');
 
     const help = document.createElement('p');
     help.className = 'side-panel__text';
-    help.textContent = 'Klistra in länken till Excel-filen i SharePoint.';
+    help.textContent = isDocumentLink ? 'Klistra in länken till dokumentet.' : 'Klistra in länken till Excel-filen i SharePoint.';
 
     titleWrap.appendChild(eyebrow);
     titleWrap.appendChild(title);
@@ -7454,7 +7572,7 @@ export async function runPlanningApp() {
 
     const label = document.createElement('span');
     label.className = 'detail-field__label';
-    label.textContent = 'SharePoint-länk';
+    label.textContent = isDocumentLink ? 'Dokumentlänk' : 'SharePoint-länk';
 
     const input = document.createElement('input');
     input.className = 'detail-field__control';
@@ -7465,7 +7583,7 @@ export async function runPlanningApp() {
 
     const hint = document.createElement('span');
     hint.className = 'detail-field__hint';
-    hint.textContent = 'Spara enbart länken. Tabellen visar symbol och färg.';
+    hint.textContent = isDocumentLink ? 'Klicka på den sparade länken i tabellen för att öppna dokumentet.' : 'Spara enbart länken. Tabellen visar symbol och färg.';
 
     field.appendChild(label);
     field.appendChild(input);
@@ -7494,7 +7612,7 @@ export async function runPlanningApp() {
 
     const saveLink = async (nextRawValue) => {
       const nextValue = String(nextRawValue || '').trim();
-      if (nextValue && !getNormalizedExternalLink(nextValue)) {
+      if (nextValue && (isDocumentLink ? !isValidDocumentLink(nextValue) : !getNormalizedExternalLink(nextValue))) {
         alert('Ange en giltig http/https-länk.');
         input.focus();
         return;
@@ -7593,6 +7711,35 @@ export async function runPlanningApp() {
       const active = getActiveConfig();
       const [, tableConfig] = active || [];
       return createInlineRowActions(state.activeTableName, tableConfig, row);
+    }
+
+    if (column?.mods?.displayMode === 'document_link') {
+      const wrap = document.createElement('div');
+      const value = String(row[column.field] || '').trim();
+      const hasValue = value && value !== '---';
+      if (hasValue) {
+        const link = document.createElement('a');
+        link.className = 'rutiner-pdf-link';
+        link.textContent = /^https?:\/\//i.test(value) ? value : getPdfDisplayName(value);
+        link.href = /^https?:\/\//i.test(value) ? value : '#';
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.addEventListener('click', (event) => {
+          event.stopPropagation();
+          if (!/^https?:\/\//i.test(value)) {
+            event.preventDefault();
+            void openPdfDocument(value);
+          }
+        });
+        wrap.appendChild(link);
+      }
+      if (!hasValue) {
+        const empty = document.createElement('span');
+        empty.className = 'cell-text cell-text--muted';
+        empty.textContent = '—';
+        wrap.appendChild(empty);
+      }
+      return wrap;
     }
 
     if (isExcelLinkColumn(column)) {
@@ -8708,6 +8855,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     createEditableTextControl,
     createEditableDropdownControl,
     createStaticCellContent,
+    openLaunchCommentModal,
     toggleStatusCell,
     editStatusDateCell,
     saveStatusDateCell,

@@ -42,6 +42,7 @@ export function createRenderController(deps) {
     createEditableTextControl,
     createEditableDropdownControl,
     createStaticCellContent,
+    openLaunchCommentModal,
     toggleStatusCell,
     saveStatusDateCell,
     saveDateCell,
@@ -478,6 +479,27 @@ export function createRenderController(deps) {
 
         if (isTodoColumn(column)) {
           td.appendChild(createTodoButton(row));
+          tr.appendChild(td);
+          return;
+        }
+
+        if (tableName === 'LANSERINGSPLAN' && column.field === 'kommentar') {
+          const preview = document.createElement('span');
+          preview.className = 'cell-text launch-comment-preview';
+          preview.textContent = String(row.kommentar ?? '') || '—';
+          td.append(preview);
+          if (row.id && !row.is_done && !isVirtualModalTodoRow(row)) {
+            td.classList.add('is-editable');
+            td.tabIndex = 0;
+            td.dataset.launchCommentRow = String(row.id);
+            td.setAttribute('role', 'button');
+            td.setAttribute('aria-label', 'Redigera kommentar – ' + (row.produkt || 'Utan produktnamn'));
+            const open = () => openLaunchCommentModal(tableConfig, row, column);
+            td.addEventListener('click', open);
+            td.addEventListener('keydown', event => {
+              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
+            });
+          }
           tr.appendChild(td);
           return;
         }

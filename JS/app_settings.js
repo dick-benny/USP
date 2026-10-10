@@ -950,8 +950,8 @@ export function createSettingsController({
       }));
 
       menu.appendChild(createCard({
-        title: 'Rutiner',
-        subtitle: 'Öppna rutiner',
+        title: 'Rutiner/Manual',
+        subtitle: 'Dokumentlänkar till rutiner och manualer',
         onClick: openRutinerFromSettings,
         disabled: false,
         adminOnly: false,

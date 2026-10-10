@@ -76,12 +76,14 @@ window.PlanningSpec = (function () {
         { name: "Fullsize slut", field: "fullsize_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "Content Shopify", field: "content", type: "status", width: "14ch", renderFromField: "content_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "Content Shopify slut", field: "content_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
-        { name: "Content Marketing", field: "content_marketing", type: "status", width: "16ch", renderFromField: "content_marketing_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "Content Marketing slut", field: "content_marketing_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
+        { name: "Content PR", field: "content_marketing", type: "status", width: "16ch", renderFromField: "content_marketing_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
+        { name: "Content PR slut", field: "content_marketing_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "B2B", field: "b2b", type: "status", width: STATUS_WIDTH, renderFromField: "b2b_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "B2B slut", field: "b2b_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "PO-lager", field: "po_lager", type: "status", width: STATUS_WIDTH, renderFromField: "po_lager_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "PO-lager slut", field: "po_lager_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
+        { name: "Content Annons", field: "content_annons", type: "status", width: "16ch", renderFromField: "content_annons_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
+        { name: "Content Annons slut", field: "content_annons_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "B2C", field: "b2c", type: "status", width: STATUS_WIDTH, renderFromField: "b2c_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "B2C slut", field: "b2c_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "Kommentar", field: "kommentar", type: "text", width: "34ch", mods: { align: "left", displayMode: "textarea", readonly: false }, default: "" }
@@ -110,7 +112,7 @@ window.PlanningSpec = (function () {
         { name: "SPEC PRODUKT", field: "spec_produkt", type: "status", width: "13ch", digprodCategories: ["B2B-intro"], statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "SPEC VARIANT", field: "spec_variant", type: "status", width: "13ch", digprodCategories: ["B2B-intro"], statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "PDP COPY", field: "text_copy", type: "status", width: "12ch", digprodCategories: ["B2B-intro"], statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
-        { name: "BRANDBOOK", field: "copy_to_b2c", type: "status", width: "13ch", digprodCategories: ["B2B-intro"], statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
+        { name: "MASTERDATA", field: "copy_to_b2c", type: "status", width: "13ch", digprodCategories: ["B2B-intro"], statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "PACKSHOT", field: "packshot", type: "status", width: "11ch", digprodCategories: ["B2C-intro"], statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
                 { name: "KAMPANJ", field: "kampanj", type: "status", width: "11ch", digprodCategories: ["B2C-intro"], statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
         { name: "MEDIA/PRESS", field: "media", type: "status", width: "13ch", digprodCategories: ["B2C-intro"], statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
@@ -139,9 +141,9 @@ window.PlanningSpec = (function () {
         { name: "Beskrivning", field: "beskrivning", type: "text", key: true, width: "42ch", multiline: true, mods: { align: "left", displayMode: "textarea", readonly: false } },
         { name: "Klart", field: "klart_datum", type: "date", width: "15ch", mods: { overdue: true, align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "-- -- -- " }
       ]},
-      "RUTINER": { id: "rutiner", dbTable: "rutiner", title: "RUTINER", columns: [
+      "RUTINER": { id: "rutiner", dbTable: "rutiner", title: "Rutiner/Manual", columns: [
         { name: "Rutin", field: "rutin", type: "text", key: true, mods: { align: "left", displayMode: "text", readonly: false } },
-        { name: "Dokument", field: "document", type: "pdf", width: "14ch", mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "---" }
+        { name: "Dokumentlänk", field: "document", type: "text", width: "48ch", mods: { align: "left", displayMode: "document_link", readonly: false }, default: "" }
       ]}
     }
   };
@@ -150,7 +152,7 @@ window.PlanningSpec = (function () {
     "COLLECTION PLAN": [],
     "PRE DEV": [{ utv_ide: "", kategori: "Anisa", beskrivning: "", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", utvardering: "", is_done: false }],
     "UTVECKLING": [{ produktide: "", kategori: "matta", syfte: "Anisa", beskrivning: "", collection: "27-spring", sample_test: "gray", sample_test_datum: "", sample_test_slut_datum: "", stort_sample: "gray", stort_sample_slut_datum: "", prissattning: "gray", prissattning_slut_datum: "", po_sample_falkoping: "gray", po_sample_falkoping_slut_datum: "", sample_kontor: "gray", sample_kontor_slut_datum: "", q_test: "gray", is_done: false }],
-    "LANSERINGSPLAN": [{ collection: "27-spring", produkt: "", salj_b2b: true, salj_b2c: true, fullsize: "gray", fullsize_slut_datum: "", content: "gray", content_slut_datum: "", content_marketing: "gray", content_marketing_slut_datum: "", b2b: "gray", b2b_slut_datum: "", po_lager: "gray", po_lager_slut_datum: "", b2c: "gray", b2c_slut_datum: "", kommentar: "", is_done: false }],
+    "LANSERINGSPLAN": [{ collection: "27-spring", produkt: "", salj_b2b: true, salj_b2c: true, fullsize: "gray", fullsize_slut_datum: "", content: "gray", content_slut_datum: "", content_marketing: "gray", content_marketing_slut_datum: "", content_annons: "gray", content_annons_slut_datum: "", b2b: "gray", b2b_slut_datum: "", po_lager: "gray", po_lager_slut_datum: "", b2c: "gray", b2c_slut_datum: "", kommentar: "", is_done: false }],
     "SÄLJINTRO": [{ produkt: "", beskrivning_status: "", kategori: "matta", koll_q: "--", po_beslut: "gray", po_beslut_datum: "", po_beslut_slut_datum: "", po_lager: "gray", po_lager_datum: "", po_lager_slut_datum: "", b2b_ready: "gray", b2b_ready_datum: "", b2b_ready_slut_datum: "", shopify_ready: "gray", shopify_ready_datum: "", shopify_ready_slut_datum: "", b2b_intro: "--", is_done: false }],
     "DIG PROD": [{ produktnamn: "", kategori: "B2B-intro", kommentar: "", spec_produkt: "gray", spec_variant: "gray", text_copy: "gray", bild: "gray", copy_to_b2c: "gray", packshot: "gray", miljo: "gray", kampanj: "gray", media: "gray", update_b2b: "gray", utskick: "gray", is_done: false }],
     "STATISTICS": [],

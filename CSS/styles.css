@@ -3813,3 +3813,18 @@ button[aria-label="Stäng"]:active {
 .row-actions__floating-menu-item--danger:hover {
   background: rgba(163, 75, 60, 0.08);
 }
+
+/* v340: launch comment preview and editor */
+.cell-text.launch-comment-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 2.7em;
+}
+.launch-comment-modal { width: min(760px, 94vw); max-width: 94vw; }
+.launch-comment-input { min-height: 14em; resize: vertical; }
