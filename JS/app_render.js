@@ -396,6 +396,14 @@ export function createRenderController(deps) {
 
     const table = document.createElement('table');
     table.className = 'data-table';
+    if (tableName === 'LANSERINGSPLAN') {
+      table.classList.add('data-table--launch-fit');
+      tableWrap.classList.add('table-wrap--launch-fit');
+    }
+    const launchWeight = column => column.field === 'collection' ? 12
+      : column.field === 'produkt' ? 15 : column.field === 'kommentar' ? 17
+      : isOpenColumn(column) || isNotesColumn(column) || isTodoColumn(column) ? 5 : 7;
+    const launchTotalWeight = visibleColumns.reduce((total, column) => total + launchWeight(column), 0);
 
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
@@ -403,6 +411,9 @@ export function createRenderController(deps) {
     visibleColumns.forEach((column) => {
       const th = document.createElement('th');
       if (column.width) th.style.width = column.width;
+      if (tableName === 'LANSERINGSPLAN') {
+        th.style.width = (100 * launchWeight(column) / launchTotalWeight) + '%';
+      }
       if (getAlignment(column) === 'center') th.classList.add('is-center');
       if (isStatusColumn(column)) th.classList.add('status-column');
 
@@ -455,11 +466,12 @@ export function createRenderController(deps) {
 
         const disabledSalesChannel = tableName === 'LANSERINGSPLAN' && (
           (column.field === 'b2b' && row?.salj_b2b === false) ||
-          (column.field === 'b2c' && row?.salj_b2c === false)
+          (column.field === 'b2c' && row?.salj_b2c === false) ||
+          (column.field === 'po_lager' && row?.visa_lager === false)
         );
         if (disabledSalesChannel) {
           td.classList.add('is-channel-disabled');
-          td.setAttribute('aria-label', `${column.name} ej aktiv säljkanal`);
+          td.setAttribute('aria-label', column.field === 'po_lager' ? 'Lager avstängt' : `${column.name} ej aktiv säljkanal`);
           tr.appendChild(td);
           return;
         }

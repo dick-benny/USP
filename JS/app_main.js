@@ -1,4 +1,5 @@
-import { createLaunchTodos } from './app_launch_todos.js?v=339';
+import { launchShopifySummary } from './app_launch_status.js?v=344';
+import { createLaunchTodos } from './app_launch_todos.js?v=343';
 import { createListsController, LIST_TYPES, editorOptions } from './app_lists.js?v=333';
 import { supabase } from './supabase.js';
 import { createMeetingsController } from './app_meetings.js?v=332';
@@ -16,7 +17,7 @@ import { createTodoController } from './app_todo.js?v=254';
 import { createRowTodoController } from './app_row_todo.js?v=254';
 import { createNotesController } from './app_notes.js?v=254';
 import { createSettingsController } from './app_settings.js?v=335';
-import { createRenderController } from './app_render.js?v=340';
+import { createRenderController } from './app_render.js?v=345';
 import { createDataController } from './app_data.js?v=333';
 import { createActionController } from './app_actions.js?v=254';
 import { createFilterController } from './app_filters.js?v=254';
@@ -1605,7 +1606,7 @@ export async function runPlanningApp() {
   async function getLocalTodoCount(tableName) {
     let query = supabase.from('planning_view_todos')
       .select('id', { count: 'exact', head: true }).eq('view_name', tableName);
-    if (tableName === 'LANSERINGSPLAN') query = query.eq('scope_type', 'view');
+
     const { count, error } = await query;
     if (error) throw error;
     return Number(count || 0);
@@ -1625,6 +1626,7 @@ export async function runPlanningApp() {
 
   const openLaunchTodos = createLaunchTodos({
     supabase, getCurrentUserInitials, openFloatingActionMenu, onChange: () => render(),
+    getCollections: () => getLocalTodoCollections('LANSERINGSPLAN'),
   });
 
   async function openLocalTodoPanel(tableName, options = {}) {
@@ -3984,6 +3986,22 @@ export async function runPlanningApp() {
     window.setTimeout(() => kategoriSelect.focus(), 0);
   }
 
+  const savingLagerRows = new Set();
+  async function toggleLanseringsplanLager(row) {
+    if (!row?.id || savingLagerRows.has(row.id)) return;
+    savingLagerRows.add(row.id);
+    const next = row.visa_lager === false;
+    try {
+      const { error } = await supabase.from(APP_CONFIG.tables.LANSERINGSPLAN.dbTable)
+        .update({ visa_lager: next }).eq('id', row.id).select('id').single();
+      if (error) throw error;
+      row.visa_lager = next;
+      render();
+    } catch (error) {
+      alert('Kunde inte spara Lager: ' + error.message);
+    } finally { savingLagerRows.delete(row.id); }
+  }
+
   function getLanseringsplanSalesChannels(row) {
     return {
       b2b: row?.salj_b2b !== false,
@@ -4750,6 +4768,22 @@ export async function runPlanningApp() {
     return true;
   }
 
+  async function syncLaunchShopifyStatus(row) {
+    const summary = launchShopifySummary(row, APP_CONFIG.tables['DIG PROD'].columns);
+    if (!summary) return;
+    const product = normalizeLanseringsplanProductName(row.produktnamn);
+    if (!product) return;
+    const targets = (state.rowsByTable.LANSERINGSPLAN || []).filter(candidate =>
+      candidate.id && normalizeLanseringsplanProductName(candidate.produkt) === product);
+    for (const target of targets) {
+      if (target[summary.field] === summary.status) continue;
+      const { error } = await supabase.from(APP_CONFIG.tables.LANSERINGSPLAN.dbTable)
+        .update({ [summary.field]: summary.status }).eq('id', target.id).select('id').single();
+      if (error) throw error;
+      target[summary.field] = summary.status;
+    }
+  }
+
   async function toggleStatusCell(tableConfig, row, column) {
     if (column.lockManualStatus) return;
 
@@ -4757,6 +4791,11 @@ export async function runPlanningApp() {
     const currentIndex = STATUS_ORDER.indexOf(current);
     const nextValue = STATUS_ORDER[(currentIndex + 1) % STATUS_ORDER.length];
     const saved = await saveCellValue(tableConfig, row, column, nextValue);
+    if (saved && tableConfig.dbTable === 'dig_prod') {
+      try { await syncLaunchShopifyStatus(row); }
+      catch (error) { alert('Status sparades, men Lanseringsplan kunde inte uppdateras: ' + error.message); }
+      render();
+    }
 
     if (saved && tableConfig.dbTable === 'dig_prod' && column.field === 'klart') {
       try {
@@ -5683,6 +5722,8 @@ export async function runPlanningApp() {
     state.digprodPlanPanelOpen = true;
     state.digprodPlanRowId = targetRow.id;
     state.lanseringsplanIntroSourceId = lanseringsplanRow?.id || null;
+    try { await syncLaunchShopifyStatus(targetRow); }
+    catch (error) { alert('Lanseringsplan kunde inte uppdateras: ' + error.message); }
     state.digprodIntroModalTitle = options.modalTitle || null;
     render();
   }
@@ -5753,6 +5794,8 @@ export async function runPlanningApp() {
     state.digprodPlanRowId = targetRow.id;
     state.lanseringsplanIntroSourceId = null;
     state.digprodIntroModalTitle = null;
+    try { await syncLaunchShopifyStatus(targetRow); }
+    catch (error) { alert('Lanseringsplan kunde inte uppdateras: ' + error.message); }
     render();
   }
 
@@ -5885,14 +5928,6 @@ export async function runPlanningApp() {
         event.stopPropagation();
         openFloatingActionMenu(moreButton, [
           {
-            label: 'TODO',
-            title: 'Öppna TODO för denna Collection och produkt',
-            action: async () => openLocalTodoPanel(tableName, {
-              collection: String(row?.collection || '').trim(),
-              product: String(row?.produkt || '').trim(),
-            }),
-          },
-          {
             label: 'Shopify Spec',
             title: 'Öppna Shopify Specification för denna produkt, eller skapa den om den saknas',
             action: async () => openShopifySpecificationModal(row?.produkt),
@@ -5901,6 +5936,11 @@ export async function runPlanningApp() {
             label: 'Content Shopify',
             title: 'Öppna Content Shopify för denna produkt, eller skapa den om den saknas',
             action: async () => openLanseringsplanDigProdIntroModal(row, 'B2C-intro', { createIfMissing: true, modalTitle: 'Content Shopify' }),
+          },
+          {
+            label: row.visa_lager === false ? 'Lager: Av' : 'Lager: På',
+            title: row.visa_lager === false ? 'Visa PO-lager' : 'Dölj PO-lager (värde och datum sparas)',
+            action: async () => toggleLanseringsplanLager(row),
           },
           ...(isAdmin() ? [{
             label: 'Säljkanaler',
