@@ -1,6 +1,6 @@
 import { launchShopifySummary } from './app_launch_status.js?v=344';
 import { createLaunchTodos } from './app_launch_todos.js?v=343';
-import { createListsController, LIST_TYPES, editorOptions } from './app_lists.js?v=333';
+import { createListsController, LIST_TYPES, editorOptions } from './app_lists.js?v=346';
 import { supabase } from './supabase.js';
 import { createMeetingsController } from './app_meetings.js?v=332';
 import {
@@ -13,11 +13,11 @@ import {
   PDF_BUCKET,
   PDF_PREFIX,
 } from './app_constants.js?v=254';
-import { createTodoController } from './app_todo.js?v=254';
+import { createTodoController } from './app_todo.js?v=347';
 import { createRowTodoController } from './app_row_todo.js?v=254';
 import { createNotesController } from './app_notes.js?v=254';
 import { createSettingsController } from './app_settings.js?v=335';
-import { createRenderController } from './app_render.js?v=345';
+import { createRenderController } from './app_render.js?v=347';
 import { createDataController } from './app_data.js?v=333';
 import { createActionController } from './app_actions.js?v=254';
 import { createFilterController } from './app_filters.js?v=254';

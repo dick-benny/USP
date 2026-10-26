@@ -2,6 +2,7 @@ export const LIST_TYPES = {
   dropdown_dev_syfte: 'suppliers',
   dropdown_pre_dev_kategori: 'suppliers',
   dropdown_design_collection: 'collections',
+  dropdown_todo_kategori: 'todo_categories',
 };
 
 export function editorOptions(dropdown, current = '', isDraft = false) {
@@ -14,7 +15,7 @@ export function editorOptions(dropdown, current = '', isDraft = false) {
 }
 
 export function createListsController({ supabase, APP_CONFIG, state, isAdmin, render }) {
-  let rows = { suppliers: [], collections: [] };
+  let rows = { suppliers: [], collections: [], todo_categories: [] };
   let errorMessage = '';
   let busy = false;
   let pending;
@@ -42,7 +43,7 @@ export function createListsController({ supabase, APP_CONFIG, state, isAdmin, re
     if (pending) return pending;
     pending = (async () => {
       try {
-        const result = await Promise.all(['suppliers', 'collections'].map(async kind => {
+        const result = await Promise.all(['suppliers', 'collections', 'todo_categories'].map(async kind => {
           const { data, error } = await supabase.from(`planning_${kind}`).select('id,name,sort_order,is_active')
             .order('sort_order').order('name');
           if (error) throw error;
@@ -51,8 +52,8 @@ export function createListsController({ supabase, APP_CONFIG, state, isAdmin, re
         rows = Object.fromEntries(result);
         errorMessage = '';
       } catch (error) {
-        rows = { suppliers: [], collections: [] };
-        errorMessage = 'Listorna kunde inte hämtas. Kontrollera anslutningen och att SQL för v333 har körts.';
+        rows = { suppliers: [], collections: [], todo_categories: [] };
+        errorMessage = 'Listorna kunde inte hämtas. Kontrollera anslutningen och att SQL för v333 och v346 har körts.';
         console.error('Planning lists:', error);
       }
       apply();
@@ -96,7 +97,7 @@ export function createListsController({ supabase, APP_CONFIG, state, isAdmin, re
       retry.onclick = async () => { await load(); render(); };
       root.append(error, retry);
     }
-    for (const [kind, label] of [['suppliers', 'Supplier'], ['collections', 'Collection']]) {
+    for (const [kind, label] of [['suppliers', 'Supplier'], ['collections', 'Collection'], ['todo_categories', 'TODO / Kategori']]) {
       const heading = document.createElement('h4'); heading.textContent = label; root.append(heading);
       for (const item of [...rows[kind], null]) {
         const form = document.createElement('form'); form.className = 'planning-lists__row';

@@ -449,6 +449,14 @@ export function createRenderController(deps) {
       const tr = document.createElement('tr');
 
       if (tableName === TODO_TABLE && !isVirtualModalTodoRow(row)) {
+        tr.title = row.is_done ? 'Klicka för att öppna igen' : 'Klicka för att markera klar';
+        tr.addEventListener('click', async (event) => {
+          if (event.target.closest('button, a, input, select, textarea, [contenteditable="true"], [role="button"]')) return;
+          if (window.getSelection()?.toString()) return;
+          event.preventDefault();
+          event.stopPropagation();
+          await toggleTodoDone(tableName, tableConfig, row);
+        }, true);
         tr.addEventListener('contextmenu', async (event) => {
           event.preventDefault();
           await toggleTodoDone(tableName, tableConfig, row);
