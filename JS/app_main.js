@@ -1,3 +1,4 @@
+import { createCollectionPlan } from './app_collection_plan.js?v=352';
 import { launchShopifySummary } from './app_launch_status.js?v=344';
 import { createLaunchTodos } from './app_launch_todos.js?v=343';
 import { createListsController, LIST_TYPES, editorOptions } from './app_lists.js?v=346';
@@ -8846,6 +8847,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     getCurrentUser: () => window.CurrentUser,
   });
 
+  const collectionPlanController = createCollectionPlan({ supabase, uploadImage: uploadMarketingPlanImage, imageUrl: marketingPlanImageUrl });
   const renderController = createRenderController({
     app,
     settingsButton,
@@ -8872,6 +8874,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     createFilterBar,
     enhanceSortableHeaders,
     createCustomView: (tableName) => {
+      if (tableName === 'COLLECTION PLAN') return collectionPlanController.createView();
       if (tableName === 'MEETINGS') return meetingsController.createView();
       if (tableName === 'PROJEKT') return projectsController.createView();
       if (tableName === 'STATISTICS') return createStatisticsView();

@@ -40,7 +40,7 @@ window.PlanningSpec = (function () {
     rowTodoConfig: {
     },
     tables: {
-      "COLLECTION PLAN": { id: "collection_plan", title: "COLLECTION PLAN", placeholder: true, columns: [] },
+      "COLLECTION PLAN": { id: "collection_plan", title: "Collection Plan", customView: true, columns: [] },
       "PRE DEV": { id: "pre_dev", dbTable: "pre_dev", title: "PRE Design", columns: [
         { name: "Utv idé", field: "utv_ide", type: "text", key: true, width: PRIMARY_TITLE_WIDTH, mods: { align: "left", displayMode: "text", readonly: false } },
         { name: "Supplier", field: "kategori", type: "dropdown_pre_dev_kategori", width: "16ch", mods: { align: "left", displayMode: "select", readonly: false } },
@@ -50,11 +50,11 @@ window.PlanningSpec = (function () {
         { name: "Sample slut", field: "sample_test_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" }
       ]},
       "UTVECKLING": { id: "utveckling", dbTable: "utveckling", title: "Design", columns: [
+        { name: "Collection", field: "collection", type: "dropdown_design_collection", width: "13ch", mods: { align: "left", displayMode: "select", readonly: false }, default: "27-spring" },
         { name: "Namn", field: "produktide", type: "text", key: true, width: PRIMARY_TITLE_WIDTH, mods: { align: "left", displayMode: "text", readonly: false } },
         { name: "Kategori", field: "kategori", type: "dropdown_dev_kategori", width: "14ch", hiddenInTable: true, mods: { align: "left", displayMode: "select", readonly: false } },
         { name: "Supplier", field: "syfte", type: "dropdown_dev_syfte", width: "16ch", mods: { align: "left", displayMode: "select", readonly: false } },
         { name: "Beskrivning", field: "beskrivning", type: "text", width: "34ch", mods: { align: "left", displayMode: "textarea", readonly: false } },
-        { name: "Collection", field: "collection", type: "dropdown_design_collection", width: "13ch", mods: { align: "left", displayMode: "select", readonly: false }, default: "27-spring" },
         { name: "Sample datum", field: "sample_test_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "Sample slut", field: "sample_test_slut_datum", type: "date", width: "15ch", hiddenInTable: true, mods: { align: "center", editorMode: "click_to_edit", displayMode: "button", readonly: false }, default: "" },
         { name: "Sample\nKontor", field: "sample_kontor", type: "status", width: "13ch", renderFromField: "sample_kontor_slut_datum", dateDisplayMode: "week", statusLabel: " ", hideStatusLabel: true, mods: { align: "center", readonly: false }, default: "gray" },
