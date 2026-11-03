@@ -26,7 +26,7 @@ import { createColumnToolsController } from './app_column_tools.js?v=254';
 import { createExcelPlanController } from './app_excel_plan.js?v=254';
 import { createProjectsController } from './app_projects.js?v=254';
 import { createWorkflowController } from './app_workflows.js?v=254';
-import { createArchiveController } from './app_archive.js?v=259';
+import { createArchiveController } from './app_archive.js?v=354';
 import './app_statistics.js?v=254';
 
 export async function runPlanningApp() {

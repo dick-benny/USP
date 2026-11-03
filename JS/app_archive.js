@@ -20,6 +20,14 @@ export function createArchiveController({ supabase }) {
   async function archiveRowDirectly(tableConfig, row, archiveReason = 'archived', note = null) {
     if (!tableConfig?.dbTable || !row?.id) return false;
 
+    if (tableConfig.dbTable === 'lanseringsplan') {
+      const { error } = await supabase.rpc('planning_archive_launch_row', {
+        p_row_id: String(row.id), p_archive_reason: archiveReason, p_note: note,
+      });
+      if (error) throw new Error(error.message || 'Kunde inte arkivera Lanseringsplan-raden.');
+      return true;
+    }
+
     const { error: insertError } = await supabase
       .from('planning_archive')
       .insert(getArchivePayload(tableConfig, row, archiveReason, note));
