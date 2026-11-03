@@ -50,7 +50,7 @@ export function createCollectionPlan({supabase, uploadImage, imageUrl}) {
       if (busy) return;
       busy = true; error.textContent = ''; const controls = [...panel.querySelectorAll('button,input,textarea,select')]; controls.forEach(n=>n.disabled=true);
       try { await operation(); busy=false; close(); await load(); }
-      catch (err) { error.textContent = err.code === '23505' ? 'Det finns redan ett möte i månaden, eller en Collection för detta år. Ladda om och försök igen.' : err.message; }
+      catch (err) { error.textContent = err.code === '23505' ? 'Det finns redan ett möte i månaden, eller en Collection för detta år och denna årstid. Ladda om och försök igen.' : err.message; }
       finally { busy=false; controls.forEach(n=>n.disabled=false); }
     };
     return {form,actions,error,close,run};
@@ -65,14 +65,20 @@ export function createCollectionPlan({supabase, uploadImage, imageUrl}) {
     const year = field(m.form,'År','number',item?.year || new Date().getFullYear()+1); year.min=2000;year.max=2199;year.required=true;
     // Year cannot change once planned entries exist, to avoid silently moving meetings.
     if (item && entries.some(e=>e.collection_id===item.id)) year.readOnly=true;
-    const name = field(m.form,'Namn','text',item?.name || `Collection ${year.value}`);name.required=true;name.maxLength=80;
-    year.oninput=()=>{name.value=`Collection ${year.value}`;};
+    const seasonLabel=el('label',undefined,'detail-field');
+    const season=el('select',undefined,'detail-field__control');season.required=true;season.setAttribute('aria-label','Årstid');
+    for(const value of ['', 'SPRING','FALL']) {const option=el('option',value||'Välj årstid');option.value=value;season.append(option);}
+    season.value=item?.season||'';seasonLabel.append(el('span','Årstid','detail-field__label'),season);m.form.append(seasonLabel);
+    const name = field(m.form,'Namn','text','');name.readOnly=true;
+    const updateName=()=>{name.value=season.value?`COLLECTION ${year.value} ${season.value}`:item?.name||`COLLECTION ${year.value}`;};
+    year.oninput=updateName;season.onchange=updateName;updateName();
     m.actions.append(button('Save',()=>m.form.requestSubmit()));
     m.form.onsubmit=e=>{e.preventDefault();void m.run(async()=>{
-      const slot=item?.slot || [1,2,3].find(slot=>!collections.some(c=>c.slot===slot));
-      if (!slot || (!item && collections.length>=3)) throw Error('Max tre Collections kan visas.');
-      if (!name.value.trim()) throw Error('Ange ett namn.');
-      await save('planning_collection_plan',item,{slot,year:Number(year.value),name:name.value.trim()});
+      const slot=item?.slot || [1,2,3,4].find(slot=>!collections.some(c=>c.slot===slot));
+      if (!slot || (!item && collections.length>=4)) throw Error('Max fyra Collections kan visas.');
+      if (!['SPRING','FALL'].includes(season.value)) throw Error('Välj årstid.');
+      if(collections.some(c=>c.id!==item?.id&&Number(c.year)===Number(year.value)&&c.season===season.value))throw Error('Denna kombination av år och årstid finns redan.');
+      await save('planning_collection_plan',item,{slot,year:Number(year.value),season:season.value,name:`COLLECTION ${Number(year.value)} ${season.value}`});
     });};
     if (item) {
       const danger=el('div',undefined,'cp-delete-section');
@@ -90,7 +96,7 @@ export function createCollectionPlan({supabase, uploadImage, imageUrl}) {
       },'secondary-button cp-delete-button'));
       m.form.append(danger);
     }
-    name.focus();
+    season.focus();
   }
   function commentEditor(item) {
     const m=modal('Kommentar');const comment=field(m.form,'Kommentar','textarea',item.comment||'');comment.rows=10;
@@ -161,7 +167,7 @@ export function createCollectionPlan({supabase, uploadImage, imageUrl}) {
   function draw() {
     if(!host?.isConnected)return;host.replaceChildren();
     const header=el('div',undefined,'view-card__header');header.append(el('h1','Collection Plan','view-card__title'));
-    const actions=el('div',undefined,'side-panel__header-actions');const add=button('+ Collection',()=>collectionEditor());add.disabled=collections.length>=3||loading;
+    const actions=el('div',undefined,'side-panel__header-actions');const add=button('+ Collection',()=>collectionEditor());add.disabled=collections.length>=4||loading;
     actions.append(add);header.append(actions);host.append(header);
     const table=el('table',undefined,'cp-table');const head=el('tr');
     for(const title of ['Collection',...MONTHS]){const th=el('th',title);th.scope='col';head.append(th);}const thead=el('thead');thead.append(head);table.append(thead);
@@ -197,9 +203,9 @@ export function createCollectionPlan({supabase, uploadImage, imageUrl}) {
     try {
       const results=await Promise.all([supabase.from('planning_collection_plan').select('*').order('year'),supabase.from('planning_collection_plan_items').select('*').order('created_at')]);
       for(const r of results)if(r.error)throw r.error;
-      collections=results[0].data||[];entries=results[1].data||[];draw();
+      collections=(results[0].data||[]).sort((a,b)=>a.year-b.year||(['SPRING','FALL'].indexOf(a.season)-['SPRING','FALL'].indexOf(b.season)));entries=results[1].data||[];draw();
     } catch(err){if(host?.isConnected){host.replaceChildren(el('p','Collection Plan kunde inte läsas: '+err.message),button('Försök igen',()=>load()));}}
-    finally{loading=false;if(host?.isConnected){const b=[...host.querySelectorAll('button')].find(b=>b.textContent==='+ Collection');if(b)b.disabled=collections.length>=3;}}
+    finally{loading=false;if(host?.isConnected){const b=[...host.querySelectorAll('button')].find(b=>b.textContent==='+ Collection');if(b)b.disabled=collections.length>=4;}}
   }
   return {createView(){host=el('section',undefined,'view-card cp-view');host.append(el('p','Läser Collection Plan…'));setTimeout(()=>load(),0);return host;}};
 }
