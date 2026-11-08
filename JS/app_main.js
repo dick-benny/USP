@@ -1,3 +1,4 @@
+import { createSchedule } from './app_schedule.js?v=357';
 import { createCollectionPlan } from './app_collection_plan.js?v=353';
 import { launchShopifySummary } from './app_launch_status.js?v=344';
 import { createLaunchTodos } from './app_launch_todos.js?v=343';
@@ -126,6 +127,10 @@ export async function runPlanningApp() {
   const todoNavIndex = tableEntries.findIndex(([name]) => name === TODO_TABLE);
   tableEntries.splice(todoNavIndex >= 0 ? todoNavIndex + 1 : tableEntries.length, 0, ['MEETINGS', meetingsConfig]);
 
+  const scheduleConfig = { title: 'Schema', navTitle: 'SCHEMA', customView: true, columns: [] };
+  APP_CONFIG.tables.SCHEMA = scheduleConfig;
+  const scheduleIndex = tableEntries.findIndex(([name]) => name === 'MEETINGS');
+  tableEntries.splice(scheduleIndex + 1, 0, ['SCHEMA', scheduleConfig]);
   let activeFloatingActionMenu = null;
 
   function closeFloatingActionMenu() {
@@ -8848,6 +8853,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
   });
 
   const collectionPlanController = createCollectionPlan({ supabase, uploadImage: uploadMarketingPlanImage, imageUrl: marketingPlanImageUrl });
+  const scheduleController = createSchedule({ supabase });
   const renderController = createRenderController({
     app,
     settingsButton,
@@ -8874,6 +8880,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     createFilterBar,
     enhanceSortableHeaders,
     createCustomView: (tableName) => {
+      if (tableName === 'SCHEMA') return scheduleController.createView();
       if (tableName === 'COLLECTION PLAN') return collectionPlanController.createView();
       if (tableName === 'MEETINGS') return meetingsController.createView();
       if (tableName === 'PROJEKT') return projectsController.createView();
