@@ -3843,3 +3843,56 @@ button[aria-label="Stäng"]:active {
 .data-table--launch-fit .status-week-cell__date-trigger { padding: 2px 4px; font-size: 11px; min-width: 0; }
 .data-table--launch-fit .row-actions--inline { gap: 2px; flex-wrap: wrap; }
 .data-table--launch-fit .row-actions__button { padding: 6px 8px; }
+
+/* v359: Design columns keep text inside cells; compact row menu. */
+.data-table.data-table--design-fit { min-width: 1170px; }
+.data-table--design-fit th { padding: 10px 6px; white-space: normal; letter-spacing: 0; }
+.data-table--design-fit .column-header { min-width: 0; flex-wrap: wrap; }
+.data-table--design-fit .column-header__label { white-space: normal; overflow-wrap: anywhere; }
+.data-table--design-fit td { padding: 10px 6px; }
+.data-table--design-fit .cell-text { white-space: normal; overflow-wrap: anywhere; }
+.data-table--design-fit .cell-editor { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; }
+.data-table--design-fit .status-week-cell { flex-wrap: wrap; gap: 3px; }
+.data-table--design-fit .status-button { min-width: 0; max-width: 100%; padding: 6px 4px !important; }
+.data-table--design-fit .design-actions { padding: 6px 2px; }
+.data-table--design-fit .design-actions .column-header { justify-content: center; }
+.data-table--design-fit .design-actions .row-actions { justify-content: center; gap: 0; }
+.data-table--design-fit .design-actions .row-actions__button { box-sizing: border-box; min-width: 32px; width: 32px; padding: 6px 0; }
+
+/* v361: compact navigation with intentional two-line labels. */
+.topbar__inner { gap: 8px; }
+#tableNav { gap: 4px; }
+#tableNav .table-nav__link { white-space: pre-line; padding: 6px 7px; min-height: 44px; line-height: 1.15; font-size: 11px; text-align: center; }
+@media (max-width: 1100px) { #tableNav { flex-wrap: wrap; overflow-x: visible; } }
+.reports-body { padding: 0 20px 24px; }
+.reports-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.reports-actions label { display: flex; align-items: center; gap: 8px; }
+.reports-actions select { width: auto; }
+.reports-scroll { overflow-x: auto; }
+.reports-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 650px; }
+.reports-table th, .reports-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; overflow-wrap: anywhere; }
+.reports-table thead th:first-child { width: 110px; }
+.reports-table thead th { font-size: 13px; }
+.reports-table tbody th { font-size: 13px; font-weight: 500; }
+.reports-slot { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+.reports-slot a { color: var(--text); overflow-wrap: anywhere; font-size: 13px; text-decoration: underline; }
+.reports-slot button { flex: 0 0 28px; padding: 3px; min-width: 28px; }
+.reports-annual { display: grid; grid-template-columns: 1fr 2fr; gap: 24px; margin-top: 18px; }
+.reports-annual h2 { font-size: 17px; margin: 0 0 10px; }
+.reports-annual h3 { font-size: 13px; margin: 10px 0 4px; }
+.reports-annual p { font-size: 12px; color: var(--muted); }
+.reports-modal { width: min(540px, 92vw); max-height: 90vh; overflow: auto; border: 1px solid var(--line); border-radius: 16px; padding: 24px; background: var(--panel, white); color: var(--text); }
+.reports-modal::backdrop { background: rgba(0,0,0,.35); }
+.reports-modal form { display: grid; gap: 14px; }
+.reports-modal h2 { margin: 0; }
+.reports-modal [role=alert] { color: #a32929; margin: 0; }
+@media(max-width:700px) { .reports-annual { grid-template-columns: 1fr; } }
+
+/* v362: distribute navigation buttons across the available row. */
+#tableNav .table-nav__link { flex: 1 0 auto; }
+
+/* v363: anchor add buttons under their own report column heading. */
+.reports-slot--empty { justify-content: flex-start; }
+
+/* v364: preserve description line breaks in the shared two-line preview. */
+.data-table--design-fit .cell-text.launch-comment-preview { white-space: pre-wrap; }

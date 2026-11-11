@@ -1,0 +1,25 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),crypto=require('node:crypto');
+const ctx={window:{},crypto,console,Date,Promise,AbortSignal};vm.createContext(ctx);
+for(const f of ['structure','workflow','rfq-project','remote'])vm.runInContext(fs.readFileSync(__dirname+'/../JS/'+f+'.js','utf8'),ctx);
+const S=ctx.window.CDPStructure,G=ctx.window.CDPProjectRfq,R=ctx.window.CDPRemote,db=require('./fake-server.cjs')(),adapter=R.createAdapter(db,db.db),s=adapter.state;
+(async()=>{
+ const p=S.createProject(s,{name:'Two stage',currency:'EUR'});p.qualitySamples=[];s.manufacturers.push({id:'m',name:'Maker'},{id:'other',name:'Other'});
+ for(const id of ['a','b'])s.articles.push({id,projectId:p.id,name:id,quantity:3,bom:[],shape:'Rektangulär'});
+ S.setTargetPrice(s,'a',45);assert.throws(()=>S.setTargetPrice(s,'a',-1));
+ const sample=S.saveQualitySample(s,p,'',{name:'Wool quality',size:'30 × 30 cm',quantity:2,articleIds:['a','b'],instructions:'Ivory wool'});
+ assert.equal(p.qualitySamples.length,1);assert.equal(sample.price,0);assert.equal(s.articles.length,2);assert.throws(()=>S.saveQualitySample(s,p,'',{name:'Bad',size:'30',quantity:0,articleIds:[]}));
+ assert.throws(()=>G.configure(s,p,['a','b'],['m'],[],undefined,'preliminary'));
+ let g=G.configure(s,p,['a','b'],['m'],[sample.id],undefined,'preliminary');assert.equal(g.lines.length,3);assert.equal(g.lines[0].targetPrice,45);assert.equal(g.lines[2].quantity,null);assert.equal(sample.name,'a / b');assert.equal(sample.quantity,null);assert.equal(g.lines[2].area,0);assert.equal(g.lines[2].sampleDetails.size,'30 × 30 cm');
+ s.articles[0].quantity=0;assert.throws(()=>G.publish(s,p,'m'));s.articles[0].quantity=3;G.sync(s,p);const initialRevision=g.revision;
+ G.publish(s,p,'m');assert.equal(G.supplierView(s,'other').length,0);S.setTargetPrice(s,'a',70);G.sync(s,p);assert.equal(g.lines[0].targetPrice,45);assert.equal(g.revision,initialRevision);
+ for(const l of g.lines.filter(l=>!l.sample))G.saveAnswer(s,p,'m',l.key,{decision:'accepted',price:50,productionWeeks:6,revision:g.revision});G.complete(s,p,'m',g.revision);assert.throws(()=>G.selectArticle(s,p,'m','a'));
+ G.configure(s,p,['a','b'],['m'],[sample.id],{a:45},'complete');assert.equal(g.revision,initialRevision+1);assert.equal(g.recipients[0].publishedRevision,0);assert.equal(G.supplierView(s,'m').length,1);assert.equal(G.supplierView(s,'m')[0].readOnly,true);assert.notEqual(p.preliminaryRfq.id,g.id);assert.equal(Object.keys(g.recipients[0].answers).length,0);assert.equal(g.history.at(-1).recipients[0].answers[g.history.at(-1).lines[0].key].price,50);assert.throws(()=>G.publish(s,p,'m'));assert.throws(()=>G.configure(s,p,['a'],['m'],[],{},'preliminary'));
+ for(const a of s.articles)Object.assign(a,{widthCm:100,lengthCm:200});p.phases=[{id:'ph',name:"Phase 1",productionStart:'2027-01-01',deliveryDate:'2027-02-01',items:s.articles.map(a=>({articleId:a.id,quantity:3})),calculation:S.defaults()}];G.publish(s,p,'m');assert.equal(g.lines[0].productionStart,'2027-01-01');assert.throws(()=>G.complete(s,p,'m',g.revision));
+ for(const l of g.lines.filter(l=>!l.sample))G.saveAnswer(s,p,'m',l.key,{decision:'declined',comment:'No capacity',revision:g.revision});G.complete(s,p,'m',g.revision);assert.equal(s.articles.length,2);
+ const rev=g.revision;S.saveQualitySample(s,p,sample.id,{...sample,instructions:'Updated wool'});G.sync(s,p);assert.equal(g.revision,rev+1);assert.equal(g.recipients[0].completedAt,null);
+ await adapter.save();const loaded=R.createAdapter(db,db.db).state;assert.equal(loaded.projects[0].qualitySamples[0].quantity,null);assert.equal(loaded.articles[0].targetPrice,70);assert.equal(loaded.projects[0].projectRfq.type,'complete');assert.equal(loaded.projects[0].projectRfq.history[0].type,'preliminary');
+ const restored=G.preliminary({...loaded.projects[0],preliminaryRfq:undefined});assert.equal(restored.type,'preliminary');assert.equal(restored.recipients[0].answers[restored.lines[0].key].productionWeeks,6);
+ G.reopen(p,'m');const normal=g.lines.filter(l=>!l.sample);for(const l of normal)G.saveAnswer(s,p,'m',l.key,{decision:'accepted',price:55,revision:g.revision});assert.throws(()=>G.complete(s,p,'m',g.revision));for(const l of normal)G.saveAnswer(s,p,'m',l.key,{decision:'accepted',price:55,scheduleConfirmed:true,revision:g.revision});G.complete(s,p,'m',g.revision);p.phases[0].deliveryDate='2027-02-10';G.sync(s,p);assert.throws(()=>G.complete(s,p,'m',g.revision));assert.equal(G.preliminary(p).recipients[0].answers[G.preliminary(p).lines[0].key].productionWeeks,6);
+ assert.throws(()=>G.saveAnswer(s,p,'m',normal[0].key,{decision:'declined',revision:g.revision}));
+ console.log('PASS independent shared samples, zero price/no BOM, validation, preliminary without phases, target snapshot, stage history and answer reset, complete requirements, supplier isolation and reload');
+})().catch(e=>{console.error(e);process.exitCode=1;});

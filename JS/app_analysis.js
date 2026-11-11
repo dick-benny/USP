@@ -14,20 +14,12 @@
   };
 
   const SORT_COLUMNS = ['productTitle', 'sku', 'quantity', 'qtyPerMo', 'unitPrice', 'totalAmount'];
-  const TAG_FILTERS = [
-    { value: 'rugs', label: 'Rugs', tags: ['rugs'] },
-    { value: 'tapestry', label: 'Tapestry', tags: ['tapestry'] },
-    { value: 'colonnade', label: 'Colonnade', tags: ['colonnades'] },
-    { value: 'coverlet', label: 'Coverlet', tags: ['covers'] },
-    { value: 'custom', label: 'Custom', tags: ['custom'] },
-    { value: 'soft-accessories', label: 'Soft Accessories', tags: ['soft accessories'] },
-  ];
 
   function createDefaultState() {
     return {
       envChoice: 'all',
       months: 1,
-      tagFilter: 'all',
+      collectionFilter: 'all',
       search: '',
       data: null,
       loading: false,
@@ -70,30 +62,25 @@
     return `${String(item?.productTitle || '')} ${String(item?.sku || '')}`.toLowerCase();
   }
 
-  function normalizeTag(value) {
-    return String(value || '').trim().toLowerCase();
+  function getCollectionOptions(data) {
+    const set = new Set();
+    (data?.items || []).forEach((item) => {
+      (item?.collections || []).forEach((collection) => {
+        const title = String(collection?.title || '').trim();
+        if (title) set.add(title);
+      });
+    });
+    return Array.from(set).sort((left, right) => left.localeCompare(right, 'sv'));
   }
 
-  function getItemTags(item) {
-    if (Array.isArray(item?.tags)) return item.tags.map(normalizeTag).filter(Boolean);
-    return String(item?.tags || '')
-      .split(',')
-      .map(normalizeTag)
-      .filter(Boolean);
-  }
-
-  function getTagFilterConfig(tagFilter) {
-    return TAG_FILTERS.find((item) => item.value === tagFilter) || null;
-  }
-
-  function getFilteredItems(data, tagFilter, search) {
+  function getFilteredItems(data, collectionFilter, search) {
     const needle = String(search || '').trim().toLowerCase();
     return (data?.items || []).filter((item) => {
-      if (tagFilter !== 'all') {
-        const filterConfig = getTagFilterConfig(tagFilter);
-        const itemTags = getItemTags(item);
-        const hasTag = (filterConfig?.tags || []).some((tag) => itemTags.includes(normalizeTag(tag)));
-        if (!hasTag) return false;
+      if (collectionFilter !== 'all') {
+        const hasCollection = (item?.collections || []).some(
+          (collection) => String(collection?.title || '').trim() === collectionFilter
+        );
+        if (!hasCollection) return false;
       }
 
       if (!needle) return true;
@@ -138,16 +125,6 @@
       avgUnitsPerMonth: totalUnits / safeMonths,
       avgRevenuePerMonth: totalRevenue / safeMonths,
     };
-  }
-
-  function isSalesAnalysisItem(item) {
-    if (!item || typeof item !== 'object') return false;
-    return (
-      item.productTitle !== undefined ||
-      item.sku !== undefined ||
-      item.quantity !== undefined ||
-      item.totalAmount !== undefined
-    );
   }
 
   function createElement(tag, className, text) {
@@ -207,11 +184,11 @@
     monthsField.appendChild(monthsLabel);
     monthsField.appendChild(monthsSelect);
 
-    const tagField = createElement('label', 'analysis-field');
-    const tagLabel = createElement('span', 'analysis-field__label', 'Produktgrupp');
-    const tagSelect = createElement('select', 'analysis-field__control');
-    tagField.appendChild(tagLabel);
-    tagField.appendChild(tagSelect);
+    const collectionField = createElement('label', 'analysis-field');
+    const collectionLabel = createElement('span', 'analysis-field__label', 'Kollektion');
+    const collectionSelect = createElement('select', 'analysis-field__control');
+    collectionField.appendChild(collectionLabel);
+    collectionField.appendChild(collectionSelect);
 
     const searchField = createElement('label', 'analysis-field analysis-field--wide');
     const searchLabel = createElement('span', 'analysis-field__label', 'Sök');
@@ -224,7 +201,7 @@
 
     filters.appendChild(envField);
     filters.appendChild(monthsField);
-    filters.appendChild(tagField);
+    filters.appendChild(collectionField);
     filters.appendChild(searchField);
 
     const content = createElement('div', 'analysis-content');
@@ -262,29 +239,25 @@
       return `${localState.envChoice}:${localState.months}`;
     }
 
-    function fillTagOptions() {
-      if (!localState.tagFilter) {
-        localState.tagFilter = localState.collectionFilter || 'all';
-      }
+    function fillCollectionOptions() {
+      const options = getCollectionOptions(localState.data);
+      const nextValue = options.includes(localState.collectionFilter) ? localState.collectionFilter : 'all';
+      localState.collectionFilter = nextValue;
 
-      if (localState.tagFilter !== 'all' && !getTagFilterConfig(localState.tagFilter)) {
-        localState.tagFilter = 'all';
-      }
-
-      tagSelect.innerHTML = '';
+      collectionSelect.innerHTML = '';
       const allOption = document.createElement('option');
       allOption.value = 'all';
       allOption.textContent = 'All';
-      tagSelect.appendChild(allOption);
+      collectionSelect.appendChild(allOption);
 
-      TAG_FILTERS.forEach((filter) => {
+      options.forEach((title) => {
         const option = document.createElement('option');
-        option.value = filter.value;
-        option.textContent = filter.label;
-        tagSelect.appendChild(option);
+        option.value = title;
+        option.textContent = title;
+        collectionSelect.appendChild(option);
       });
 
-      tagSelect.value = localState.tagFilter;
+      collectionSelect.value = localState.collectionFilter;
     }
 
     function applySort(column) {
@@ -400,7 +373,7 @@
       shell.classList.toggle('is-loading', isLoading);
       loadingOverlay.classList.toggle('is-visible', isLoading);
 
-      [envSelect, monthsSelect, tagSelect, searchInput].forEach((control) => {
+      [envSelect, monthsSelect, collectionSelect, searchInput].forEach((control) => {
         control.disabled = isLoading;
       });
     }
@@ -409,9 +382,9 @@
       envSelect.value = localState.envChoice;
       monthsSelect.value = String(localState.months);
       searchInput.value = localState.search;
-      fillTagOptions();
+      fillCollectionOptions();
 
-      const filteredItems = getFilteredItems(localState.data, localState.tagFilter, localState.search);
+      const filteredItems = getFilteredItems(localState.data, localState.collectionFilter, localState.search);
       const sortedItems = getSortedItems(filteredItems, localState.sortCol, localState.sortDir, localState.months);
 
       renderCards(filteredItems);
@@ -458,24 +431,13 @@
         }
 
         const json = await response.json();
-        const items = Array.isArray(json?.items) ? json.items : null;
-
-        if (!items) {
-          throw new Error('Analys-API:t saknar produktlista från /totalSales.');
-        }
-
-        if (items.length && !items.some(isSalesAnalysisItem)) {
-          throw new Error('Analysdata saknar produktfält från /totalSales.');
-        }
-
         localState.data = {
           success: !!json?.success,
           env: Array.isArray(json?.env) ? json.env : [],
           months: Number(json?.months || localState.months),
           totalOrderAmount: Number(json?.totalOrderAmount || 0),
           scannedOrders: Number(json?.scannedOrders || 0),
-          scannedLineItems: Number(json?.scannedLineItems || 0),
-          items,
+          items: Array.isArray(json?.items) ? json.items : [],
         };
       } catch (error) {
         if (error?.name === 'AbortError') {
@@ -510,8 +472,8 @@
       void loadData();
     });
 
-    tagSelect.addEventListener('change', () => {
-      localState.tagFilter = tagSelect.value;
+    collectionSelect.addEventListener('change', () => {
+      localState.collectionFilter = collectionSelect.value;
       renderView();
     });
 

@@ -396,6 +396,7 @@ export function createRenderController(deps) {
 
     const table = document.createElement('table');
     table.className = 'data-table';
+    if (tableName === 'UTVECKLING') table.classList.add('data-table--design-fit');
     if (tableName === 'LANSERINGSPLAN') {
       table.classList.add('data-table--launch-fit');
       tableWrap.classList.add('table-wrap--launch-fit');
@@ -411,6 +412,15 @@ export function createRenderController(deps) {
     visibleColumns.forEach((column) => {
       const th = document.createElement('th');
       if (column.width) th.style.width = column.width;
+      if (tableName === 'UTVECKLING') {
+        const widths = { collection: 160, produktide: 160, syfte: 120, __actions__: 44 };
+        th.style.width = column.field === 'beskrivning' ? '' : `${widths[column.field] || 100}px`;
+        if (column.field === '__actions__') {
+          th.classList.add('design-actions');
+          th.title = 'Åtgärder';
+          th.setAttribute('aria-label', 'Åtgärder');
+        }
+      }
       if (tableName === 'LANSERINGSPLAN') {
         th.style.width = (100 * launchWeight(column) / launchTotalWeight) + '%';
       }
@@ -423,6 +433,7 @@ export function createRenderController(deps) {
       const label = document.createElement('span');
       label.className = 'column-header__label';
       label.textContent = column.name;
+      if (tableName === 'UTVECKLING' && column.field === '__actions__') label.textContent = '⋯';
       headerInner.appendChild(label);
 
       if (!isOpenColumn(column) && !isNotesColumn(column) && !isTodoColumn(column)) {
@@ -470,6 +481,8 @@ export function createRenderController(deps) {
       visibleColumns.forEach((column) => {
         const td = document.createElement('td');
 
+        if (tableName === 'UTVECKLING' && column.field === '__actions__') td.classList.add('design-actions');
+
         if (getAlignment(column) === 'center') td.classList.add('is-center');
 
         const disabledSalesChannel = tableName === 'LANSERINGSPLAN' && (
@@ -503,17 +516,17 @@ export function createRenderController(deps) {
           return;
         }
 
-        if (tableName === 'LANSERINGSPLAN' && column.field === 'kommentar') {
+        if ((tableName === 'LANSERINGSPLAN' && column.field === 'kommentar') || (tableName === 'UTVECKLING' && column.field === 'beskrivning')) {
           const preview = document.createElement('span');
           preview.className = 'cell-text launch-comment-preview';
-          preview.textContent = String(row.kommentar ?? '') || '—';
+          preview.textContent = String(row[column.field] ?? '') || '—';
           td.append(preview);
           if (row.id && !row.is_done && !isVirtualModalTodoRow(row)) {
             td.classList.add('is-editable');
             td.tabIndex = 0;
             td.dataset.launchCommentRow = String(row.id);
             td.setAttribute('role', 'button');
-            td.setAttribute('aria-label', 'Redigera kommentar – ' + (row.produkt || 'Utan produktnamn'));
+            td.setAttribute('aria-label', 'Redigera ' + column.name.toLowerCase() + ' – ' + (row.produkt || row.produktide || 'Utan produktnamn'));
             const open = () => openLaunchCommentModal(tableConfig, row, column);
             td.addEventListener('click', open);
             td.addEventListener('keydown', event => {

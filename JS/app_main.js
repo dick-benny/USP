@@ -1,3 +1,4 @@
+import { createReports } from './app_reports.js?v=363';
 import { createSchedule } from './app_schedule.js?v=357';
 import { createCollectionPlan } from './app_collection_plan.js?v=353';
 import { launchShopifySummary } from './app_launch_status.js?v=344';
@@ -19,7 +20,7 @@ import { createTodoController } from './app_todo.js?v=347';
 import { createRowTodoController } from './app_row_todo.js?v=254';
 import { createNotesController } from './app_notes.js?v=254';
 import { createSettingsController } from './app_settings.js?v=335';
-import { createRenderController } from './app_render.js?v=347';
+import { createRenderController } from './app_render.js?v=364';
 import { createDataController } from './app_data.js?v=333';
 import { createActionController } from './app_actions.js?v=254';
 import { createFilterController } from './app_filters.js?v=254';
@@ -131,6 +132,10 @@ export async function runPlanningApp() {
   APP_CONFIG.tables.SCHEMA = scheduleConfig;
   const scheduleIndex = tableEntries.findIndex(([name]) => name === 'MEETINGS');
   tableEntries.splice(scheduleIndex + 1, 0, ['SCHEMA', scheduleConfig]);
+  const reportsConfig = { title: 'Rapporter', navTitle: 'RAPPORTER', customView: true, columns: [] };
+  APP_CONFIG.tables.RAPPORTER = reportsConfig;
+  tableEntries.push(['RAPPORTER', reportsConfig]);
+
   let activeFloatingActionMenu = null;
 
   function closeFloatingActionMenu() {
@@ -1453,7 +1458,7 @@ export async function runPlanningApp() {
 
   function shouldShowOwnerBadge(tableName, row, column) {
     return (
-      isOwnerEnabledTable(tableName) &&
+      tableName !== 'UTVECKLING' && isOwnerEnabledTable(tableName) &&
       !!row &&
       !isVirtualModalTodoRow(row) &&
       !!column?.key
@@ -2567,7 +2572,10 @@ export async function runPlanningApp() {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'table-nav__link';
-      button.textContent = getTableDisplayName(tableName, tableConfig);
+      const navLabel = getTableDisplayName(tableName, tableConfig);
+      const splitLabels = { 'COLLECTION PLAN': 'Collection\nPlan', 'PRE DEV': 'Pre\nDesign', 'LANSERINGSPLAN': 'Lanserings-\nplan', 'MARKNADSPLAN': 'Marknads-\nplan' };
+      button.textContent = splitLabels[tableName] || (/marknads.?plan/i.test(navLabel) ? 'Marknads-\nplan' : navLabel);
+      button.setAttribute('aria-label', navLabel);
 
       if (tableName === state.activeTableName) {
         button.classList.add('is-active');
@@ -7489,6 +7497,9 @@ export async function runPlanningApp() {
 
   function openLaunchCommentModal(tableConfig, row, column) {
     if (!row?.id || document.getElementById('launchCommentOverlay')) return;
+    const fieldName = column.field;
+    const fieldLabel = column.name || 'Kommentar';
+    const rowTitle = row.produkt || row.produktide || 'Utan produktnamn';
     const make = (tag, className, text) => {
       const node = document.createElement(tag);
       node.className = className;
@@ -7504,14 +7515,14 @@ export async function runPlanningApp() {
     dialog.setAttribute('aria-labelledby', 'launchCommentTitle');
     const panel = make('section', 'side-panel launch-comment-modal');
     const header = make('div', 'side-panel__header');
-    const title = make('h2', 'side-panel__title', 'Kommentar – ' + (row.produkt || 'Utan produktnamn'));
+    const title = make('h2', 'side-panel__title', fieldLabel + ' – ' + rowTitle);
     title.id = 'launchCommentTitle';
     const body = make('div', 'side-panel__body');
     const field = make('label', 'detail-field');
     const input = make('textarea', 'detail-field__control launch-comment-input');
     input.rows = 10;
-    input.value = String(row.kommentar ?? '');
-    field.append(make('span', 'detail-field__label', 'Kommentar'), input);
+    input.value = String(row[fieldName] ?? '');
+    field.append(make('span', 'detail-field__label', fieldLabel), input);
     const message = make('p', 'side-panel__text');
     message.setAttribute('role', 'alert');
     const footer = make('div', 'side-panel__footer');
@@ -7540,16 +7551,16 @@ export async function runPlanningApp() {
       if (busy) return;
       busy = true; save.disabled = true; cancel.disabled = true; input.readOnly = true;
       message.textContent = '';
-      const previous = row.kommentar;
+      const previous = row[fieldName];
       try {
         const saved = await saveCellValue(tableConfig, row, column, input.value);
         if (saved) { busy = false; close(); return; }
-        message.textContent = 'Kommentaren kunde inte sparas. Försök igen.';
+        message.textContent = 'Texten kunde inte sparas. Försök igen.';
       } catch (error) {
-        row.kommentar = previous;
+        row[fieldName] = previous;
         state.savingCell = null;
         render();
-        message.textContent = 'Kommentaren kunde inte sparas: ' + error.message;
+        message.textContent = 'Texten kunde inte sparas: ' + error.message;
       } finally {
         busy = false; save.disabled = false; cancel.disabled = false; input.readOnly = false;
       }
@@ -8853,6 +8864,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
   });
 
   const collectionPlanController = createCollectionPlan({ supabase, uploadImage: uploadMarketingPlanImage, imageUrl: marketingPlanImageUrl });
+  const reportsController = createReports({ supabase, isAdmin });
   const scheduleController = createSchedule({ supabase });
   const renderController = createRenderController({
     app,
@@ -8880,6 +8892,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
     createFilterBar,
     enhanceSortableHeaders,
     createCustomView: (tableName) => {
+      if (tableName === 'RAPPORTER') return reportsController.createView();
       if (tableName === 'SCHEMA') return scheduleController.createView();
       if (tableName === 'COLLECTION PLAN') return collectionPlanController.createView();
       if (tableName === 'MEETINGS') return meetingsController.createView();

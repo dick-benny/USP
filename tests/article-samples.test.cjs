@@ -1,0 +1,25 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),crypto=require('node:crypto');
+const ctx={window:{},crypto,console,Date,Promise,AbortSignal};vm.createContext(ctx);
+for(const f of ['structure','workflow','rfq-project','remote'])vm.runInContext(fs.readFileSync(__dirname+'/../JS/'+f+'.js','utf8'),ctx);
+const S=ctx.window.CDPStructure,G=ctx.window.CDPProjectRfq,R=ctx.window.CDPRemote,db=require('./fake-server.cjs')(),adapter=R.createAdapter(db,db.db),s=adapter.state;
+(async()=>{
+ s.company={name:'Our company',address:'Test Street 1',zip:'111 22',city:'Stockholm',country:'Sweden'};
+ const p=S.createProject(s,{name:'Samples before RFQ',currency:'EUR'});
+ for(const id of ['a','b'])s.articles.push({id,projectId:p.id,name:'Rug '+id,shape:'Rektangulär',widthCm:100,lengthCm:200,quantity:2,bom:[],currency:'EUR',pricePerSqm:10,status:'Godkänt'});
+ const a=s.articles[0],b=s.articles[1];
+ S.saveArticleSample(s,a.id,{type:'Strike off',size:'30 × 30 cm',instructions:'Ivory wool',requestedDate:'2027-01-01',manufacturerId:'FORBIDDEN',status:'shipped',tracking:'FORBIDDEN',deliveryAddress:'Wrong address'});
+ assert.equal(s.rfqs.length,0);assert.equal(s.manufacturers.length,0);assert.equal(a.sample.manufacturerId,undefined);assert.equal(a.sample.status,undefined);assert.equal(a.sample.tracking,undefined);assert.ok(S.articleSample(s,a).deliveryAddress.includes('Test Street 1'));assert.equal(a.sample.deliveryAddress,undefined);
+ await adapter.save();const loaded=R.createAdapter(db,db.db).state;assert.equal(loaded.articles[0].sample.instructions,'Ivory wool');assert.ok(S.articleSample(loaded,loaded.articles[0]).deliveryAddress.includes('Stockholm'));
+ p.phases=[{id:'ph',name:"Phase 1",productionStart:'2027-01-01',deliveryDate:'2027-02-01',items:[{articleId:'a',quantity:2},{articleId:'b',quantity:1}],calculation:S.defaults()}];s.manufacturers.push({id:'m',name:'Maker',active:true});
+ const g=G.configure(s,p,['a','b'],['m'],['a']);assert.equal(g.lines.filter(l=>l.sample).length,2);assert.equal(g.lines.find(l=>l.sample).sampleDetails.instructions,'Ivory wool');assert.equal(g.lines.find(l=>l.sample).quantity,1);assert.equal(g.lines.find(l=>l.sample).deliveryDate,'ASAP');
+ S.saveArticleSample(s,'b',{instructions:'Other sample'});const previousRevision=g.revision;G.sync(s,p);assert.equal(g.revision,previousRevision+1);const rev=g.revision;
+ G.publish(s,p,'m');for(const l of g.lines.filter(l=>!l.sample))G.saveAnswer(s,p,'m',l.key,{decision:'accepted',price:10,revision:g.revision});G.complete(s,p,'m',g.revision);G.selectArticle(s,p,'m','a');const quote={...S.snapshot(s,p),id:'q',version:1};s.quotations.push(quote);const frozen=JSON.stringify(quote.articleSnapshots);
+ S.saveArticleSample(s,'a',{type:'Strike off',size:'40 × 40 cm',instructions:'Revised sample'});G.sync(s,p);assert.equal(g.revision,rev+1);assert.equal(g.recipients[0].completedAt,null);assert.equal(g.lines.find(l=>l.sample).sampleDetails.size,'40 × 40 cm');
+ s.company.address='New Street 2';G.sync(s,p);assert.ok(g.lines.find(l=>l.sample).sampleDetails.deliveryAddress.includes('New Street 2'));
+ const legacy=S.createRfq(s,p,a,'m',{required:true});S.saveSample(s,legacy,{required:true,type:'Historical',size:'10 cm',tracking:'PRIVATE',status:'requested'});
+ const oldWithoutSample={id:'legacy'};s.samples.push({id:'old',articleId:'legacy',manufacturerId:'m',type:'Old type',size:'Old size',tracking:'PRIVATE',deliveryAddress:'Old address'});assert.equal(S.articleSample(s,oldWithoutSample).type,'Old type');assert.equal(S.articleSample(s,oldWithoutSample).tracking,undefined);s.samples=s.samples.filter(x=>x.articleId!=='legacy');
+ await adapter.save();const articleDbId=a._dbId,oldRfqIds=s.rfqs.filter(r=>r.articleId==='a').map(r=>r._dbId);S.deleteArticle(s,'a');assert.equal(s.articles.length,1);assert.equal(s.articles[0].id,'b');assert.equal(p.phases[0].items.length,1);assert.equal(p.projectRfq.lines.filter(l=>l.articleId==='a').length,0);assert.equal(s.rfqs.filter(r=>r.articleId==='a').length,0);assert.equal(s.samples.filter(x=>x.articleId==='a').length,0);assert.equal(JSON.stringify(quote.articleSnapshots),frozen);assert.equal(p.deletedArticles[0].article.sample.instructions,'Revised sample');assert.ok(p.projectRfq.history.some(h=>h.lines.some(l=>l.articleId==='a')));
+ assert.equal(await adapter.save(),true);assert.ok(db.db.cdp_articles.find(r=>r.id===articleDbId).archived_at);for(const id of oldRfqIds)assert.ok(db.db.cdp_rfqs.find(r=>r.id===id).archived_at);
+ const reread=R.createAdapter(db,db.db).state;assert.equal(reread.articles.length,1);assert.equal(reread.projects[0].deletedArticles[0].article.id,'a');assert.equal(reread.quotations[0].articleSnapshots.length,2);assert.equal(reread.projects[0].projectRfq.sampleIds.length,1);
+ console.log('PASS article samples before RFQ, independent persistence, own address, legacy descriptions, sample revisions and article deletion with archived history and frozen quotes');
+})().catch(error=>{console.error(error);process.exitCode=1;});

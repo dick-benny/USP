@@ -1,0 +1,12 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),crypto=require('node:crypto');
+const ctx={window:{},crypto,console,Date,Promise,AbortSignal};vm.createContext(ctx);
+for(const f of ['structure','workflow','rfq-project','remote'])vm.runInContext(fs.readFileSync(__dirname+'/../JS/'+f+'.js','utf8'),ctx);
+const S=ctx.window.CDPStructure,G=ctx.window.CDPProjectRfq,R=ctx.window.CDPRemote,db=require('./fake-server.cjs')(),adapter=R.createAdapter(db,db.db),s=adapter.state;
+
+(async()=>{
+ const M=ctx.window.CDPModelSamples,p=S.createProject(s,{name:'Hotel'});s.manufacturers.push({id:'m',name:'Maker',active:true},{id:'other',name:'Other'});s.articles.push({id:'a',projectId:p.id,name:'Rug',shape:'Rektangulär',widthCm:100,lengthCm:200,bom:[{name:'Wool'}]});G.configure(s,p,['a'],['m']);assert.equal(p.projectRfq.sampleIds[0],'a');
+ const values={lines:[{articleId:'a',quantity:1,price:25}],deliveryAddress:'Hotel street',contact:'Hotel contact',deliveryDate:'2027-01-01'};
+ assert.throws(()=>M.draft(s,p,'other',values));assert.throws(()=>M.draft(s,p,'m',{...values,lines:[{articleId:'a',quantity:0}]}));
+ const o=M.draft(s,p,'m',values);assert.equal(M.supplier(s,'m').length,0);o.contact='';assert.throws(()=>M.send(s,p,o.id));o.contact='Hotel';M.send(s,p,o.id);const snapshot=JSON.stringify(o.lines[0].article);s.articles[0].widthCm=300;assert.equal(JSON.stringify(o.lines[0].article),snapshot);assert.throws(()=>M.draft(s,p,'m',values,o.id));assert.equal(M.supplier(s,'other').length,0);assert.equal(M.supplier(s,'m').length,1);M.send(s,p,o.id);assert.equal(o.history.length,1);M.progress(p,o.id,'Skickad');assert.throws(()=>M.progress(p,o.id,'Beställd'));M.review(p,o.id,'a','Ändring krävs','Darker');M.review(p,o.id,'a','Godkänd','Good');assert.equal(o.lines[0].reviewHistory.length,2);
+ await adapter.save();const reload=R.createAdapter(db,db.db).state;assert.equal(reload.projects[0].modelSampleOrders[0].lines[0].article.widthCm,100);assert.equal(reload.projects[0].modelSampleOrders[0].lines[0].review,'Godkänd');S.deleteArticle(s,'a');assert.equal(JSON.stringify(o.lines[0].article),snapshot);console.log('PASS model sample validation, immutable sent BOM, supplier isolation, transitions, review history and persistence');
+})().catch(e=>{console.error(e);process.exitCode=1;});
