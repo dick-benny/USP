@@ -1,12 +1,8 @@
 {
-  "name": "cappelen-dimyr-projects",
-  "version": "7.9.0",
-  "private": true,
-  "description": "Projects ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ Supabase, BOM, RFQ, Samples och fasbaserade offerter",
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "start": "node scripts/build.mjs && node scripts/serve.mjs",
-    "test": "node tests/bom.test.cjs && node tests/structure.test.cjs && node tests/remote.test.cjs && node tests/cloud-workflow.test.cjs && node tests/auth-build.test.cjs && node tests/project-actions.test.cjs && node tests/rfq-phases.test.cjs && node tests/project-rfq.test.cjs && node tests/article-samples.test.cjs && node tests/model-samples.test.cjs && node tests/project-delete.test.cjs && node tests/customers.test.cjs && node tests/manual-prices.test.cjs && node tests/rfq-stages.test.cjs",
-    "test:browser": "node tests/cloud-browser.test.cjs && node tests/navigation-browser.test.cjs && node tests/article-samples-browser.test.cjs && node tests/model-samples-browser.test.cjs && node tests/project-delete-browser.test.cjs && node tests/customers-browser.test.cjs && node tests/project-articles-browser.test.cjs && node tests/manual-prices-browser.test.cjs && node tests/visible-identifiers-browser.test.cjs && node tests/rfq-stages-browser.test.cjs && node tests/article-inline-browser.test.cjs && node tests/phase-picker-browser.test.cjs && node tests/user-admin-browser.test.cjs && node tests/english-browser.test.cjs && node tests/article-return-browser.test.cjs && node tests/rfq-sample-picker-browser.test.cjs"
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.101.0"
   }
 }
