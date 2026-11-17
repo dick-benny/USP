@@ -3896,3 +3896,11 @@ button[aria-label="Stäng"]:active {
 
 /* v364: preserve description line breaks in the shared two-line preview. */
 .data-table--design-fit .cell-text.launch-comment-preview { white-space: pre-wrap; }
+
+/* v368: Studio identity in the header and login card. */
+.studio-brand__company { display:block; font-size:12px; line-height:1.3; font-weight:400; color:var(--muted); white-space:nowrap; }
+
+/* v369: shared Studio icon beside the header and login identity. */
+.studio-brand { display:flex; align-items:center; gap:10px; }
+.studio-brand__icon { display:block; width:40px; height:40px; flex:0 0 40px; }
+.studio-brand__text { display:grid; gap:3px; }
