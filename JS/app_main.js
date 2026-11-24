@@ -1,6 +1,6 @@
 import { createReports } from './app_reports.js?v=366';
-import { createSchedule } from './app_schedule.js?v=367';
-import { createCollectionPlan } from './app_collection_plan.js?v=353';
+import { createSchedule } from './app_schedule.js?v=370';
+import { createCollectionPlan } from './app_collection_plan.js?v=388';
 import { launchShopifySummary } from './app_launch_status.js?v=344';
 import { createLaunchTodos } from './app_launch_todos.js?v=343';
 import { createListsController, LIST_TYPES, editorOptions } from './app_lists.js?v=346';
@@ -20,7 +20,7 @@ import { createTodoController } from './app_todo.js?v=347';
 import { createRowTodoController } from './app_row_todo.js?v=254';
 import { createNotesController } from './app_notes.js?v=254';
 import { createSettingsController } from './app_settings.js?v=335';
-import { createRenderController } from './app_render.js?v=364';
+import { createRenderController } from './app_render.js?v=379';
 import { createDataController } from './app_data.js?v=333';
 import { createActionController } from './app_actions.js?v=254';
 import { createFilterController } from './app_filters.js?v=254';
@@ -89,9 +89,32 @@ export async function runPlanningApp() {
     return identity.includes('maja') || identity.includes('lina');
   }
 
+  // Pre Lansering is a linked view of the original row: statuses keep one source of truth.
+  APP_CONFIG.tables.UTVECKLING.title = 'Pre Follow Up';
+  APP_CONFIG.tables['PRE DEV'].title = 'Pre Vision';
+  const preLaunchFields = ['po_sample_falkoping','po_sample_falkoping_slut_datum','prissattning','prissattning_slut_datum','q_test'];
+  const designColumns = APP_CONFIG.tables.UTVECKLING.columns;
+  const preLaunchConfig = { id:'pre_lansering', dbTable:'utveckling', title:'Pre Lansering', linkedDesignView:true, columns:[
+    {name:'Price Meeting',field:'price_meeting',type:'status',width:'13ch',renderFromField:'price_meeting_slut_datum',dateDisplayMode:'week',statusLabel:' ',hideStatusLabel:true,mods:{align:'center',readonly:false},default:'gray'},
+    {name:'Price Meeting datum',field:'price_meeting_slut_datum',type:'date',hiddenInTable:true,mods:{align:'center',readonly:false},default:''},
+    {...designColumns.find(c=>c.field==='collection')},
+    {name:'Namn',field:'pre_lansering_namn',type:'text',key:true,width:'26ch',mods:{align:'left',displayMode:'text',readonly:false}},
+    {name:'Anteckningar',field:'pre_lansering_anteckningar',type:'text',width:'24ch',mods:{align:'left',displayMode:'textarea',readonly:false}},
+    {name:'Ursprung – Pre Follow Up',field:'produktide',type:'text',hiddenInTable:true,width:'24ch',mods:{align:'left',displayMode:'text',readonly:true}},
+    {name:'LATEST ERD\nSmall Sample',field:'latest_erd_small_sample',type:'status',width:'13ch',renderFromField:'latest_erd_small_sample_slut_datum',dateDisplayMode:'week',statusLabel:' ',hideStatusLabel:true,mods:{align:'center',readonly:false},default:'gray'},
+    {name:'Latest ERD small Sample datum',field:'latest_erd_small_sample_slut_datum',type:'date',hiddenInTable:true,mods:{readonly:false},default:''},
+    ...designColumns.filter(c=>preLaunchFields.includes(c.field)).map(c=>({...c})),
+    {name:'Lanseringsplan',field:'__launch_copy_status',type:'ui_launch_copy_status',width:'20ch',mods:{readonly:true}} 
+  ]};
+  const smallSampleErdColumns=preLaunchConfig.columns.filter(c=>['latest_erd_small_sample','latest_erd_small_sample_slut_datum'].includes(c.field));
+  preLaunchConfig.columns=preLaunchConfig.columns.filter(c=>!smallSampleErdColumns.includes(c));
+  preLaunchConfig.columns.splice(preLaunchConfig.columns.findIndex(c=>c.field==='po_sample_falkoping'),0,...smallSampleErdColumns);
+  APP_CONFIG.tables['PRE LANSERING'] = preLaunchConfig;
   let tableEntries = Object.entries(APP_CONFIG.tables).filter(([tableName]) => (
     tableName !== 'PRE DEV' || canViewPreDesign()
   ));
+  const preLaunchEntry = tableEntries.splice(tableEntries.findIndex(([name])=>name==='PRE LANSERING'),1)[0];
+  tableEntries.splice(tableEntries.findIndex(([name])=>name==='UTVECKLING')+1,0,preLaunchEntry);
   const marketingPlanIndex = tableEntries.findIndex(([tableName]) => tableName === 'MARKNADSPLAN');
   const marketingPlanEntry = marketingPlanIndex >= 0 ? tableEntries.splice(marketingPlanIndex, 1)[0] : null;
 
@@ -153,11 +176,12 @@ export async function runPlanningApp() {
     menu.className = 'row-actions__floating-menu';
     menu.setAttribute('role', 'menu');
 
-    items.forEach(({ label, title, danger = false, action }) => {
+    items.forEach(({ label, title, danger = false, disabled = false, action }) => {
       const item = document.createElement('button');
       item.type = 'button';
       item.className = `row-actions__floating-menu-item${danger ? ' row-actions__floating-menu-item--danger' : ''}`;
       item.textContent = label;
+      item.disabled = disabled;
       item.setAttribute('role', 'menuitem');
       if (title) item.title = title;
       item.addEventListener('click', async (event) => {
@@ -499,15 +523,16 @@ export async function runPlanningApp() {
   function getVisibleColumns(tableConfig) {
     const hiddenRowTodoTables = ['PRE DEV', 'UTVECKLING', 'LANSERINGSPLAN', 'SÄLJINTRO', 'DIG PROD'];
     const tableName = state.activeTableName;
-    const inlineOnlyTables = ['RUTINER', 'SÄLJINTRO', 'UTVECKLING', 'LANSERINGSPLAN', 'PRE DEV', 'DIG PROD', 'CDMP', 'INKÖP', 'MARKNAD', 'SÄLJ'];
-    const inlineActionTables = ['RUTINER', 'TODO', 'PRE DEV', 'UTVECKLING', 'LANSERINGSPLAN', 'SÄLJINTRO', 'CDMP', 'INKÖP', 'MARKNAD', 'SÄLJ'];
+    const inlineOnlyTables = ['PRE LANSERING', 'RUTINER', 'SÄLJINTRO', 'UTVECKLING', 'LANSERINGSPLAN', 'PRE DEV', 'DIG PROD', 'CDMP', 'INKÖP', 'MARKNAD', 'SÄLJ'];
+    const inlineActionTables = ['PRE LANSERING', 'RUTINER', 'TODO', 'PRE DEV', 'UTVECKLING', 'LANSERINGSPLAN', 'SÄLJINTRO', 'CDMP', 'INKÖP', 'MARKNAD', 'SÄLJ'];
     const utilityColumns = inlineOnlyTables.includes(tableName)
       ? []
       : [UI_OPEN_COLUMN, ...(tableName === TODO_TABLE ? [] : [UI_NOTES_COLUMN])];
     const columns = [
-      ...tableConfig.columns.filter((column) => column.field !== 'id' && !column.hiddenInTable && column.field !== UI_TODO_COLUMN.field && column.type !== UI_TODO_COLUMN.type && isColumnVisibleForActiveDigProdCategory(column)),
+      ...tableConfig.columns.filter((column) => column.field !== 'id' && !column.hiddenInTable && !(tableName==='UTVECKLING' && preLaunchFields.includes(column.field)) && column.field !== UI_TODO_COLUMN.field && column.type !== UI_TODO_COLUMN.type && isColumnVisibleForActiveDigProdCategory(column)),
       ...utilityColumns,
     ];
+    if(tableName==='UTVECKLING') columns.push({name:'Pre Lansering',field:'__prelaunch_copy_status',type:'ui_prelaunch_copy_status',width:'20ch',mods:{readonly:true}});
     if (inlineActionTables.includes(tableName)) {
       columns.push(getInlineActionsColumn());
     }
@@ -1555,7 +1580,7 @@ export async function runPlanningApp() {
   const LOCAL_TODO_TABLES = new Set(['PRE DEV', 'UTVECKLING', 'LANSERINGSPLAN']);
 
   function getLocalTodoViewLabel(tableName) {
-    if (tableName === 'PRE DEV') return 'Pre Design';
+    if (tableName === 'PRE DEV') return 'Pre Vision';
     if (tableName === 'UTVECKLING') return 'Design';
     if (tableName === 'LANSERINGSPLAN') return 'Lanseringsplan';
     return tableName;
@@ -2573,7 +2598,7 @@ export async function runPlanningApp() {
       button.type = 'button';
       button.className = 'table-nav__link';
       const navLabel = getTableDisplayName(tableName, tableConfig);
-      const splitLabels = { 'COLLECTION PLAN': 'Collection\nPlan', 'PRE DEV': 'Pre\nDesign', 'LANSERINGSPLAN': 'Lanserings-\nplan', 'MARKNADSPLAN': 'Marknads-\nplan' };
+      const splitLabels = { 'UTVECKLING': 'Pre\nFollow Up', 'PRE LANSERING': 'Pre\nLansering', 'COLLECTION PLAN': 'Collection\nPlan', 'PRE DEV': 'Pre\nVision', 'LANSERINGSPLAN': 'Lanserings-\nplan', 'MARKNADSPLAN': 'Marknads-\nplan' };
       button.textContent = splitLabels[tableName] || (/marknads.?plan/i.test(navLabel) ? 'Marknads-\nplan' : navLabel);
       button.setAttribute('aria-label', navLabel);
 
@@ -4325,6 +4350,7 @@ export async function runPlanningApp() {
   function createTopActions(tableName, tableConfig) {
     const wrap = document.createElement('div');
     wrap.className = 'view-actions';
+    if(tableName==='PRE LANSERING'){const hint=document.createElement('span');hint.className='side-panel__text';hint.textContent='Lägg till via Kopiera till Pre Lansering i Pre Follow Up.';wrap.append(hint);return wrap;}
 
     const designCategorySelect = null;
     const saljintroCategorySelect = tableName === 'SÄLJINTRO'
@@ -4603,6 +4629,7 @@ export async function runPlanningApp() {
       payload.owner_initials = draftRow.owner_initials || getCurrentUserInitials();
     }
 
+    if(tableName==='LANSERINGSPLAN' && draftRow.source_utveckling_id != null) payload.source_utveckling_id=String(draftRow.source_utveckling_id);
     payload.is_done = !!draftRow.is_done;
 
     const { data, error } = await supabase
@@ -5358,6 +5385,7 @@ export async function runPlanningApp() {
   }
 
   function findDesignRowsForLanseringsplanRow(lanseringsplanRow) {
+    if(lanseringsplanRow?.source_utveckling_id != null) return (state.rowsByTable?.UTVECKLING||[]).filter(r=>String(r.id)===String(lanseringsplanRow.source_utveckling_id));
     const productKey = getLanseringsplanFullsizeSyncKey(lanseringsplanRow?.produkt);
     if (!productKey) return [];
 
@@ -5377,6 +5405,7 @@ export async function runPlanningApp() {
   }
 
   async function fetchDesignRowsForLanseringsplanRow(lanseringsplanRow) {
+    if(lanseringsplanRow?.source_utveckling_id != null){const result=await supabase.from('utveckling').select('*').eq('id',lanseringsplanRow.source_utveckling_id);if(result.error)throw result.error;return result.data||[];}
     const product = String(lanseringsplanRow?.produkt || '').trim();
     if (!product) return [];
 
@@ -5407,22 +5436,14 @@ export async function runPlanningApp() {
   }
 
   function findLanseringsplanRowsForDesignRow(designRow) {
-    const productKey = getLanseringsplanFullsizeSyncKey(designRow?.produktide);
-    if (!productKey) return [];
-
-    const collectionKey = getLanseringsplanCollectionKey(designRow?.collection);
-    const lanseringsplanRows = state.rowsByTable?.['LANSERINGSPLAN'] || [];
-    const productMatches = lanseringsplanRows.filter((candidate) => (
-      getLanseringsplanFullsizeSyncKey(candidate?.produkt) === productKey
-    ));
-
-    if (!collectionKey) return productMatches;
-
-    const collectionMatches = productMatches.filter((candidate) => (
-      getLanseringsplanCollectionKey(candidate?.collection) === collectionKey
-    ));
-
-    return collectionMatches.length ? collectionMatches : productMatches;
+    const rows=state.rowsByTable?.LANSERINGSPLAN||[];
+    const linked=rows.filter(r=>r.source_utveckling_id!=null && String(r.source_utveckling_id)===String(designRow?.id));
+    const key=getLanseringsplanFullsizeSyncKey(designRow?.produktide);
+    if(!key)return linked;
+    const matches=rows.filter(r=>r.source_utveckling_id==null && getLanseringsplanFullsizeSyncKey(r.produkt)===key);
+    const collection=getLanseringsplanCollectionKey(designRow?.collection);
+    const exact=collection?matches.filter(r=>getLanseringsplanCollectionKey(r.collection)===collection):matches;
+    return [...linked,...(exact.length?exact:matches)];
   }
 
   function applyUpdatedRowsToState(tableName, updatedRows) {
@@ -5646,18 +5667,49 @@ export async function runPlanningApp() {
     }
   }
 
-  async function createLanseringsplanFromDesign(designRow) {
+  function openPreLaunchName(row, copyOnly = false) {
+    if(!row?.id)return;
+    if(copyOnly && row.visa_pre_lansering===true){alert('Produkten finns redan i Pre Lansering.');return;}
+    const dialog=document.createElement('dialog');dialog.className='reports-modal';
+    const form=document.createElement('form');const heading=document.createElement('h2');heading.textContent=row.visa_pre_lansering?'Namn i Pre Lansering':'Kopiera till Pre Lansering';
+    const label=document.createElement('label');label.className='detail-field';label.textContent='Produktnamn';
+    const input=document.createElement('input');input.className='detail-field__control';input.required=true;input.maxLength=300;input.value=row.pre_lansering_namn||row.produktide||'';label.append(input);
+    const note=document.createElement('p');note.textContent='Ursprung: '+(row.produktide||'—')+'. Kopplingen behålls om namnet ändras.';
+    const error=document.createElement('p');error.setAttribute('role','alert');
+    const actions=document.createElement('div');actions.className='reports-actions';const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary-button';cancel.textContent='Avbryt';const save=document.createElement('button');save.type='submit';save.className='primary-button';save.textContent='Spara';actions.append(cancel,save);
+    let busy=false;const close=()=>{if(!busy){dialog.close();dialog.remove();}};cancel.onclick=close;dialog.oncancel=e=>{e.preventDefault();close();};
+    form.onsubmit=async e=>{e.preventDefault();if(busy)return;const name=input.value.trim();if(!name){error.textContent='Ange ett produktnamn.';input.focus();return;}busy=true;save.disabled=cancel.disabled=true;input.readOnly=true;error.textContent='';
+      try{let query=supabase.from('utveckling').update({pre_lansering_namn:name,visa_pre_lansering:true}).eq('id',row.id);if(copyOnly)query=query.eq('visa_pre_lansering',false);const result=await query.select('id');if(result.error)throw result.error;if(!result.data?.length){if(copyOnly){const check=await supabase.from('utveckling').select('visa_pre_lansering,pre_lansering_namn').eq('id',row.id).single();if(!check.error && check.data?.visa_pre_lansering){Object.assign(row,check.data);render();throw Error('Produkten finns redan i Pre Lansering. Inget namn ändrades.');}}throw Error('Inget sparades. Kontrollera behörigheten.');}row.pre_lansering_namn=name;row.visa_pre_lansering=true;busy=false;close();render();}
+      catch(e){error.textContent='Kunde inte spara: '+e.message;}
+      finally{busy=false;save.disabled=cancel.disabled=false;input.readOnly=false;}
+    };
+    form.append(heading,label,note,error,actions);dialog.append(form);document.body.append(dialog);dialog.showModal();input.focus();input.select();
+  }
+
+  function getLaunchCopies(row) {
+    return (state.rowsByTable.LANSERINGSPLAN||[]).filter(r=>r.source_utveckling_id!=null && String(r.source_utveckling_id)===String(row.id));
+  }
+  async function refreshLaunchCopies(row) {
+    const result=await supabase.from('lanseringsplan').select('*').eq('source_utveckling_id',String(row.id));
+    if(result.error)throw result.error;
+    const found=result.data||[];
+    state.rowsByTable.LANSERINGSPLAN=[...(state.rowsByTable.LANSERINGSPLAN||[]).filter(r=>String(r.source_utveckling_id)!==String(row.id)),...found];
+    return found;
+  }
+  async function createLanseringsplanFromDesign(designRow, options = {}) {
+    try { if((await refreshLaunchCopies(designRow)).length){render();alert('Produkten finns redan i Lanseringsplan. Ingen ny kopia skapades.');return null;} }
+    catch(e){alert('Kunde inte kontrollera befintliga kopior: '+e.message);return null;}
     const lanseringsplanConfig = APP_CONFIG.tables?.['LANSERINGSPLAN'];
     if (!lanseringsplanConfig?.dbTable) {
       alert('Kunde inte hitta Lanseringsplan.');
       return null;
     }
 
-    const produkt = String(designRow?.produktide || '').trim();
+    const produkt = String(options.fromPreLaunch ? (designRow?.pre_lansering_namn || '') : (designRow?.produktide || '')).trim();
     const collection = String(designRow?.collection || '').trim() || (getLanseringsplanCollectionOptions()[0] || '');
 
     if (!produkt) {
-      alert('Design-raden saknar Namn/Produkt och kan därför inte kopieras till Lanseringsplan.');
+      alert('Raden saknar produktnamn och kan därför inte kopieras till Lanseringsplan.');
       return null;
     }
 
@@ -5670,6 +5722,7 @@ export async function runPlanningApp() {
         try {
           const createdRow = await createInlineNewRow('LANSERINGSPLAN', lanseringsplanConfig, {
             produkt,
+            source_utveckling_id: String(designRow.id),
             collection,
             fullsize: normalizeStatusValue(designRow?.stort_sample || 'gray'),
             fullsize_slut_datum: fullsizeDate,
@@ -5818,6 +5871,14 @@ export async function runPlanningApp() {
     wrap.className = 'row-actions row-actions--inline';
 
     if (!row?.id || isVirtualModalTodoRow(row)) return wrap;
+    if(tableName==='PRE LANSERING'){
+      const b=document.createElement('button');b.type='button';b.className='row-actions__button';b.textContent='⋯';b.setAttribute('aria-label','Åtgärder');
+      b.onclick=e=>{e.stopPropagation();openFloatingActionMenu(b,[
+        {label:'Ändra namn',action:()=>openPreLaunchName(row)},
+        {label:getLaunchCopies(row).length?'Redan kopierad till Lanseringsplan':'Kopiera till Lanseringsplan',disabled:getLaunchCopies(row).length>0,action:()=>createLanseringsplanFromDesign(row,{fromPreLaunch:true})},
+        {label:'Shopify Spec',action:()=>openShopifySpecificationModal(row.produktide)}
+      ]);};wrap.append(b);return wrap;
+    }
 
     const makeButton = ({ label, title, className = 'row-actions__button', action }) => {
       const button = document.createElement('button');
@@ -5834,23 +5895,12 @@ export async function runPlanningApp() {
     };
 
     if (tableName === 'PRE DEV') {
-      wrap.appendChild(makeButton({
-        label: 'Arkiv',
-        title: 'Lägg raden i Arkiv',
-        action: async () => runRowAction(tableName, tableConfig, row, 'archive'),
-      }));
-      wrap.appendChild(makeButton({
-        label: 'Design',
-        title: 'Skapa rad i Design och lägg denna rad i Arkiv',
-        action: async () => runRowAction(tableName, tableConfig, row, 'promote_pre_dev'),
-      }));
-      wrap.appendChild(makeButton({
-        label: '🗑',
-        title: 'Ta bort raden',
-        className: 'row-actions__button row-actions__button--danger',
-        action: async () => runRowAction(tableName, tableConfig, row, 'delete'),
-      }));
-      return wrap;
+      const button=document.createElement('button');button.type='button';button.className='row-actions__button row-actions__menu-trigger';button.textContent='⋯';button.setAttribute('aria-label','Åtgärder');
+      button.onclick=event=>{event.preventDefault();event.stopPropagation();openFloatingActionMenu(button,[
+        {label:'Arkiv',action:()=>runRowAction(tableName,tableConfig,row,'archive')},
+        {label:'Till Pre Follow Up',title:'Skapa rad i Pre Follow Up och lägg denna rad i Arkiv',action:()=>runRowAction(tableName,tableConfig,row,'promote_pre_dev')},
+        {label:'Ta bort',danger:true,action:()=>runRowAction(tableName,tableConfig,row,'delete')}
+      ]);};wrap.append(button);return wrap;
     }
 
     if (tableName === 'RUTINER') {
@@ -5912,14 +5962,10 @@ export async function runPlanningApp() {
             action: async () => runRowAction(tableName, tableConfig, row, 'delete'),
           },
           {
-            label: 'Shopify Spec',
-            title: 'Öppna B2B Intro för denna produkt',
-            action: async () => openShopifySpecificationModal(row?.produktide),
-          },
-          {
-            label: 'Kopia lansering',
-            title: 'Skapa kopia i Lanseringsplan',
-            action: async () => createLanseringsplanFromDesign(row),
+            label: row.visa_pre_lansering ? 'Redan kopierad till Pre Lansering' : 'Kopiera till Pre Lansering',
+            title: 'Välj produktnamn för Pre Lansering',
+            disabled: row.visa_pre_lansering===true,
+            action: async () => openPreLaunchName(row,true),
           },
         ]);
       });
@@ -6542,6 +6588,8 @@ export async function runPlanningApp() {
 
 
   function findDesignRowForDigprodRow(row) {
+    const launchRows=(state.rowsByTable?.LANSERINGSPLAN||[]).filter(r=>r.source_utveckling_id!=null && normalizeLanseringsplanProductName(r.produkt)===normalizeLanseringsplanProductName(row?.produktnamn));
+    if(launchRows.length){const ids=[...new Set(launchRows.map(r=>String(r.source_utveckling_id)))];if(ids.length!==1)return null;return (state.rowsByTable?.UTVECKLING||[]).find(r=>String(r.id)===ids[0])||null;}
     const productKey = normalizeLanseringsplanProductName(row?.produktnamn);
     if (!productKey) return null;
     return (state.rowsByTable?.['UTVECKLING'] || []).find((candidate) => (
@@ -7499,7 +7547,7 @@ export async function runPlanningApp() {
     if (!row?.id || document.getElementById('launchCommentOverlay')) return;
     const fieldName = column.field;
     const fieldLabel = column.name || 'Kommentar';
-    const rowTitle = row.produkt || row.produktide || 'Utan produktnamn';
+    const rowTitle = row.produkt || row.pre_lansering_namn || row.produktide || 'Utan produktnamn';
     const make = (tag, className, text) => {
       const node = document.createElement(tag);
       node.className = className;
@@ -7753,6 +7801,14 @@ export async function runPlanningApp() {
   }
 
   function createStaticCellContent(row, column) {
+    if(column.field==='__prelaunch_copy_status'){const badge=document.createElement('span');badge.className=row.visa_pre_lansering?'prelaunch-copy-badge':'cell-text cell-text--muted';badge.textContent=row.visa_pre_lansering?'✓ Kopierad':'Ej kopierad';if(row.visa_pre_lansering)badge.title=row.pre_lansering_namn||row.produktide||'';return badge;}
+    if(column.field==='__launch_copy_status'){
+      const copies=getLaunchCopies(row);const badge=document.createElement('span');
+      badge.className=copies.length?'prelaunch-copy-badge':'cell-text cell-text--muted';
+      badge.textContent=copies.length?'✓ Kopierad':'Ej kopierad';
+      if(copies.length)badge.title=copies.map(r=>r.produkt||'Utan namn').join(', ');
+      return badge;
+    }
     const maybeWrapOwnerContent = (node) => {
       if (shouldShowOwnerBadge(state.activeTableName, row, column)) {
         return createOwnerCellContent(row, column, node);
@@ -8991,6 +9047,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
   }
 
   async function render() {
+    state.rowsByTable['PRE LANSERING']=(state.rowsByTable.UTVECKLING||[]).filter(row=>row.visa_pre_lansering===true);
     const result = await renderController.render();
     bindMoodToolbarDelegation();
     mountMoodPanel();
@@ -9012,7 +9069,7 @@ function createDetailPanel(tableName, tableConfig, row, options = {}) {
   });
 
   await Promise.all(
-    tableEntries.filter(([, tableConfig]) => !!tableConfig.dbTable && !tableConfig.customView).map(([tableName, tableConfig]) => loadTableRowsFromData(state, tableName, tableConfig))
+    tableEntries.filter(([, tableConfig]) => !!tableConfig.dbTable && !tableConfig.customView && !tableConfig.linkedDesignView).map(([tableName, tableConfig]) => loadTableRowsFromData(state, tableName, tableConfig))
   );
   await repairDigProdLinksFromSaljintro();
   await syncAllSaljintroReadyFromDigProd();

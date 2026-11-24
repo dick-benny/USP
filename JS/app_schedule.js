@@ -48,6 +48,7 @@ export function createSchedule({supabase}){
  }
  const savingDays=new Set();
  async function toggle(user,day,button){
+   if(day<today()){button.disabled=true;showError('Passerade dagar kan inte ändras.');return;}
    const key=user.id+':'+day;if(savingDays.has(key))return;
    const base=data.days.find(d=>d.user_id===user.id&&d.day===day)?.status||'office';
    const next={office:'off',off:'remote',remote:'office'}[base];
@@ -61,7 +62,7 @@ export function createSchedule({supabase}){
    finally{
      savingDays.delete(key);
      const current=host?.querySelector(`[data-schedule-day="${day}"][data-schedule-user="${user.id}"]`);
-     if(current){current.disabled=false;current.removeAttribute('aria-busy');}
+     if(current){current.disabled=day<today();current.removeAttribute('aria-busy');}
      button.removeAttribute('aria-busy');
    }
  }
@@ -81,9 +82,9 @@ export function createSchedule({supabase}){
    for(let i=0;i<5;i++){const day=addDays(week,i);const th=el('th');const label=el('span',`${DAY_NAMES[i]} ${day.slice(8)}/${day.slice(5,7)}`,'schedule-date-label');if(day===today()){label.classList.add('schedule-date-label--today');th.setAttribute('aria-current','date');}th.append(label);th.scope='col';head.append(th);}const thead=el('thead');thead.append(head);table.append(thead);const body=el('tbody');
    for(const user of data.people){const tr=el('tr');const th=el('th',user.name+(user.id===data.user_id?' (du)':''));th.scope='row';tr.append(th);
      for(let i=0;i<5;i++){const day=addDays(week,i);const base=data.days.find(d=>d.user_id===user.id&&d.day===day)?.status||'office';const leave=data.leaves.find(l=>l.user_id===user.id&&l.start_date<=day&&l.end_date>=day);const state=dayPresentation(base,leave);
-       const cell=el('td');const b=button(LABELS[state],()=>leave?requestDetails(leave):toggle(user,day,b),'schedule-day schedule-'+state);
+       const cell=el('td');const b=button(LABELS[state],()=>{if(day<today())return;leave?requestDetails(leave):toggle(user,day,b);},'schedule-day schedule-'+state);
        b.dataset.scheduleDay=day;b.dataset.scheduleUser=user.id;
-       b.disabled=busy||savingDays.has(user.id+':'+day)||(!leave&&user.id!==data.user_id&&!data.is_admin&&!isApprover());b.setAttribute('aria-label',`${user.name}, ${day}: ${LABELS[state]}`);if(day<today())cell.classList.add('schedule-past');cell.append(b);tr.append(cell);
+       b.disabled=day<today()||busy||savingDays.has(user.id+':'+day)||(!leave&&user.id!==data.user_id&&!data.is_admin&&!isApprover());b.setAttribute('aria-label',`${user.name}, ${day}: ${LABELS[state]}`);if(day<today())cell.classList.add('schedule-past');cell.append(b);tr.append(cell);
      }body.append(tr);
    }table.append(body);host.append(table);
  }

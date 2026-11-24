@@ -1,211 +1,41 @@
-const MONTHS = ['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
-export function weekMonth(year, week) {
-  if (!Number.isInteger(year) || !Number.isInteger(week) || week < 1 || week > 53) throw Error('Ange en giltig vecka.');
-  const jan4 = new Date(Date.UTC(year, 0, 4));
-  const monday = new Date(+jan4 + (1 - (jan4.getUTCDay() || 7) + (week - 1) * 7) * 86400000);
-  const thursday = new Date(+monday + 3 * 86400000);
-  if (thursday.getUTCFullYear() !== year) throw Error('Veckan finns inte under valt år.');
-  return monday.getUTCFullYear() < year ? 1 : monday.getUTCMonth() + 1;
-}
-export function safeFileUrl(value) {
-  if (!value.trim()) return '';
-  const url = new URL(value.trim());
-  if (!['https:', 'http:'].includes(url.protocol)) throw Error('Använd en https- eller http-länk.');
-  return url.href;
-}
-export function createCollectionPlan({supabase, uploadImage, imageUrl}) {
-  let collections = [], entries = [], host, loading = false;
-  function el(tag, text, cls) {
-    const n = document.createElement(tag); if (text !== undefined) n.textContent = text;
-    if (cls) n.className = cls; if (tag === 'button') n.type = 'button'; return n;
-  }
-  function button(text, fn, cls = 'secondary-button') { const b = el('button', text, cls); b.onclick = fn; return b; }
-  function field(form, label, type = 'text', value = '') {
-    const wrap = el('label', undefined, 'detail-field');
-    const input = el(type === 'textarea' ? 'textarea' : 'input', undefined, 'detail-field__control');
-    if (type !== 'textarea') input.type = type;
-    input.value = value; input.setAttribute('aria-label', label);
-    wrap.append(el('span', label, 'detail-field__label'), input); form.append(wrap); return input;
-  }
-  function modal(title) {
-    const overlay = el('div', undefined, 'overlay-modal cp-overlay');
-    const panel = el('section', undefined, 'side-panel cp-modal'); panel.setAttribute('role','dialog'); panel.setAttribute('aria-modal','true'); panel.setAttribute('aria-label', title);
-    const header = el('div', undefined, 'side-panel__header'); const form = el('form', undefined, 'side-panel__body');
-    const actions = el('div', undefined, 'side-panel__header-actions');
-    const error = el('p'); error.setAttribute('role','alert');
-    let busy = false; const previous = document.activeElement;
-    const close = () => { if (!busy) { overlay.remove(); if (previous?.isConnected) previous.focus(); } };
-    actions.append(button('Avbryt',close)); header.append(el('h2',title,'side-panel__title'),actions);
-    panel.append(header,form,error); overlay.append(panel); document.body.append(overlay);
-    overlay.onkeydown = event => {
-      if (event.key === 'Escape') { event.stopPropagation(); close(); }
-      if (event.key === 'Tab') {
-        const nodes = [...panel.querySelectorAll('button,input,textarea,select,a[href]')].filter(n=>!n.disabled);
-        if (!nodes.length) return;
-        if (event.shiftKey && document.activeElement === nodes[0]) { event.preventDefault(); nodes.at(-1).focus(); }
-        else if (!event.shiftKey && document.activeElement === nodes.at(-1)) { event.preventDefault(); nodes[0].focus(); }
-      }
-    };
-    const run = async operation => {
-      if (busy) return;
-      busy = true; error.textContent = ''; const controls = [...panel.querySelectorAll('button,input,textarea,select')]; controls.forEach(n=>n.disabled=true);
-      try { await operation(); busy=false; close(); await load(); }
-      catch (err) { error.textContent = err.code === '23505' ? 'Det finns redan ett möte i månaden, eller en Collection för detta år och denna årstid. Ladda om och försök igen.' : err.message; }
-      finally { busy=false; controls.forEach(n=>n.disabled=false); }
-    };
-    return {form,actions,error,close,run};
-  }
-  async function save(table, item, payload) {
-    const query = supabase.from(table);
-    const {error} = await (item?.id ? query.update(payload).eq('id',item.id) : query.insert(payload)).select('id').single();
-    if (error) throw error;
-  }
-  function collectionEditor(item) {
-    const m = modal(item ? 'Collection' : 'Ny Collection');
-    const year = field(m.form,'År','number',item?.year || new Date().getFullYear()+1); year.min=2000;year.max=2199;year.required=true;
-    // Year cannot change once planned entries exist, to avoid silently moving meetings.
-    if (item && entries.some(e=>e.collection_id===item.id)) year.readOnly=true;
-    const seasonLabel=el('label',undefined,'detail-field');
-    const season=el('select',undefined,'detail-field__control');season.required=true;season.setAttribute('aria-label','Årstid');
-    for(const value of ['', 'SPRING','FALL']) {const option=el('option',value||'Välj årstid');option.value=value;season.append(option);}
-    season.value=item?.season||'';seasonLabel.append(el('span','Årstid','detail-field__label'),season);m.form.append(seasonLabel);
-    const name = field(m.form,'Namn','text','');name.readOnly=true;
-    const updateName=()=>{name.value=season.value?`COLLECTION ${year.value} ${season.value}`:item?.name||`COLLECTION ${year.value}`;};
-    year.oninput=updateName;season.onchange=updateName;updateName();
-    m.actions.append(button('Save',()=>m.form.requestSubmit()));
-    m.form.onsubmit=e=>{e.preventDefault();void m.run(async()=>{
-      const slot=item?.slot || [1,2,3,4].find(slot=>!collections.some(c=>c.slot===slot));
-      if (!slot || (!item && collections.length>=4)) throw Error('Max fyra Collections kan visas.');
-      if (!['SPRING','FALL'].includes(season.value)) throw Error('Välj årstid.');
-      if(collections.some(c=>c.id!==item?.id&&Number(c.year)===Number(year.value)&&c.season===season.value))throw Error('Denna kombination av år och årstid finns redan.');
-      await save('planning_collection_plan',item,{slot,year:Number(year.value),season:season.value,name:`COLLECTION ${Number(year.value)} ${season.value}`});
-    });};
-    if (item) {
-      const danger=el('div',undefined,'cp-delete-section');
-      danger.append(button('Ta bort Collection',()=>{
-        const items=entries.filter(e=>e.collection_id===item.id);
-        const meetings=items.filter(e=>e.kind==='meeting').length;
-        const activities=items.filter(e=>e.kind==='activity').length;
-        if (!confirm(`Ta bort ${item.name} och dess ${meetings} möten och ${activities} aktiviteter? Detta går inte att ångra.`)) return;
-        void m.run(async()=>{
-          const {error}=await supabase.rpc('planning_delete_collection_plan',{
-            p_collection_id:item.id,p_meetings:meetings,p_activities:activities,
-          });
-          if(error)throw error;
-        });
-      },'secondary-button cp-delete-button'));
-      m.form.append(danger);
-    }
-    season.focus();
-  }
-  function commentEditor(item) {
-    const m=modal('Kommentar');const comment=field(m.form,'Kommentar','textarea',item.comment||'');comment.rows=10;
-    m.actions.append(button('Save',()=>m.form.requestSubmit()));
-    m.form.onsubmit=e=>{e.preventDefault();void m.run(()=>save('planning_collection_plan_items',item,{comment:comment.value}));};comment.focus();
-  }
-  function editor(collection, month, kind, item) {
-    const m=modal(kind==='meeting'?'Möte – '+collection.name:'Aktivitet – '+collection.name);
-    let meetingName, week, image, link, linkName, comment, text, pendingImage=null, removeImage=false;
-    if(kind==='meeting') {
-      meetingName=field(m.form,'Mötesnamn','text',item?.meeting_name||'');meetingName.required=true;meetingName.maxLength=120;
-      let initialWeek=item?.week;
-      if(!initialWeek) for(let w=1;w<=53;w++){try{if(weekMonth(collection.year,w)===month){initialWeek=w;break;}}catch{}}
-      week=field(m.form,`Vecka (${collection.year})`,'number',initialWeek||1);week.min=1;week.max=53;week.required=true;
-      const hint=el('p',undefined,'side-panel__text');m.form.append(hint);
-      const updateHint=()=>{try{hint.textContent='Placeras i '+MONTHS[weekMonth(collection.year,Number(week.value))-1]+'. Veckans måndag styr månaden.';}catch(e){hint.textContent=e.message;}};week.oninput=updateHint;updateHint();
-      image=field(m.form,'Bild','file');image.accept='image/png,image/jpeg,image/webp,image/gif';
-      const preview=el('img',undefined,'cp-preview');preview.alt='Mötesbild';preview.hidden=true;m.form.append(preview);
-      if(item?.image_path) void imageUrl(item.image_path).then(url=>{if(preview.isConnected&&!pendingImage&&!removeImage){preview.src=url;preview.hidden=!url;}}).catch(()=>{});
-      const pick=file=>{
-        if(!file)return;
-        if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)||file.size>10*1024*1024){m.error.textContent='Välj PNG, JPEG, WebP eller GIF, högst 10 MB.';return;}
-        pendingImage=file;removeImage=false;const reader=new FileReader();reader.onload=()=>{preview.src=reader.result;preview.hidden=false;};reader.readAsDataURL(file);
-      };
-      image.onchange=()=>pick(image.files[0]);
-      m.form.addEventListener('paste',e=>{const file=[...(e.clipboardData?.files||[])].find(f=>f.type.startsWith('image/'));if(file){e.preventDefault();pick(file);}});
-      m.form.append(button('Ta bort bild',()=>{pendingImage=null;removeImage=true;image.value='';preview.hidden=true;}));
-      linkName=field(m.form,'Länknamn','text',item?.link_name||'');linkName.maxLength=120;
-      link=field(m.form,'Länk till fil','url',item?.file_url||'');
-      comment=field(m.form,'Kommentar','textarea',item?.comment||'');comment.rows=4;
-    } else {text=field(m.form,'Aktivitet','textarea',item?.text||'');text.required=true;text.rows=4;}
-    m.actions.append(button('Save',()=>m.form.requestSubmit()));
-    m.form.onsubmit=e=>{e.preventDefault();void m.run(async()=>{
-      const payload={collection_id:collection.id,kind,month};
-      if(kind==='meeting') {
-        payload.meeting_name=meetingName.value.trim();
-        if(!payload.meeting_name)throw Error('Ange ett mötesnamn.');
-        payload.week=Number(week.value);payload.month=weekMonth(collection.year,payload.week);
-        if(entries.some(e=>e.collection_id===collection.id&&e.kind==='meeting'&&e.month===payload.month&&e.id!==item?.id))throw Error('Det finns redan ett möte i denna månad.');
-        payload.file_url=safeFileUrl(link.value);payload.link_name=linkName.value.trim();payload.comment=comment.value;
-        if(payload.file_url&&!payload.link_name)throw Error('Ange ett namn på fillänken.');
-        payload.image_path=removeImage?'':item?.image_path||'';
-        if(pendingImage){payload.image_path=await uploadImage(pendingImage);pendingImage=null;item={...item,image_path:payload.image_path};}
-      } else {payload.text=text.value.trim();if(!payload.text)throw Error('Skriv en aktivitet.');}
-      await save('planning_collection_plan_items',item,payload);
-    });};
-    if(item?.id)m.actions.append(button('Ta bort',()=>{if(confirm('Ta bort posten?'))void m.run(async()=>{
-      const {error}=await supabase.from('planning_collection_plan_items').delete().eq('id',item.id).select('id').single();if(error)throw error;
-    });}));
-    (meetingName||text).focus();
-  }
-  function choose(collection,month) {
-    const m=modal(`${collection.name} – ${MONTHS[month-1]}`);
-    if(!entries.some(e=>e.collection_id===collection.id&&e.month===month&&e.kind==='meeting'))m.form.append(button('Möte',()=>{m.close();editor(collection,month,'meeting');}));
-    m.form.append(button('Aktivitet',()=>{m.close();editor(collection,month,'activity');}));m.form.querySelector('button').focus();
-  }
-  function showImage(url) {
-    const previous=document.activeElement;
-    const viewer=el('div',undefined,'cp-image-viewer');
-    viewer.setAttribute('role','dialog');viewer.setAttribute('aria-modal','true');viewer.setAttribute('aria-label','Mötesbild');
-    const close=()=>{viewer.remove();if(previous?.isConnected)previous.focus();};
-    const img=el('img');img.src=url;img.alt='Mötesbild i förstoring';
-    const dismiss=button('Stäng',close,'secondary-button');
-    viewer.append(img,dismiss);document.body.append(viewer);dismiss.focus();
-    viewer.onclick=close;
-    viewer.onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();close();}if(e.key==='Tab'){e.preventDefault();dismiss.focus();}};
-  }
-  function draw() {
-    if(!host?.isConnected)return;host.replaceChildren();
-    const header=el('div',undefined,'view-card__header');header.append(el('h1','Collection Plan','view-card__title'));
-    const actions=el('div',undefined,'side-panel__header-actions');const add=button('+ Collection',()=>collectionEditor());add.disabled=collections.length>=4||loading;
-    actions.append(add);header.append(actions);host.append(header);
-    const table=el('table',undefined,'cp-table');const head=el('tr');
-    for(const title of ['Collection',...MONTHS]){const th=el('th',title);th.scope='col';head.append(th);}const thead=el('thead');thead.append(head);table.append(thead);
-    const tbody=el('tbody');
-    for(const collection of collections){
-      const row=el('tr');const title=el('th');title.scope='row';title.append(button(collection.name,()=>collectionEditor(collection),'cp-name'));row.append(title);
-      for(let month=1;month<=12;month++){
-        const cell=el('td');const items=entries.filter(e=>e.collection_id===collection.id&&e.month===month).sort((a,b)=>a.kind===b.kind?String(a.created_at).localeCompare(String(b.created_at)):a.kind==='meeting'?-1:1);
-        const content=el('div',undefined,'cp-cell');
-        for(const item of items){
-          if(item.kind==='activity'){content.append(button(item.text,()=>editor(collection,month,'activity',item),'cp-activity'));continue;}
-          const card=el('article',undefined,'cp-meeting');
-          const name=button(item.meeting_name||'Möte',()=>editor(collection,month,'meeting',item),'cp-meeting-name');
-          name.title=item.meeting_name||'Lägg till mötesnamn';card.append(name);
-          const open=button(`${collection.year}–v${String(item.week).padStart(2,'0')} ✎`,()=>editor(collection,month,'meeting',item),'cp-meeting-open');
-          open.title='Redigera möte';open.setAttribute('aria-label',`Redigera möte – ${collection.name} vecka ${item.week}`);card.append(open);
-          if(item.image_path){
-            const zoom=button('',()=>{},'cp-image-button');zoom.title='Förstora bild';zoom.setAttribute('aria-label','Förstora mötesbild');zoom.disabled=true;
-            const img=el('img');img.alt='Mötesbild';zoom.append(img);card.append(zoom);
-            void imageUrl(item.image_path).then(url=>{if(zoom.isConnected&&url){img.src=url;zoom.disabled=false;zoom.onclick=()=>showImage(url);}}).catch(()=>{img.alt='Bilden kunde inte läsas';});
-          } else card.append(el('span','Bild','cp-no-image'));
-          if(item.file_url){try{const a=el('a',item.link_name||'Fil');a.href=safeFileUrl(item.file_url);a.target='_blank';a.rel='noopener noreferrer';a.title=item.link_name;card.append(a);}catch{}}
-          const comment=button(item.comment||'Kommentar',()=>commentEditor(item),'cp-comment');comment.title=item.comment||'Skriv kommentar';card.append(comment);content.append(card);
-        }
-        const add=button('+',()=>choose(collection,month),'cp-add');add.setAttribute('aria-label',`Lägg till – ${collection.name} ${MONTHS[month-1]}`);content.append(add);
-        cell.onclick=e=>{if(e.target===cell||e.target===content)choose(collection,month);};cell.append(content);row.append(cell);
-      }tbody.append(row);
-    }table.append(tbody);host.append(table);
-    if(!collections.length)host.append(el('p','Lägg till en Collection för att börja planera.','empty-state'));
-  }
-  async function load() {
-    if(loading)return;loading=true;
-    try {
-      const results=await Promise.all([supabase.from('planning_collection_plan').select('*').order('year'),supabase.from('planning_collection_plan_items').select('*').order('created_at')]);
-      for(const r of results)if(r.error)throw r.error;
-      collections=(results[0].data||[]).sort((a,b)=>a.year-b.year||(['SPRING','FALL'].indexOf(a.season)-['SPRING','FALL'].indexOf(b.season)));entries=results[1].data||[];draw();
-    } catch(err){if(host?.isConnected){host.replaceChildren(el('p','Collection Plan kunde inte läsas: '+err.message),button('Försök igen',()=>load()));}}
-    finally{loading=false;if(host?.isConnected){const b=[...host.querySelectorAll('button')].find(b=>b.textContent==='+ Collection');if(b)b.disabled=collections.length>=4;}}
-  }
-  return {createView(){host=el('section',undefined,'view-card cp-view');host.append(el('p','Läser Collection Plan…'));setTimeout(()=>load(),0);return host;}};
+const MONTHS=['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
+const NAMES=['Vision','Sortiment Strategi','Follow Up','Price Meeting'];
+const COLORS=['#e4c7b8','#c7d8b5','#b9d3df','#d4c1dc','#eed7a4','#c5caca'];
+export function createCollectionPlan({supabase}){
+ const minimized=new Set();
+ let host,rows=[],cards=[],archived=false,loading=false,error='',sequence=0;
+ const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
+ function button(text,fn,cls='secondary-button'){const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;}
+ async function load(){const token=++sequence;loading=true;error='';draw();try{const [a,b]=await Promise.all([supabase.from('planning_collection_calendar').select('*').order('created_at').order('year').order('season').order('id'),supabase.from('planning_collection_meetings').select('*').order('stage')]);if(a.error||b.error)throw a.error||b.error;if(token!==sequence)return;rows=a.data||[];cards=b.data||[];}catch(e){if(token!==sequence)return;error=e.message;}if(token!==sequence)return;loading=false;draw();}
+ function modal(title){const previous=document.activeElement;const d=el('dialog',undefined,'cp-modal'),f=el('form');f.append(el('h2',title));const msg=el('p');msg.setAttribute('role','alert');const actions=el('div',undefined,'cp-actions');let busy=false;const close=()=>{if(busy)return;d.close();d.remove();previous?.focus();};actions.append(button('Stäng',close));d.oncancel=e=>{e.preventDefault();close();};d.append(f);document.body.append(d);d.showModal();
+ const run=async fn=>{if(busy)return;busy=true;msg.textContent='';Array.from(f.elements).forEach(n=>n.disabled=true);try{await fn();busy=false;close();await load();}catch(e){msg.textContent=e.code==='23505'?'Denna Collection finns redan.':e.message;busy=false;Array.from(f.elements).forEach(n=>n.disabled=false);}};
+ return {f,actions,run,close,finish(fn){f.append(msg,actions);if(fn){const save=el('button','Spara','primary-button');save.type='submit';actions.append(save);f.onsubmit=e=>{e.preventDefault();void run(fn);};}else f.onsubmit=e=>e.preventDefault();}};
+ }
+ function field(form,label,tag='input',type='text',value=''){const wrap=el('label',undefined,'detail-field');const input=el(tag);input.className='detail-field__control';if(tag==='input')input.type=type;input.value=value;wrap.append(el('span',label,'detail-field__label'),input);form.append(wrap);return input;}
+ function option(select,value,label){const o=el('option',label);o.value=value;select.append(o);}
+ async function mutation(query){const r=await query.select('id');if(r.error)throw r.error;if(!r.data?.length)throw Error('Inget sparades. Ladda om och kontrollera behörigheten.');}
+ function editCollection(row){const m=modal(row?'Redigera Collection':'Ny Collection');const year=field(m.f,'År','input','number',row?.year||new Date().getFullYear());year.min=2000;year.max=2199;year.required=true;
+ const season=field(m.f,'Säsong','select');['SPRING','FALL'].forEach(v=>option(season,v,v));season.value=row?.season||'SPRING';
+ const color=field(m.f,'Färg','input','color',row?.color||COLORS[rows.length%COLORS.length]);
+ m.f.append(el('p','Fyra möteskort skapas: Vision, Sortiment Strategi, Follow Up och Price Meeting.','cp-help'));
+ if(row){m.actions.append(button(minimized.has(row.id)?'Maximera':'Minimera',()=>{if(minimized.has(row.id))minimized.delete(row.id);else minimized.add(row.id);m.close();draw();}));m.actions.append(button(row.archived?'Återställ':'Arkivera',()=>void m.run(()=>mutation(supabase.from('planning_collection_calendar').update({archived:!row.archived}).eq('id',row.id)))));m.actions.append(button('Ta bort',()=>{if(confirm('Ta bort Collection '+row.year+' '+row.season+' och dess fyra möteskort inklusive kommentarer?'))void m.run(()=>mutation(supabase.from('planning_collection_calendar').delete().eq('id',row.id)));}));}
+ m.finish(()=>{const values={year:Number(year.value),season:season.value,color:color.value};return mutation(row?supabase.from('planning_collection_calendar').update(values).eq('id',row.id):supabase.from('planning_collection_calendar').insert(values));});year.focus();
+ }
+ function editCard(row,card,commentOnly=false){const m=modal((commentOnly?'Kommentar – ':'')+NAMES[card.stage-1]+' · '+row.year+' '+row.season);
+ if(commentOnly){const input=field(m.f,'Kommentar','textarea','text',card.comment||'');input.rows=10;input.maxLength=10000;m.finish(()=>mutation(supabase.from('planning_collection_meetings').update({comment:input.value}).eq('id',card.id)));input.focus();}
+ else {const date=field(m.f,'Datum','input','date',card.meeting_date||'');date.min='2000-01-01';date.max='2199-12-31';m.f.append(el('p','Lämna datum tomt för att flytta kortet till Ej planerat.','cp-help'));m.finish(async()=>{await mutation(supabase.from('planning_collection_meetings').update({meeting_date:date.value||null}).eq('id',card.id));});date.focus();}
+ }
+ function cardNode(row,card){const n=el('article',undefined,'cp-card');n.style.backgroundColor=row.color;const rgb=row.color.slice(1).match(/../g).map(v=>parseInt(v,16));if((rgb[0]*299+rgb[1]*587+rgb[2]*114)/1000<145)n.style.color='#ffffff';
+ const edit=button('',()=>editCard(row,card),'cp-card-edit');edit.append(el('strong',NAMES[card.stage-1]),el('span',card.meeting_date?card.meeting_date.slice(8)+'/'+card.meeting_date.slice(5,7)+' '+card.meeting_date.slice(0,4):'Välj datum'));edit.setAttribute('aria-label','Redigera '+NAMES[card.stage-1]+' '+row.year+' '+row.season);
+ const comment=button('▱',()=>editCard(row,card,true),'cp-comment cp-comment-icon');comment.textContent='';const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','M4 4h16v12H9l-5 4V4z');svg.append(path);comment.append(svg);comment.setAttribute('aria-label','Kommentar – '+NAMES[card.stage-1]);comment.title=card.comment?'Öppna kommentar (innehåll finns)':'Lägg till kommentar';if(card.comment)comment.classList.add('has-comment');n.append(edit,comment);return n;}
+ function draw(){if(!host)return;host.replaceChildren();const header=el('div',undefined,'view-card__header');header.append(el('h1','Collection Plan','view-card__title'));const actions=el('div',undefined,'cp-actions');actions.append(button(archived?'Visa aktiva':'Visa arkiverade',()=>{archived=!archived;draw();}));if(!archived&&!loading&&!error){const add=button('Ny Collection',()=>editCollection());add.disabled=rows.filter(r=>!r.archived).length>=4;add.title=add.disabled?'Max fyra aktiva Collections':'';actions.append(add);}header.append(actions);host.append(header);
+ if(loading){host.append(el('p','Hämtar Collection Plan…','cp-message'));return;}if(error){const p=el('p','Kunde inte hämta Collection Plan: '+error,'cp-message');p.setAttribute('role','alert');host.append(p,button('Försök igen',()=>void load()));return;}
+ const visible=rows.filter(r=>Boolean(r.archived)===archived);if(!visible.length){host.append(el('p',archived?'Inga arkiverade Collections.':'Skapa en Collection för att planera de fyra mötena.','cp-message'));return;}
+ const table=el('table',undefined,'cp-table'),head=el('thead'),tr=el('tr');['Collection',...MONTHS].forEach(t=>{const th=el('th',t);th.scope='col';tr.append(th);});head.append(tr);table.append(head);const body=el('tbody');
+ for(const row of visible){const tr=el('tr'),label=el('th');label.scope='row';const heading=el('div',undefined,'cp-collection-heading');heading.append(el('strong',row.year+' '+row.season));const menu=button('⋯',()=>editCollection(row));menu.setAttribute('aria-label','Åtgärder '+row.year+' '+row.season);heading.append(menu);label.append(heading);if(minimized.has(row.id)){tr.classList.add('cp-row-minimized');label.style.borderLeft='6px solid '+row.color;const compact=el('td','Minimerad','cp-minimized-label');compact.colSpan=12;tr.append(label,compact);body.append(tr);continue;}label.style.borderLeft='6px solid '+row.color;
+ const own=cards.filter(c=>c.collection_id===row.id);const unscheduled=own.filter(c=>!c.meeting_date);if(unscheduled.length){label.append(el('div','Ej planerat','cp-help'));const list=el('div',undefined,'cp-unscheduled');unscheduled.forEach(c=>list.append(cardNode(row,c)));label.append(list);}tr.append(label);
+ for(let month=1;month<=12;month++){const td=el('td');own.filter(c=>c.meeting_date&&Number(c.meeting_date.slice(5,7))===month).sort((a,b)=>a.meeting_date.localeCompare(b.meeting_date)||a.stage-b.stage).forEach(c=>td.append(cardNode(row,c)));tr.append(td);}body.append(tr);}
+ table.append(body);host.append(table);
+ }
+ return {createView(){host=el('section',undefined,'view-card');void load();return host;}};
 }

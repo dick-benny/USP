@@ -3904,3 +3904,12 @@ button[aria-label="Stäng"]:active {
 .studio-brand { display:flex; align-items:center; gap:10px; }
 .studio-brand__icon { display:block; width:40px; height:40px; flex:0 0 40px; }
 .studio-brand__text { display:grid; gap:3px; }
+
+/* v374: persistent, readable launch-copy state. */
+.prelaunch-copy-badge { display:inline-block; padding:6px 8px; border-radius:8px; background:#dcebdc; color:#214b30; font-size:12px; font-weight:700; }
+.row-actions__floating-menu-item:disabled { opacity:.65; cursor:default; }
+
+/* v377: compact action menu in Pre Vision. */
+.data-table--prevision .design-actions { padding:6px 2px; }
+.data-table--prevision .design-actions .column-header { justify-content:center; }
+.data-table--prevision .design-actions .row-actions__button { width:32px; min-width:32px; padding:6px 0; }

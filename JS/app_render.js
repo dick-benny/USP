@@ -396,7 +396,8 @@ export function createRenderController(deps) {
 
     const table = document.createElement('table');
     table.className = 'data-table';
-    if (tableName === 'UTVECKLING') table.classList.add('data-table--design-fit');
+    if(tableName==='PRE DEV')table.classList.add('data-table--prevision');
+    if (tableName === 'UTVECKLING' || tableName === 'PRE LANSERING') table.classList.add('data-table--design-fit');
     if (tableName === 'LANSERINGSPLAN') {
       table.classList.add('data-table--launch-fit');
       tableWrap.classList.add('table-wrap--launch-fit');
@@ -412,9 +413,10 @@ export function createRenderController(deps) {
     visibleColumns.forEach((column) => {
       const th = document.createElement('th');
       if (column.width) th.style.width = column.width;
-      if (tableName === 'UTVECKLING') {
-        const widths = { collection: 160, produktide: 160, syfte: 120, __actions__: 44 };
-        th.style.width = column.field === 'beskrivning' ? '' : `${widths[column.field] || 100}px`;
+      if(tableName==='PRE DEV' && column.field==='__actions__'){th.style.width='44px';th.classList.add('design-actions');th.title='Åtgärder';th.setAttribute('aria-label','Åtgärder');}
+      if (tableName === 'UTVECKLING' || tableName === 'PRE LANSERING') {
+        const widths = { collection: 160, produktide: 160, pre_lansering_namn: 200, pre_lansering_anteckningar: 170, syfte: 120, __actions__: 44 };
+        th.style.width = column.field === 'beskrivning' ? '170px' : `${widths[column.field] || 100}px`;
         if (column.field === '__actions__') {
           th.classList.add('design-actions');
           th.title = 'Åtgärder';
@@ -433,7 +435,8 @@ export function createRenderController(deps) {
       const label = document.createElement('span');
       label.className = 'column-header__label';
       label.textContent = column.name;
-      if (tableName === 'UTVECKLING' && column.field === '__actions__') label.textContent = '⋯';
+      if(['latest_erd_sample','latest_erd_fotoprov','latest_erd_small_sample'].includes(column.field))label.style.whiteSpace='pre-line';
+      if (['UTVECKLING','PRE LANSERING','PRE DEV'].includes(tableName) && column.field === '__actions__') label.textContent = '⋯';
       headerInner.appendChild(label);
 
       if (!isOpenColumn(column) && !isNotesColumn(column) && !isTodoColumn(column)) {
@@ -481,7 +484,7 @@ export function createRenderController(deps) {
       visibleColumns.forEach((column) => {
         const td = document.createElement('td');
 
-        if (tableName === 'UTVECKLING' && column.field === '__actions__') td.classList.add('design-actions');
+        if (['UTVECKLING','PRE LANSERING','PRE DEV'].includes(tableName) && column.field === '__actions__') td.classList.add('design-actions');
 
         if (getAlignment(column) === 'center') td.classList.add('is-center');
 
@@ -516,7 +519,7 @@ export function createRenderController(deps) {
           return;
         }
 
-        if ((tableName === 'LANSERINGSPLAN' && column.field === 'kommentar') || (tableName === 'UTVECKLING' && column.field === 'beskrivning')) {
+        if ((tableName === 'LANSERINGSPLAN' && column.field === 'kommentar') || (tableName === 'UTVECKLING' && column.field === 'beskrivning') || (tableName === 'PRE LANSERING' && column.field === 'pre_lansering_anteckningar')) {
           const preview = document.createElement('span');
           preview.className = 'cell-text launch-comment-preview';
           preview.textContent = String(row[column.field] ?? '') || '—';
@@ -526,7 +529,7 @@ export function createRenderController(deps) {
             td.tabIndex = 0;
             td.dataset.launchCommentRow = String(row.id);
             td.setAttribute('role', 'button');
-            td.setAttribute('aria-label', 'Redigera ' + column.name.toLowerCase() + ' – ' + (row.produkt || row.produktide || 'Utan produktnamn'));
+            td.setAttribute('aria-label', 'Redigera ' + column.name.toLowerCase() + ' – ' + (row.produkt || row.pre_lansering_namn || row.produktide || 'Utan produktnamn'));
             const open = () => openLaunchCommentModal(tableConfig, row, column);
             td.addEventListener('click', open);
             td.addEventListener('keydown', event => {
